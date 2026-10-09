@@ -1,0 +1,28 @@
+[
+  {
+    "id": "e912304de2b2ce35b473ce2ecd3d1502",
+    "sport_key": "soccer_france_ligue_one",
+    "sport_title": "Ligue 1 - France",
+    "commence_time": "2026-10-10T19:00:00Z",
+    "home_team": "Paris Saint Germain",
+    "away_team": "Lens",
+    "bookmakers": [
+      {
+        "key": "winamax_fr",
+        "title": "Winamax (FR)",
+        "last_update": "2026-10-09T11:58:00Z",
+        "markets": [
+          {"key": "h2h", "last_update": "2026-10-09T11:58:00Z", "outcomes": [
+            {"name": "Paris Saint Germain", "price": 1.42},
+            {"name": "Lens", "price": 7.0},
+            {"name": "Draw", "price": 4.6}
+          ]},
+          {"key": "totals", "last_update": "2026-10-09T11:58:00Z", "outcomes": [
+            {"name": "Over", "price": 1.62, "point": 2.5},
+            {"name": "Under", "price": 2.25, "point": 2.5}
+          ]}
+        ]
+      }
+    ]
+  }
+]
