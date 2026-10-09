@@ -6,6 +6,7 @@ import pytest
 from sportai.connectors.base import OddsQuote
 from sportai.connectors.simulation import SimulationProvider
 from sportai.services.live import evaluate_live
+from sportai.selection.engine import SelectionConfig
 from sportai.services.prematch import MixedModeError, run_prematch
 
 NOW = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
@@ -26,7 +27,8 @@ def test_realistic_market_gives_zero_or_few_selections(sim):
 
 
 def test_mispriced_market_produces_capped_uncorrelated_selections(sim):
-    r = run_prematch(sim.results(), sim.upcoming_fixtures(), sim.odds(noise=0.25), now=NOW)
+    cfg = SelectionConfig(enabled_markets=("1x2", "double_chance", "dnb", "totals", "btts"))
+    r = run_prematch(sim.results(), sim.upcoming_fixtures(), sim.odds(noise=0.25), cfg, now=NOW)
     sel = r.selection.selected
     assert 1 <= len(sel) <= 4
     assert len({e.candidate.match_id for e in sel}) == len(sel)
@@ -59,3 +61,8 @@ def test_live_stale_feed_blocks_everything(sim):
     snap = replace(sim.live_snapshot("sim-0"), observed_at=NOW - timedelta(minutes=5))
     alerts = evaluate_live("sim-0", "x", 1.5, 1.0, 0.5, 0.2, snap, [], now=NOW)
     assert [a.kind for a in alerts] == ["stale_data"] and not alerts[0].commercial
+
+
+def test_unproven_markets_disabled_by_default(sim):
+    r = run_prematch(sim.results(), sim.upcoming_fixtures(), sim.odds(noise=0.25), now=NOW)
+    assert all(e.candidate.market not in ("totals", "btts") for e in r.selection.selected)

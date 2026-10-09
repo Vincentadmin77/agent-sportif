@@ -1,0 +1,33 @@
+# Local full stack. Not yet run in this repository's build environment (no Docker daemon there).
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sportai
+      POSTGRES_PASSWORD: sportai-local
+      POSTGRES_DB: sportai
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://sportai:sportai-local@db:5432/sportai
+      COOKIE_SECURE: "false"
+    depends_on: [db]
+    ports: ["8000:8000"]
+  worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://sportai:sportai-local@db:5432/sportai
+    command: ["python", "-m", "sportai.worker"]
+    depends_on: [api]
+  web:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+    depends_on: [api]
+    ports: ["3000:3000"]
+volumes:
+  pgdata:

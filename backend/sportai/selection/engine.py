@@ -31,7 +31,9 @@ class SelectionConfig:
     max_market_divergence: float = 0.10  # |model - de-vigged market| beyond this needs review
     min_data_quality: float = 0.6
     max_odds_age_seconds: float = 900.0  # pre-match; live uses its own limit
-    enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb", "totals", "btts")
+    # Totals and BTTS are off by default: in the 2020-2026 backtest the model's
+    # over 2.5 forecasts were no better than the base rate (docs/04-backtest.md).
+    enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb")
     one_per_match: bool = True
 
     def to_dict(self) -> dict:
