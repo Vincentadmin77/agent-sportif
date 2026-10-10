@@ -21,6 +21,7 @@ Accès : se connecter avec un compte admin, puis *Mon espace › Administration*
 ## Réglages
 - **Seuils** : EV minimale (3 %), EV prudente minimale (0 dans la fourchette 1,50–2,00, 2 % en dehors), test de résistance (−2 points), divergence maximale avec le marché (10 points), qualité minimale des données, âge maximal des cotes, plafond de sélections (0 à 4).
 - **Marchés** : résultat, double chance et remboursé si nul activés ; totaux et « les deux équipes marquent » désactivés tant que le backtest ne montre pas de gain (voir docs/04-backtest.md).
+- **Fenêtre d'analyse** : 48 h. Seuls les matchs qui commencent dans les 48 heures sont analysés ; au-delà, compositions, blessures et cotes sont souvent indisponibles ou pas encore à jour. Les matchs exclus figurent dans le rapport avec leur raison. Règle voulue par le propriétaire : ne l'allongez pas.
 - **Compétitions surveillées** : Ligue 1 par défaut. Chaque compétition consomme des crédits de cotes.
 
 Modifiez les seuils prudemment et uniquement sur la base de résultats mesurés ; chaque changement est journalisé.
