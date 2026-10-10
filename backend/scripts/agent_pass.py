@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
-LIVE_STEPS = (30, 75, 115)  # minutes after kick-off
+LIVE_STEPS = (0,)  # minutes after kick-off: one step starts the 2-minute live loop
 COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL"]
 
 
@@ -64,7 +64,7 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
         for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45))):
             if at > now:
                 steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
-        # Live follow-up (API-Football): first half, half-time / early second half, end of the match.
+        # Live follow-up (API-Football): the step at kick-off refreshes every 2 minutes until the matches end.
         for minutes in LIVE_STEPS:
             at = ko + timedelta(minutes=minutes)
             if at > now:

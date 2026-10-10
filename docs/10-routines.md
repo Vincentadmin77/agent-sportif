@@ -8,7 +8,11 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 - Uniquement les matchs du jour (heure de Paris).
 - Passage **H−3** (3 h avant le coup d'envoi) puis **H−45** (45 min avant : composition sortie, cotes qui bougent).
   À H−45, chaque sélection indique le mouvement du marché depuis H−3.
-- **Direct** (API-Football PRO, 7 500 requêtes par jour) : étapes 30, 75 et 115 min après chaque coup d'envoi, `agent_pass.py live --page P --out O <championnats>` : minute, score, cartons rouges, tirs, possession, xG, probabilités recalculées en direct (champ `direct` des documents) et réglement des sélections à la fin. Environ 1 + 2 requêtes par match suivi, aucun crédit de cotes.
+- **Direct** (API-Football PRO, 7 500 requêtes par jour) : une étape au coup d'envoi lance une boucle toutes les 2 min
+  jusqu'à la fin des matchs : `backend/scripts/live_cycle.sh` (avant la 1re boucle : ArtifactData `list` de `matchs` avec
+  `out_dir=/tmp/claude-0/mirror` et versions dans `/tmp/claude-0/versions.json`), puis le `batch` imprimé, puis mise à jour des
+  versions, puis Bash en arrière-plan `sleep 100; live_cycle.sh`. Chaque document reçoit minute, score, cartons rouges, tirs,
+  possession, xG, probabilités recalculées (champ `direct`) et le règlement des sélections à la fin. 1 + 2 requêtes par match.
 - **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux via The Odds API, 2 crédits par championnat) ; inutile quand l'étape direct de 115 min a vu le match terminé.
 - Planning : une routine quotidienne à 8 h 52 (Paris) lit le calendrier (`agent_pass.py plan`, gratuit) et
   programme une routine ponctuelle par étape.
