@@ -36,11 +36,12 @@ class TheOddsApiProvider:
 
     def __init__(self, api_key: str | None, regions: str = "fr", bookmakers: list[str] | None = None,
                  cache_ttl: float = 120.0, odds_validity: timedelta = timedelta(minutes=15),
-                 transport: httpx.BaseTransport | None = None):
+                 transport: httpx.BaseTransport | None = None, markets: str = "h2h,totals"):
         if not api_key:
             raise ProviderNotConfigured("THE_ODDS_API_KEY is not set")
         self._key = api_key
         self._regions = regions
+        self._markets = markets
         self._bookmakers = bookmakers
         self._ttl = cache_ttl
         self._validity = odds_validity
@@ -50,7 +51,7 @@ class TheOddsApiProvider:
 
     def odds(self, competition: str, live: bool = False) -> list[OddsQuote]:
         sport = SPORT_KEYS[competition]
-        params = {"apiKey": self._key, "markets": "h2h,totals", "oddsFormat": "decimal", "dateFormat": "iso"}
+        params = {"apiKey": self._key, "markets": self._markets, "oddsFormat": "decimal", "dateFormat": "iso"}
         if self._bookmakers:
             params["bookmakers"] = ",".join(self._bookmakers)
         else:
@@ -59,6 +60,15 @@ class TheOddsApiProvider:
         self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
         self.last_events = data
         return list(parse_odds(data, self._validity, live))
+
+    def scores(self, competition: str, completed_too: bool = False) -> list[dict]:
+        """Live scores (1 credit); with completed_too, also matches finished in the last day (2 credits)."""
+        params = {"apiKey": self._key, "dateFormat": "iso"}
+        if completed_too:
+            params["daysFrom"] = 1
+        data = self._http.get_json(f"/v4/sports/{SPORT_KEYS[competition]}/scores", params, ttl=30)
+        self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
+        return data
 
 
 def fixtures_from_events(events: list[dict], competition: str, now: datetime,

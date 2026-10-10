@@ -92,8 +92,10 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             current = ApiFootballProvider.name
             fixtures_p = ApiFootballProvider(settings.api_football_key)
             current = TheOddsApiProvider.name
+            # Each market requested costs one credit: totals only when that market is enabled.
             odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
-                                        bookmakers=settings.odds_bookmakers)
+                                        bookmakers=settings.odds_bookmakers,
+                                        markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
             history_p = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else fixtures_p
             current = history_p.name
             history = []
@@ -150,6 +152,13 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
         p_before = before.get((normalise(home), normalise(away)), {}).get(MarketKey(c.market, c.selection, c.line))
         if p_before is not None and c.market_fair_prob is not None:
             moves[id(e)] = classify(c.outcome.win, p_before, c.market_fair_prob)
+    by_match: dict[str, dict] = {}
+    for e in report.selection.selected + report.selection.rejected:
+        if id(e) in moves:
+            m = moves[id(e)]
+            label = MarketKey(e.candidate.market, e.candidate.selection, e.candidate.line).label()
+            by_match.setdefault(e.candidate.match_id, {})[label] = {"kind": m.kind, "before": m.before, "after": m.after}
+    run.fixtures = [{**f, "market_moves": by_match.get(f["match_id"], {})} for f in run.fixtures]
     rows = {}
     for e in report.selection.selected + report.selection.rejected:
         s = e.summary()
