@@ -13,9 +13,14 @@ DB_URL = os.getenv("TEST_DATABASE_URL", "sqlite:///./test-sportai.db")
 SECRET = "test-shopify-secret"
 
 
+PROVIDER_KEYS = ("API_FOOTBALL_KEY", "THE_ODDS_API_KEY", "ANTHROPIC_API_KEY")
+
+
 @pytest.fixture(scope="module")
 def client():
     os.environ.update(DATABASE_URL=DB_URL, DATA_MODE="simulation", COOKIE_SECURE="false", SHOPIFY_WEBHOOK_SECRET=SECRET)
+    # Tests never call real providers, even on a machine where real keys are configured.
+    saved_keys = {k: os.environ.pop(k) for k in PROVIDER_KEYS if k in os.environ}
     from sportai.config import get_settings
     get_settings.cache_clear()
     from alembic import command
@@ -46,6 +51,8 @@ def client():
     from sportai.api.deps import login_limiter
     login_limiter.hits.clear()
     yield TestClient(app)
+    os.environ.update(saved_keys)
+    get_settings.cache_clear()
 
 
 def login(c, email, pw):
