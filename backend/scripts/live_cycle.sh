@@ -14,6 +14,8 @@ w=[]
 for p in sorted(glob.glob('/tmp/claude-0/liveout/matchs/*.json')):
     k=os.path.basename(p)[:-5]; d=json.load(open(p))
     print(k[11:], d['statut'], d.get('score'), d.get('minute'), d['direct'].get('periode'))
-    w.append({"op":"set","collection":"matchs","doc_id":k,"file_path":p,"if_version":v[k]})
+    w.append({"op":"set","collection":"matchs","doc_id":k,"file_path":p,"if_version":v.get(k)})
 print(json.dumps(w))
+for x in w: v[x['doc_id']] = v.get(x['doc_id'], 0) + 1  # the batch printed above is expected to succeed
+json.dump(v,open('/tmp/claude-0/versions.json','w'))
 PY
