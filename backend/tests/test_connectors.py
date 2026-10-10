@@ -80,3 +80,19 @@ def test_fixtures_from_odds_events():
     assert fixtures_from_events(events, "FR1", now=kickoff + timedelta(minutes=5))[0].status == "live"
     assert fixtures_from_events(events, "FR1", now=kickoff - timedelta(hours=49)) == []
     assert len(fixtures_from_events(events, "FR1", now=kickoff - timedelta(hours=47))) == 1
+
+
+def test_odds_and_openfootball_spellings_join():
+    # Pairs observed on 2026-10-10: The Odds API name, openfootball name.
+    pairs = [("RC Lens", "Racing Club de Lens"), ("Rennes", "Stade Rennais FC 1901"), ("Brest", "Stade Brestois 29"),
+             ("Angers", "Angers SCO"), ("Troyes", "ES Troyes AC"), ("Strasbourg", "RC Strasbourg Alsace"),
+             ("Brighton and Hove Albion", "Brighton & Hove Albion FC"), ("Athletic Bilbao", "Athletic Club"),
+             ("Real Betis", "Real Betis Balompié"), ("Espanyol", "RCD Espanyol de Barcelona"),
+             ("Alavés", "Deportivo Alavés"), ("Rayo Vallecano", "Rayo Vallecano de Madrid"),
+             ("Bayer Leverkusen", "Bayer 04 Leverkusen"), ("Elversberg", "SV 07 Elversberg"),
+             ("TSG Hoffenheim", "TSG 1899 Hoffenheim"), ("Inter Milan", "FC Internazionale Milano"),
+             ("Bologna", "Bologna FC 1909"), ("Lazio", "SS Lazio"), ("Fiorentina", "ACF Fiorentina")]
+    for odds_name, history_name in pairs:
+        assert same_team(odds_name, history_name), (odds_name, history_name)
+    assert not same_team("AC Milan", "FC Internazionale Milano")
+    assert not same_team("Real Madrid", "Rayo Vallecano de Madrid")
