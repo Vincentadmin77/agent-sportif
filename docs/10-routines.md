@@ -32,3 +32,8 @@ L'état d'analyse (cotes de H−3 pour la comparaison à H−45) est dans
 ## Coût en crédits The Odds API (500 par mois en offre gratuite)
 Un passage coûte 1 crédit par championnat (marché résultat seul), un score en direct 1, un score final 2.
 Le calendrier (`plan`) est gratuit.
+
+## Choix des championnats et bouton « Analyser maintenant »
+- La page écrit `reglages/championnats` = `{"actifs": ["FR1", "ES1", ...]}`. Le planning du matin et l'analyse à la
+  demande ne traitent que ces championnats (`agent_pass.py plan --competitions ...`). Document absent : tous.
+- Le bouton de la page déclenche la routine « analyse à la demande », dont l'id est dans `reglages/routine`.

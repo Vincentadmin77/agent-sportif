@@ -1,6 +1,6 @@
 """One scheduled step of the agent, for the routines that drive the results page.
 
-    python scripts/agent_pass.py plan                         # today's kick-offs and pass times (free request)
+    python scripts/agent_pass.py plan [--competitions FR1 ES1]  # today's kick-offs and pass times (free request)
     python scripts/agent_pass.py prematch --page P --out O [--goals] FR1 ES1
     python scripts/agent_pass.py scores --page P --out O [--final] FR1
 
@@ -42,7 +42,7 @@ def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None
     print(json.dumps({"written": sorted(docs), "message": message}, ensure_ascii=False))
 
 
-def plan(now: datetime) -> None:
+def plan(now: datetime, comps: list[str] | None = None) -> None:
     from sportai.config import get_settings
     from sportai.connectors.http import CachedClient
     from sportai.connectors.the_odds_api import BASE_URL, SPORT_KEYS
@@ -51,7 +51,7 @@ def plan(now: datetime) -> None:
     http = CachedClient(BASE_URL)
     key = get_settings().the_odds_api_key
     by_time: dict[str, set] = defaultdict(set)
-    for comp in COMPETITIONS:
+    for comp in comps or COMPETITIONS:
         for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
             ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
             if ko > now and ko.astimezone(LOCAL_TZ).date() == now.astimezone(LOCAL_TZ).date():
@@ -128,7 +128,8 @@ def main() -> None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("plan")
+    pl = sub.add_parser("plan")
+    pl.add_argument("--competitions", nargs="+", choices=COMPETITIONS, help="only these (the page's choice)")
     for name in ("prematch", "scores"):
         p = sub.add_parser(name)
         p.add_argument("competitions", nargs="+", choices=COMPETITIONS)
@@ -142,7 +143,7 @@ def main() -> None:
     a = ap.parse_args()
     now = datetime.now(timezone.utc)
     if a.cmd == "plan":
-        plan(now)
+        plan(now, a.competitions)
     elif a.cmd == "prematch":
         prematch(a.competitions, a.page, a.out, now, a.goals)
     else:
