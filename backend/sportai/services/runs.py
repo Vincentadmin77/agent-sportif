@@ -16,9 +16,12 @@ from sportai.connectors.base import ProviderUnavailable
 from sportai.connectors.openfootball import FILES as OPENFOOTBALL_FILES
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
+from sportai.connectors.teams import normalise
 from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import SelectionConfig
+from sportai.engine.football.markets import MarketKey
+from sportai.services.movement import classify, previous_consensus
 from sportai.services.prematch import run_prematch
 
 SELECTION_SETTINGS_KEY = "selection_config"
@@ -139,6 +142,14 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes}
                     for f in report.fixtures]
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
+    before = previous_consensus(db, competition, mode, now)
+    moves = {}
+    for e in report.selection.selected + report.selection.rejected:
+        c = e.candidate
+        home, _, away = c.match_label.partition(" - ")
+        p_before = before.get((normalise(home), normalise(away)), {}).get(MarketKey(c.market, c.selection, c.line))
+        if p_before is not None and c.market_fair_prob is not None:
+            moves[id(e)] = classify(c.outcome.win, p_before, c.market_fair_prob)
     rows = {}
     for e in report.selection.selected + report.selection.rejected:
         s = e.summary()
@@ -161,7 +172,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             selection=row.selection, line=row.line, odds=row.odds, bookmaker=row.bookmaker,
             odds_observed_at=row.odds_observed_at, p_win=row.p_win, p_push=row.p_push, fair_odds=row.fair_odds,
             ev=row.ev, ev_low=row.ev_low, model_name=report.model_name, model_version=report.model_version,
-            rationale=_rationale(e, cfg, kickoffs.get(row.match_id)),
+            rationale=_rationale(e, cfg, kickoffs.get(row.match_id), moves.get(id(e))),
         ))
     run.outcome = report.selection.status
     run.status, run.finished_at = "completed", datetime.now(timezone.utc)
@@ -169,7 +180,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     return run
 
 
-def _rationale(e, cfg: SelectionConfig, kickoff) -> str:
+def _rationale(e, cfg: SelectionConfig, kickoff, movement=None) -> str:
     c = e.candidate
     parts = [
         f"Probabilité modèle {c.outcome.win:.1%} (10e centile {e.p_low:.1%}), cote juste {e.fair_odds:.2f}, "
@@ -179,6 +190,8 @@ def _rationale(e, cfg: SelectionConfig, kickoff) -> str:
     ]
     if c.market_fair_prob is not None:
         parts.append(f"Probabilité de marché sans marge {c.market_fair_prob:.1%}.")
+    if movement is not None:
+        parts.append(movement.describe())
     if kickoff:
         parts.append(f"Coup d'envoi {kickoff:%d/%m %H:%M} UTC.")
     return " ".join(parts)
