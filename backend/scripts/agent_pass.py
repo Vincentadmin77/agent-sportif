@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
-LIVE_STEPS = (0,)  # minutes after kick-off: one step starts the 2-minute live loop
+LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
 COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL"]
 
 
@@ -64,7 +64,7 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
         for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45))):
             if at > now:
                 steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
-        # Live follow-up (API-Football): the step at kick-off refreshes every 2 minutes until the matches end.
+        # Live follow-up (API-Football): steps every 15 min restart the 2-minute loop if the session went idle.
         for minutes in LIVE_STEPS:
             at = ko + timedelta(minutes=minutes)
             if at > now:
@@ -198,8 +198,12 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
                                   "ORDER BY started_at DESC"):
             fixtures += json.loads(raw) if isinstance(raw, str) else raw
         con.close()
-    day = now.astimezone(LOCAL_TZ).date()
-    for fx in api.fixtures_on(comps, day):
+    from datetime import date as _date
+    # Today, plus the day of any page match still open (a late match runs past midnight in Paris).
+    days = {now.astimezone(LOCAL_TZ).date()} | {_date.fromisoformat(d["jour"]) for d in current.values()
+                                                 if d.get("jour") and d.get("statut") != "termine"}
+    raw = [(day, fx) for day in sorted(days) for fx in api.fixtures_on(comps, day)]
+    for day, fx in raw:
         short = fx["fixture"]["status"]["short"]
         if short in ("NS", "TBD", "PST", "CANC"):
             continue

@@ -8,8 +8,8 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 - Uniquement les matchs du jour (heure de Paris).
 - Passage **H−3** (3 h avant le coup d'envoi) puis **H−45** (45 min avant : composition sortie, cotes qui bougent).
   À H−45, chaque sélection indique le mouvement du marché depuis H−3.
-- **Direct** (API-Football PRO, 7 500 requêtes par jour) : une étape au coup d'envoi lance une boucle toutes les 2 min
-  jusqu'à la fin des matchs : `backend/scripts/live_cycle.sh` (avant la 1re boucle : ArtifactData `list` de `matchs` avec
+- **Direct** (API-Football PRO, 7 500 requêtes par jour) : des étapes toutes les 15 min à partir du coup d'envoi (re)lancent
+  une boucle toutes les 2 min jusqu'à la fin des matchs (une boucle en arrière-plan meurt si la session s'endort) : `backend/scripts/live_cycle.sh` (avant la 1re boucle : ArtifactData `list` de `matchs` avec
   `out_dir=/tmp/claude-0/mirror` et versions dans `/tmp/claude-0/versions.json`), puis le `batch` imprimé, puis mise à jour des
   versions, puis Bash en arrière-plan `sleep 100; live_cycle.sh`. Chaque document reçoit minute, score, cartons rouges, tirs,
   possession, xG, probabilités recalculées (champ `direct`) et le règlement des sélections à la fin. 1 + 2 requêtes par match.
