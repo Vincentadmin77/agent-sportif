@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from sportai.connectors.api_football import ApiFootballProvider
 from sportai.connectors.base import ProviderNotConfigured, ProviderUnavailable
 from sportai.connectors.openfootball import parse as parse_openfootball
 from sportai.connectors.teams import normalise, same_team
@@ -59,3 +60,12 @@ def test_team_names_join_across_providers():
     assert same_team("PSG", "Paris Saint-Germain FC")
     assert same_team("Olympique de Marseille", "Marseille")
     assert normalise("RC Lens") == "lens"
+
+
+def test_api_football_plan_error_is_a_provider_failure():
+    # Real reply observed 2026-10-10 on the free plan: HTTP 200, empty response, reason in "errors".
+    body = {"get": "fixtures", "errors": {"plan": "Free plans do not have access to this season, try from 2022 to 2024."},
+            "results": 0, "paging": {"current": 1, "total": 1}, "response": []}
+    p = ApiFootballProvider("k", transport=httpx.MockTransport(lambda req: httpx.Response(200, json=body)))
+    with pytest.raises(ProviderUnavailable, match="Free plans"):
+        p.upcoming_fixtures("FR1", season=2026)

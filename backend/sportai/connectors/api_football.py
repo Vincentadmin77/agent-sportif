@@ -1,6 +1,10 @@
 """API-Football v3 (https://www.api-football.com) — fixtures, results, live
 state, events and match statistics. Auth header: x-apisports-key.
 
+API-Football answers HTTP 200 even when it refuses a request (plan limits,
+wrong season, bad key): the reason is in the body's "errors" field. Such a
+reply is a provider failure, never an empty list of matches.
+
 Expected goals come from /fixtures/statistics ("expected_goals") and are only
 present for some competitions; when absent they stay None.
 """
@@ -11,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
-from sportai.connectors.base import Fixture, HistoricalResult, LiveSnapshot, ProviderNotConfigured
+from sportai.connectors.base import Fixture, HistoricalResult, LiveSnapshot, ProviderNotConfigured, ProviderUnavailable
 from sportai.connectors.http import CachedClient
 
 BASE_URL = "https://v3.football.api-sports.io"
@@ -33,17 +37,23 @@ class ApiFootballProvider:
             raise ProviderNotConfigured("API_FOOTBALL_KEY is not set")
         self._http = CachedClient(BASE_URL, headers={"x-apisports-key": api_key}, transport=transport)
 
+    def _get(self, path: str, params: dict, ttl: float) -> dict:
+        data = self._http.get_json(path, params, ttl=ttl)
+        if data.get("errors"):
+            raise ProviderUnavailable(f"api-football {path}: {data['errors']}")
+        return data
+
     def upcoming_fixtures(self, competition: str, days_ahead: int = 3, season: int | None = None) -> list[Fixture]:
         today = date.today()
         season = season or (today.year if today.month >= 7 else today.year - 1)
-        data = self._http.get_json("/fixtures", {
+        data = self._get("/fixtures", {
             "league": LEAGUE_IDS[competition], "season": season,
             "from": today.isoformat(), "to": (today + timedelta(days=days_ahead)).isoformat(),
         }, ttl=600)
         return [self._fixture(f, competition) for f in data.get("response", [])]
 
     def results(self, competition: str, season: str) -> list[HistoricalResult]:
-        data = self._http.get_json("/fixtures", {"league": LEAGUE_IDS[competition], "season": int(season[:4]), "status": "FT-AET-PEN"}, ttl=3600)
+        data = self._get("/fixtures", {"league": LEAGUE_IDS[competition], "season": int(season[:4]), "status": "FT-AET-PEN"}, ttl=3600)
         out = []
         for f in data.get("response", []):
             g = f["goals"]
@@ -54,10 +64,10 @@ class ApiFootballProvider:
         return out
 
     def live_snapshot(self, provider_event_id: str) -> LiveSnapshot:
-        fx = self._http.get_json("/fixtures", {"id": provider_event_id}, ttl=10)["response"][0]
+        fx = self._get("/fixtures", {"id": provider_event_id}, ttl=10)["response"][0]
         observed = datetime.now(timezone.utc)
-        events = self._http.get_json("/fixtures/events", {"fixture": provider_event_id}, ttl=10).get("response", [])
-        stats = self._http.get_json("/fixtures/statistics", {"fixture": provider_event_id}, ttl=10).get("response", [])
+        events = self._get("/fixtures/events", {"fixture": provider_event_id}, ttl=10).get("response", [])
+        stats = self._get("/fixtures/statistics", {"fixture": provider_event_id}, ttl=10).get("response", [])
         home_id = fx["teams"]["home"]["id"]
         reds = {"home": 0, "away": 0}
         for e in events:
