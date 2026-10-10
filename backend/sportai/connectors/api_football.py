@@ -20,7 +20,7 @@ from sportai.connectors.http import CachedClient
 
 BASE_URL = "https://v3.football.api-sports.io"
 
-LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2}
+LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2, "BR1": 71}
 
 _STATUS = {
     "NS": "scheduled", "TBD": "scheduled", "1H": "live", "HT": "live", "2H": "live", "ET": "live",

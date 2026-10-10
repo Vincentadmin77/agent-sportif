@@ -9,7 +9,7 @@ import unicodedata
 # Club-type prefixes and founding years ("Bologna FC 1909", "SV 07 Elversberg") are not part of the name.
 _STOPWORDS = {"fc", "ac", "as", "sc", "cf", "afc", "ssc", "ogc", "osc", "rc", "stade", "olympique", "de", "the", "club", "calcio",
               "and", "sco", "aj", "es", "us", "ud", "cfc", "bc", "acf", "ss", "rcd", "tsg", "sv", "balompie", "futbol",
-              "alsace"}
+              "alsace", "ca", "cr", "ec", "se", "af", "fr", "fbc", "fbpa", "clube", "do"}
 
 # normalised provider spelling -> canonical key
 ALIASES: dict[str, str] = {
@@ -33,6 +33,10 @@ ALIASES: dict[str, str] = {
     "rayo vallecano madrid": "rayo vallecano",
     "espanyol barcelona": "espanyol",
     "deportivo alaves": "alaves",
+    "atletico mineiro": "mineiro",
+    "atletico paranaense": "paranaense",
+    "corinthians paulista": "corinthians",
+    "bragantino sp": "rb bragantino",
 }
 
 

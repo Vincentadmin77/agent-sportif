@@ -23,7 +23,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
-COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "UCL"]
+COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL"]
+# No reliable history for matches between clubs of different leagues on the free data sources.
+UCL_NOTE = ("Ligue des champions : l'agent n'a pas encore d'historique fiable pour comparer des clubs de championnats "
+            "différents (il faut l'offre payante d'API-Football). Match listé, pas analysé.")
 
 
 def _load_page(folder: str | None) -> dict[str, dict]:
@@ -97,6 +100,10 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     manage.init(db)
     current, docs, notes = _load_page(page), {}, []
     for comp in comps:
+        if comp == "UCL":
+            docs.update(_ucl_listing({**current, **docs}, now))
+            notes.append("UCL listed only")
+            continue
         run = execute_prematch(db, get_settings(), comp, "routine", now=now, goal_markets=goals)
         notes.append(f"{comp} {run.status}" + (f" ({run.status_detail[:120]})" if run.status_detail else ""))
         if run.status == "completed":
@@ -108,6 +115,33 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+def _ucl_listing(current: dict[str, dict], now: datetime) -> dict[str, dict]:
+    """Today's Champions League matches inside the analysis window, shown as not analysed (free request)."""
+    from sportai.config import get_settings
+    from sportai.connectors.http import CachedClient
+    from sportai.connectors.the_odds_api import BASE_URL, SPORT_KEYS
+    from sportai.selection.engine import SelectionConfig
+    from sportai.services.dashboard import COMPETITION_NAMES, doc_id
+    from sportai.services.prematch import LOCAL_TZ
+
+    window = timedelta(hours=SelectionConfig().max_hours_ahead)
+    events = CachedClient(BASE_URL).get_json(f"/v4/sports/{SPORT_KEYS['UCL']}/events",
+                                             {"apiKey": get_settings().the_odds_api_key, "dateFormat": "iso"})
+    out = {}
+    for ev in events:
+        ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
+        if not (now < ko <= now + window) or ko.astimezone(LOCAL_TZ).date() != now.astimezone(LOCAL_TZ).date():
+            continue
+        key = doc_id(ko, ev["home_team"], ev["away_team"])
+        doc = dict(current.get(key) or {})
+        doc.update(jour=f"{ko.astimezone(LOCAL_TZ):%Y-%m-%d}", coup_envoi=ko.isoformat(),
+                   competition=COMPETITION_NAMES["UCL"], domicile=ev["home_team"], exterieur=ev["away_team"],
+                   verdict="non_analyse", rejets=[UCL_NOTE], selections=[])
+        doc.setdefault("statut", "a_venir")
+        out[key] = doc
+    return out
 
 
 def scores(comps: list[str], page: str | None, out: str, final: bool, now: datetime) -> None:

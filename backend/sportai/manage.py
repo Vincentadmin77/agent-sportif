@@ -18,7 +18,7 @@ from sportai.db.session import session_factory
 from sportai.services import accounts, runs
 
 COMPETITIONS = [("FR1", "Ligue 1"), ("EN1", "Premier League"), ("ES1", "LaLiga"), ("DE1", "Bundesliga"),
-                ("IT1", "Serie A"), ("UCL", "Ligue des champions"), ("SIM", "Ligue simulée (démo)")]
+                ("IT1", "Serie A"), ("UCL", "Ligue des champions"), ("BR1", "Brasileirão Série A"), ("SIM", "Ligue simulée (démo)")]
 
 
 def init(db) -> None:

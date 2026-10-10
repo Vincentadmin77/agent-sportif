@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 from sportai.config import Settings
 from sportai.connectors.api_football import ApiFootballProvider
 from sportai.connectors.base import ProviderUnavailable
-from sportai.connectors.openfootball import FILES as OPENFOOTBALL_FILES
+from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL_FILES
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
@@ -54,7 +54,9 @@ def save_selection_config(db: DB, values: dict, user_id: str) -> SelectionConfig
     return cfg
 
 
-def _history_seasons(now: datetime) -> list[str]:
+def _history_seasons(now: datetime, competition: str = "") -> list[str]:
+    if competition in CALENDAR_YEAR:
+        return [str(now.year - k) for k in (2, 1, 0)]
     y = now.year if now.month >= 7 else now.year - 1
     return [f"{y - k}-{str(y - k + 1)[-2:]}" for k in (2, 1, 0)]
 
@@ -101,11 +103,12 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             history_p = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else fixtures_p
             current = history_p.name
             history = []
-            for season in _history_seasons(now):
+            seasons = _history_seasons(now, competition)
+            for season in seasons:
                 try:
                     history += history_p.results(competition, season)
                 except ProviderUnavailable:
-                    if season == _history_seasons(now)[-1]:
+                    if season == seasons[-1]:
                         raise
             _mark(db, history_p.name)
             fixtures_source = fixtures_p.name

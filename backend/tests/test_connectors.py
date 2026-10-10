@@ -103,5 +103,9 @@ def test_odds_and_openfootball_spellings_join():
              ("Bologna", "Bologna FC 1909"), ("Lazio", "SS Lazio"), ("Fiorentina", "ACF Fiorentina")]
     for odds_name, history_name in pairs:
         assert same_team(odds_name, history_name), (odds_name, history_name)
+    brazil = [("Atletico Mineiro", "CA Mineiro"), ("Corinthians", "SC Corinthians Paulista"), ("Remo", "Clube do Remo"),
+              ("Bragantino-SP", "RB Bragantino"), ("Vasco da Gama", "CR Vasco da Gama"), ("Grêmio", "Grêmio FBPA")]
+    for odds_name, history_name in brazil:
+        assert same_team(odds_name, history_name), (odds_name, history_name)
     assert not same_team("AC Milan", "FC Internazionale Milano")
     assert not same_team("Real Madrid", "Rayo Vallecano de Madrid")

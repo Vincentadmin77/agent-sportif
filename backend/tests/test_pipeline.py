@@ -81,3 +81,9 @@ def test_only_todays_matches_close_to_kickoff_are_analysed(sim):
     skipped = (later.provider_event_id, tomorrow.provider_event_id, started.provider_event_id)
     assert all(e.candidate.match_id not in skipped for e in r.selection.selected + r.selection.rejected)
     assert all(reasons[f.provider_event_id] is None for f in fixtures[3:])
+
+
+def test_history_seasons_follow_each_league_calendar():
+    from sportai.services.runs import _history_seasons
+    assert _history_seasons(NOW, "FR1") == ["2024-25", "2025-26", "2026-27"]
+    assert _history_seasons(NOW, "BR1") == ["2024", "2025", "2026"]

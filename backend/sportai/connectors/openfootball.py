@@ -13,7 +13,9 @@ from sportai.connectors.base import HistoricalResult
 from sportai.connectors.http import CachedClient
 
 BASE_URL = "https://raw.githubusercontent.com/openfootball/football.json/master"
-FILES = {"FR1": "fr.1", "EN1": "en.1", "ES1": "es.1", "DE1": "de.1", "IT1": "it.1"}
+FILES = {"FR1": "fr.1", "EN1": "en.1", "ES1": "es.1", "DE1": "de.1", "IT1": "it.1", "BR1": "br.1"}
+# Leagues played within a calendar year: their season folders are "2026", not "2026-27".
+CALENDAR_YEAR = {"BR1"}
 
 
 class OpenFootballProvider:

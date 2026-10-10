@@ -20,7 +20,7 @@ from sportai.db.models import AnalysisRun, CandidateRow, Selection
 from sportai.services.prematch import LOCAL_TZ
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
-                     "IT1": "Serie A", "UCL": "Ligue des champions"}
+                     "IT1": "Serie A", "UCL": "Ligue des champions", "BR1": "Brasileirão"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul"}
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
 GOAL_WARNING = ("Marché non validé : le test sur 10 000 matchs passés n'a pas montré d'avantage du modèle sur "

@@ -28,6 +28,7 @@ SPORT_KEYS = {
     "DE1": "soccer_germany_bundesliga",
     "IT1": "soccer_italy_serie_a",
     "UCL": "soccer_uefa_champs_league",
+    "BR1": "soccer_brazil_campeonato",
 }
 
 
