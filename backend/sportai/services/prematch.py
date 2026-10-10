@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 import zlib
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
@@ -21,6 +22,9 @@ from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey, market_group, outcome
 from sportai.engine.value import devig_shin
 from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult, select
+
+
+LOCAL_TZ = ZoneInfo("Europe/Paris")
 
 
 class MixedModeError(ValueError):
@@ -79,8 +83,11 @@ def run_prematch(
         if fx.kickoff <= now:
             analyses.append(FixtureAnalysis(fx, None, skipped_reason="already kicked off"))
             continue
+        if fx.kickoff.astimezone(LOCAL_TZ).date() != now.astimezone(LOCAL_TZ).date():
+            analyses.append(FixtureAnalysis(fx, None, skipped_reason="not played today"))
+            continue
         if fx.kickoff > now + timedelta(hours=cfg.max_hours_ahead):
-            analyses.append(FixtureAnalysis(fx, None, skipped_reason=f"kick-off beyond {cfg.max_hours_ahead:g}h window"))
+            analyses.append(FixtureAnalysis(fx, None, skipped_reason=f"more than {cfg.max_hours_ahead:g}h before kick-off"))
             continue
         if not (model.knows(h) and model.knows(a)):
             analyses.append(FixtureAnalysis(fx, None, skipped_reason="insufficient match history for one team"))

@@ -58,7 +58,7 @@ class SimulationProvider:
         order = list(TEAMS)
         out = []
         for k in range(0, len(order), 2):
-            out.append(Fixture(self.name, f"sim-{k // 2}", COMPETITION, self.now + timedelta(hours=20 + k),
+            out.append(Fixture(self.name, f"sim-{k // 2}", COMPETITION, self.now + timedelta(hours=1, minutes=5 * k),
                                order[k], order[k + 1], "simulation"))
         return out
 

@@ -3,7 +3,7 @@
 Accès : se connecter avec un compte admin, puis *Mon espace › Administration*.
 
 ## Routine quotidienne (mode semi-automatique)
-1. **Analyses** : le worker lance une analyse par compétition surveillée toutes les 6 h (`PREMATCH_INTERVAL_MIN`). Vous pouvez en lancer une à la main.
+1. **Analyses** : le worker relit le calendrier du jour toutes les 6 h (`PREMATCH_INTERVAL_MIN`), puis analyse chaque match deux fois : 3 h avant le coup d'envoi, puis 45 min avant (la composition tombe environ 1 h avant et les cotes bougent à ce moment-là). Les matchs en cours sont ensuite suivis en direct. Vous pouvez lancer une analyse à la main.
 2. Ouvrir le **détail** : matchs, xG du modèle, probabilités 1/N/2, et toutes les opportunités examinées avec la raison de chaque rejet.
 3. **Sélections** : les sélections retenues attendent votre validation (`pending_review`).
    - *Contrôle IA* : collez les informations récentes (une par ligne : `source | titre | texte`). L'agent Claude répond `keep`, `flag` ou `reject` avec les faits et leur fiabilité. Il ne modifie aucun chiffre. Nécessite `ANTHROPIC_API_KEY`.
@@ -21,7 +21,7 @@ Accès : se connecter avec un compte admin, puis *Mon espace › Administration*
 ## Réglages
 - **Seuils** : EV minimale (3 %), EV prudente minimale (0 dans la fourchette 1,50–2,00, 2 % en dehors), test de résistance (−2 points), divergence maximale avec le marché (10 points), qualité minimale des données, âge maximal des cotes, plafond de sélections (0 à 4).
 - **Marchés** : résultat, double chance et remboursé si nul activés ; totaux et « les deux équipes marquent » désactivés tant que le backtest ne montre pas de gain (voir docs/04-backtest.md).
-- **Fenêtre d'analyse** : 48 h. Seuls les matchs qui commencent dans les 48 heures sont analysés ; au-delà, compositions, blessures et cotes sont souvent indisponibles ou pas encore à jour. Les matchs exclus figurent dans le rapport avec leur raison. Règle voulue par le propriétaire : ne l'allongez pas.
+- **Fenêtre d'analyse** : uniquement les matchs du jour (heure de Paris), et au plus 3 h 15 avant le coup d'envoi (`max_hours_ahead`). Plus tôt, compositions, blessures et cotes ne sont pas à jour. Les matchs exclus figurent dans le rapport avec leur raison. Règle voulue par le propriétaire : ne l'élargissez pas.
 - **Compétitions surveillées** : Ligue 1 par défaut. Chaque compétition consomme des crédits de cotes.
 
 Modifiez les seuils prudemment et uniquement sur la base de résultats mesurés ; chaque changement est journalisé.

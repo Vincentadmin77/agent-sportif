@@ -113,8 +113,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             quotes = odds_p.odds(competition)
             _mark(db, odds_p.name, quota=odds_p.last_quota)
             if fixtures is None:
-                fixtures = fixtures_from_events(odds_p.last_events, competition, now,
-                                                timedelta(hours=cfg.max_hours_ahead))
+                fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
             run.data_sources = {"history": history_p.name, "fixtures": fixtures_source, "odds": odds_p.name}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))

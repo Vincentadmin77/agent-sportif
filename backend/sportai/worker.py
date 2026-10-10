@@ -1,5 +1,10 @@
 """Background worker: scheduled pre-match scans and server-side live monitoring.
 
+Pre-match passes run 3 h and 45 min before each kick-off of the day (line-ups
+come out about 1 h before and odds move then); a calendar refresh every
+PREMATCH_INTERVAL_MIN finds the day's kick-offs. Matches in progress are then
+followed live.
+
 Runs independently of any Claude conversation:
     python -m sportai.worker
 On PostgreSQL a session advisory lock guarantees a single active scheduler
@@ -33,6 +38,8 @@ from sportai.services.runs import execute_prematch
 log = logging.getLogger("sportai.worker")
 LOCK_ID = 727_001
 ALERT_DEDUP = timedelta(minutes=10)
+PASSES = (timedelta(hours=3), timedelta(minutes=45))  # before kick-off
+PASS_WINDOW = timedelta(minutes=15)  # a pass is due from its start until this much later
 
 
 def due_prematch(db: DB, now: datetime, interval: timedelta, mode: str) -> list[str]:
@@ -42,9 +49,24 @@ def due_prematch(db: DB, now: datetime, interval: timedelta, mode: str) -> list[
     for code in comps:
         last = db.scalar(select(AnalysisRun.started_at).where(AnalysisRun.competition == code, AnalysisRun.kind == "prematch",
                                                               AnalysisRun.mode == mode).order_by(AnalysisRun.started_at.desc()))
-        if last is None or now - (last if last.tzinfo else last.replace(tzinfo=timezone.utc)) >= interval:
+        last = last if last is None or last.tzinfo else last.replace(tzinfo=timezone.utc)
+        if last is None or now - last >= interval or _pass_open(db, code, mode, now, last):
             due.append(code)
     return due
+
+
+def _pass_open(db: DB, code: str, mode: str, now: datetime, last: datetime) -> bool:
+    """True when a pre-match pass window for a known kick-off is open and no run started inside it."""
+    latest = db.scalar(select(AnalysisRun).where(AnalysisRun.competition == code, AnalysisRun.kind == "prematch",
+                                                 AnalysisRun.mode == mode, AnalysisRun.status == "completed")
+                       .order_by(AnalysisRun.started_at.desc()))
+    for f in (latest.fixtures or []) if latest else []:
+        ko = datetime.fromisoformat(f["kickoff"])
+        for before in PASSES:
+            start = ko - before
+            if start <= now < start + PASS_WINDOW and last < start:
+                return True
+    return False
 
 
 def live_targets(db: DB, now: datetime, mode: str) -> list[tuple[str, dict]]:

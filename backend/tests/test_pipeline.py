@@ -68,13 +68,16 @@ def test_unproven_markets_disabled_by_default(sim):
     assert all(e.candidate.market not in ("totals", "btts") for e in r.selection.selected)
 
 
-def test_only_matches_within_48h_are_analysed(sim):
+def test_only_todays_matches_close_to_kickoff_are_analysed(sim):
     fixtures = sim.upcoming_fixtures()
-    far = replace(fixtures[0], kickoff=NOW + timedelta(hours=60))
+    later = replace(fixtures[0], kickoff=NOW + timedelta(hours=4))       # today, but too early for a pass
+    tomorrow = replace(fixtures[2], kickoff=NOW + timedelta(hours=14))   # 04:00 Paris time the next day
     started = replace(fixtures[1], kickoff=NOW - timedelta(minutes=5))
-    r = run_prematch(sim.results(), [far, started] + fixtures[2:], sim.odds(), now=NOW)
+    r = run_prematch(sim.results(), [later, started, tomorrow] + fixtures[3:], sim.odds(), now=NOW)
     reasons = {f.fixture.provider_event_id: f.skipped_reason for f in r.fixtures}
-    assert "48h window" in reasons[far.provider_event_id]
+    assert reasons[later.provider_event_id] == "more than 3.25h before kick-off"
+    assert reasons[tomorrow.provider_event_id] == "not played today"
     assert reasons[started.provider_event_id] == "already kicked off"
-    assert all(e.candidate.match_id not in (far.provider_event_id, started.provider_event_id)
-               for e in r.selection.selected + r.selection.rejected)
+    skipped = (later.provider_event_id, tomorrow.provider_event_id, started.provider_event_id)
+    assert all(e.candidate.match_id not in skipped for e in r.selection.selected + r.selection.rejected)
+    assert all(reasons[f.provider_event_id] is None for f in fixtures[3:])

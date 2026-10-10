@@ -35,7 +35,9 @@ class SelectionConfig:
     # over 2.5 forecasts were no better than the base rate (docs/04-backtest.md).
     enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb")
     one_per_match: bool = True
-    max_hours_ahead: float = 48.0  # only analyse matches kicking off within this window
+    # Pre-match analysis only covers matches of the current day (Paris time) whose kick-off is at most this far
+    # away: the passes run 3 h and 45 min before kick-off, when line-ups and odds are current (owner's rule).
+    max_hours_ahead: float = 3.25
 
     def to_dict(self) -> dict:
         return asdict(self)
