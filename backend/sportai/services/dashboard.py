@@ -25,6 +25,9 @@ MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
 GOAL_WARNING = ("Marché non validé : le test sur 10 000 matchs passés n'a pas montré d'avantage du modèle sur "
                 "ce marché. Chiffres donnés pour information, jamais proposés comme sélection.")
+SCORER_NOTE = ("Analyse buteur indisponible : aucun bookmaker français ne propose ce marché chez notre fournisseur "
+               "de cotes, et les données joueurs (buts, tirs, temps de jeu, composition) demandent l'offre payante "
+               "d'API-Football.")
 SKIP_REASONS = {
     "insufficient match history for one team": "Historique insuffisant pour une des deux équipes (souvent un promu).",
     "already kicked off": "Le match avait déjà commencé au moment du passage.",
@@ -163,6 +166,7 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         goals = goals_block(f, mine, (run.config or {}).get("info_markets", ("totals", "btts")))
         if goals:
             doc["buts"] = goals
+        doc["buteurs"] = {"raison": SCORER_NOTE}
         doc["verdict"] = "selection" if selections else "aucune"
         out[key] = doc
     return out
