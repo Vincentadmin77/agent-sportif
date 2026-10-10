@@ -9,7 +9,8 @@ import unicodedata
 # Club-type prefixes and founding years ("Bologna FC 1909", "SV 07 Elversberg") are not part of the name.
 _STOPWORDS = {"fc", "ac", "as", "sc", "cf", "afc", "ssc", "ogc", "osc", "rc", "stade", "olympique", "de", "the", "club", "calcio",
               "and", "sco", "aj", "es", "us", "ud", "cfc", "bc", "acf", "ss", "rcd", "tsg", "sv", "balompie", "futbol",
-              "alsace", "ca", "cr", "ec", "se", "af", "fr", "fbc", "fbpa", "clube", "do"}
+              "alsace", "ca", "cr", "ec", "se", "af", "fr", "fbc", "fbpa", "clube", "do",
+              "estac", "fk", "sk", "kv"}
 
 # normalised provider spelling -> canonical key
 ALIASES: dict[str, str] = {
@@ -37,6 +38,22 @@ ALIASES: dict[str, str] = {
     "atletico paranaense": "paranaense",
     "corinthians paulista": "corinthians",
     "bragantino sp": "rb bragantino",
+    # API-Football spellings (2026-10) against The Odds API and openfootball.
+    "brighton hove albion": "brighton",
+    "coventry city": "coventry",
+    "ipswich town": "ipswich",
+    "leeds united": "leeds",
+    "newcastle united": "newcastle",
+    "tottenham hotspur": "tottenham",
+    "real racing santander": "racing santander",
+    "atletico mg": "mineiro",
+    "bod glimt": "bodo glimt",
+    "club brugge": "brugge",
+    "brugge": "brugge",
+    "lask linz": "lask",
+    "sabah fa": "sabah",
+    "sporting lisbon": "sporting",
+    "sporting cp": "sporting",
 }
 
 

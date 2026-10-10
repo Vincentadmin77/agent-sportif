@@ -87,3 +87,36 @@ def test_history_seasons_follow_each_league_calendar():
     from sportai.services.runs import _history_seasons
     assert _history_seasons(NOW, "FR1") == ["2024-25", "2025-26", "2026-27"]
     assert _history_seasons(NOW, "BR1") == ["2024", "2025", "2026"]
+
+
+class _Source:
+    def __init__(self, name, refuse=()):
+        self.name, self.refuse = name, refuse
+
+    def results(self, competition, season):
+        from sportai.connectors.base import ProviderUnavailable
+        if season in self.refuse:
+            raise ProviderUnavailable(f"{self.name} refuses {season}")
+        return [f"{self.name}:{season}"]
+
+
+def test_history_prefers_api_football_and_falls_back_season_by_season():
+    import pytest
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from sportai.connectors.base import ProviderUnavailable
+    from sportai.db.models import Base
+    from sportai.services.runs import load_history
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    now = datetime(2026, 10, 10, tzinfo=timezone.utc)
+    hist, used = load_history(db, "FR1", now, _Source("api-football", refuse={"2024-25"}), _Source("openfootball"))
+    assert hist == ["openfootball:2024-25", "api-football:2025-26", "api-football:2026-27"]
+    assert used == {"api-football", "openfootball"}
+    hist, _ = load_history(db, "FR1", now, _Source("api-football", refuse={"2024-25"}), None)
+    assert hist == ["api-football:2025-26", "api-football:2026-27"]
+    with pytest.raises(ProviderUnavailable):
+        load_history(db, "FR1", now, _Source("api-football", refuse={"2026-27"}), _Source("openfootball", refuse={"2026-27"}))

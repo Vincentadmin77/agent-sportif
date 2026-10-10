@@ -61,6 +61,29 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
     return [f"{y - k}-{str(y - k + 1)[-2:]}" for k in (2, 1, 0)]
 
 
+def load_history(db: DB, competition: str, now: datetime, primary, backup) -> tuple[list, set[str]]:
+    """Results of the last three seasons, season by season from the primary source (API-Football, up to date
+    with a paid plan), else from the backup (openfootball). Only the current season is required."""
+    history, used = [], set()
+    seasons = _history_seasons(now, competition)
+    for season in seasons:
+        for p in (primary, backup):
+            if p is None:
+                continue
+            try:
+                history += p.results(competition, season)
+                used.add(p.name)
+                break
+            except ProviderUnavailable as e:
+                _mark(db, p.name, str(e))
+        else:
+            if season == seasons[-1]:
+                raise ProviderUnavailable(f"no history source for {competition} {season}")
+    for name in used:
+        _mark(db, name)
+    return history, used
+
+
 def _mark(db: DB, provider: str, error: str | None = None, quota: dict | None = None) -> None:
     row = db.get(ProviderStatus, provider) or ProviderStatus(provider=provider)
     now = datetime.now(timezone.utc)
@@ -100,17 +123,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
                                         bookmakers=settings.odds_bookmakers,
                                         markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
-            history_p = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else fixtures_p
-            current = history_p.name
-            history = []
-            seasons = _history_seasons(now, competition)
-            for season in seasons:
-                try:
-                    history += history_p.results(competition, season)
-                except ProviderUnavailable:
-                    if season == seasons[-1]:
-                        raise
-            _mark(db, history_p.name)
+            backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
+            current = fixtures_p.name
+            history, used = load_history(db, competition, now, fixtures_p, backup)
             fixtures_source = fixtures_p.name
             try:
                 fixtures = fixtures_p.upcoming_fixtures(competition)
@@ -126,7 +141,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                 fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
             if goal_markets:
                 quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
-            run.data_sources = {"history": history_p.name, "fixtures": fixtures_source, "odds": odds_p.name}
+            run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_p.name}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
         run.status, run.status_detail, run.finished_at = "provider_unavailable", str(e), datetime.now(timezone.utc)

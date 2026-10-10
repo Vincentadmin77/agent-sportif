@@ -109,3 +109,15 @@ def test_odds_and_openfootball_spellings_join():
         assert same_team(odds_name, history_name), (odds_name, history_name)
     assert not same_team("AC Milan", "FC Internazionale Milano")
     assert not same_team("Real Madrid", "Rayo Vallecano de Madrid")
+
+
+def test_api_football_names_join_the_odds_api():
+    from sportai.connectors.teams import same_team
+    pairs = [("Estac Troyes", "Troyes"), ("Brighton", "Brighton and Hove Albion"), ("Tottenham", "Tottenham Hotspur"),
+             ("Racing Santander", "Real Racing Club de Santander"), ("Atletico-MG", "Atletico Mineiro"),
+             ("Bodo/Glimt", "Bodø/Glimt"), ("Club Brugge KV", "Club Brugge"), ("Lask Linz", "LASK"),
+             ("Sabah FA", "Sabah FK"), ("Sporting CP", "Sporting Lisbon"), ("Slovan Bratislava", "ŠK Slovan Bratislava"),
+             ("Stade Brestois 29", "Brest"), ("Paris Saint Germain", "Paris Saint-Germain")]
+    for a, b in pairs:
+        assert same_team(a, b), (a, b)
+    assert not same_team("Manchester City", "Coventry")
