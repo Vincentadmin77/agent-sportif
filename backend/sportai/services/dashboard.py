@@ -23,6 +23,8 @@ COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga",
                      "IT1": "Serie A", "UCL": "Ligue des champions"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul"}
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
+GOAL_WARNING = ("Marché non validé : le test sur 10 000 matchs passés n'a pas montré d'avantage du modèle sur "
+                "ce marché. Chiffres donnés pour information, jamais proposés comme sélection.")
 SKIP_REASONS = {
     "insufficient match history for one team": "Historique insuffisant pour une des deux équipes (souvent un promu).",
     "already kicked off": "Le match avait déjà commencé au moment du passage.",
@@ -51,6 +53,37 @@ def bet_label(market: str, selection: str, home: str, away: str) -> str:
 
 def _pct(x: float) -> str:
     return f"{x * 100:+.1f} %".replace(".", ",")
+
+
+def goal_label(market: str, selection: str, line: float | None) -> str:
+    if market == "btts":
+        return "Les deux équipes marquent : " + ("oui" if selection == "yes" else "non")
+    side = "Plus de" if selection == "over" else "Moins de"
+    return f"{side} {line:g} buts".replace(".", ",")
+
+
+def goals_block(f: dict, cands: list[CandidateRow], info_markets) -> dict | None:
+    """Model probabilities for "both teams to score" and the number of goals, with the best odds when
+    the bookmakers offer them. Information only (markets not validated by the backtest)."""
+    if not f.get("expected_goals"):
+        return None
+    priced = {(c.market, c.selection, c.line): c for c in cands if c.market in info_markets}
+    rows = []
+    for label, p in (f.get("probabilities") or {}).items():
+        market, _, rest = label.partition(":")
+        if market not in info_markets:
+            continue
+        selection, _, line = rest.partition("@")
+        line_v = float(line) if line else None
+        c = priced.get((market, selection, line_v))
+        row = {"pari": goal_label(market, selection, line_v), "proba": p}
+        if c is not None:
+            row.update(cote=c.odds, bookmaker=c.bookmaker, valeur=round(c.ev, 4))
+            if c.market_fair_prob is not None:
+                row["proba_marche"] = round(c.market_fair_prob, 4)
+        rows.append(row)
+    lam, mu = f["expected_goals"]
+    return {"buts_attendus": round(lam + mu, 2), "marches": rows, "avertissement": GOAL_WARNING}
 
 
 def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | None:
@@ -127,6 +160,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             rejets.insert(0, f"{label} : retenue à H−3 mais plus à H−45.")
         doc["selections"] = selections
         doc["rejets"] = rejets
+        goals = goals_block(f, mine, (run.config or {}).get("info_markets", ("totals", "btts")))
+        if goals:
+            doc["buts"] = goals
         doc["verdict"] = "selection" if selections else "aucune"
         out[key] = doc
     return out

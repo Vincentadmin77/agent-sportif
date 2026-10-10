@@ -27,6 +27,11 @@ from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult
 LOCAL_TZ = ZoneInfo("Europe/Paris")
 
 
+# Goal markets always computed from the model, with or without odds.
+GOAL_KEYS = [MarketKey("btts", "yes"), MarketKey("btts", "no")] + [
+    MarketKey("totals", side, line) for line in (1.5, 2.5, 3.5) for side in ("over", "under")]
+
+
 class MixedModeError(ValueError):
     pass
 
@@ -94,9 +99,10 @@ def run_prematch(
             continue
         lam_mu = model.expected_goals(h, a)
         central = model.score_matrix(h, a)
+        model_only = {k.label(): round(outcome(central, k).win, 4) for k in GOAL_KEYS}
         samples = model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode()))
         fq = by_event.get(fx.provider_event_id, [])
-        fa = FixtureAnalysis(fx, lam_mu, n_quotes=len(fq))
+        fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq))
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)

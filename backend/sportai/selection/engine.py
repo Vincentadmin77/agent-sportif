@@ -35,6 +35,8 @@ class SelectionConfig:
     # over 2.5 forecasts were no better than the base rate (docs/04-backtest.md).
     enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb")
     one_per_match: bool = True
+    # Priced and shown with a "not validated" warning, never selected, until a backtest shows an edge.
+    info_markets: tuple[str, ...] = ("totals", "btts")
     # Pre-match analysis only covers matches of the current day (Paris time) whose kick-off is at most this far
     # away: the passes run 3 h and 45 min before kick-off, when line-ups and odds are current (owner's rule).
     max_hours_ahead: float = 3.25

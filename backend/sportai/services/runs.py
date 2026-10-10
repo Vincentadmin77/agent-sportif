@@ -72,7 +72,9 @@ def _mark(db: DB, provider: str, error: str | None = None, quota: dict | None = 
 
 
 def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by: str,
-                     mode: str | None = None, now: datetime | None = None) -> AnalysisRun:
+                     mode: str | None = None, now: datetime | None = None, goal_markets: bool = False) -> AnalysisRun:
+    """goal_markets: also fetch "both teams to score" and totals odds, match by match, for the matches
+    inside the analysis window (costs 2 credits per match; used at the 45 min pass)."""
     now = now or datetime.now(timezone.utc)
     mode = mode or settings.data_mode
     cfg = selection_config(db)
@@ -119,6 +121,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             _mark(db, odds_p.name, quota=odds_p.last_quota)
             if fixtures is None:
                 fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
+            if goal_markets:
+                quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
             run.data_sources = {"history": history_p.name, "fixtures": fixtures_source, "odds": odds_p.name}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
@@ -187,6 +191,18 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     run.status, run.finished_at = "completed", datetime.now(timezone.utc)
     db.commit()
     return run
+
+
+def _goal_quotes(odds_p: TheOddsApiProvider, competition: str, fixtures, now: datetime, cfg: SelectionConfig):
+    events = {(normalise(e["home_team"]), normalise(e["away_team"])): e["id"] for e in odds_p.last_events}
+    out = []
+    for f in fixtures:
+        if f.status != "scheduled" or not (now < f.kickoff <= now + timedelta(hours=cfg.max_hours_ahead)):
+            continue
+        event_id = events.get((normalise(f.home), normalise(f.away)))
+        if event_id:
+            out += odds_p.event_odds(competition, event_id)
+    return out
 
 
 def _rationale(e, cfg: SelectionConfig, kickoff, movement=None) -> str:

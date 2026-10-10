@@ -34,6 +34,9 @@ def test_page_documents_from_a_run_then_scores(tmp_path, monkeypatch):
         ko = datetime.fromisoformat(d["coup_envoi"])  # simulated kick-offs are 1 h to 2 h 10 after T0
         assert set(d["passages"]) == {"h3" if ko - T0 >= timedelta(minutes=105) else "m45"}
         assert d["verdict"] in ("selection", "aucune")
+        assert d["buts"]["buts_attendus"] > 0 and "non validé" in d["buts"]["avertissement"]
+        btts = next(m for m in d["buts"]["marches"] if m["pari"] == "Les deux équipes marquent : oui")
+        assert 0 < btts["proba"] < 1
         assert d["verdict"] == "aucune" or all(s["cote_45"] > 1 and s["raison"] for s in d["selections"])
     picked = next((d for d in docs.values() if d["selections"]), None)
     if picked:

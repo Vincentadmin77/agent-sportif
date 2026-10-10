@@ -24,6 +24,15 @@ def test_parse_the_odds_api_payload():
     assert over.line == 2.5
 
 
+def test_parse_btts_from_event_odds():
+    event = {"id": "e1", "commence_time": "2026-10-11T13:00:00Z", "home_team": "Hull City", "away_team": "Everton",
+             "bookmakers": [{"key": "winamax_fr", "last_update": "2026-10-10T18:50:00Z", "markets": [
+                 {"key": "btts", "last_update": "2026-10-10T18:50:00Z",
+                  "outcomes": [{"name": "Yes", "price": 1.72}, {"name": "No", "price": 2.05}]}]}]}
+    quotes = list(parse_odds([event], timedelta(minutes=15)))
+    assert {(q.market, q.selection, q.odds) for q in quotes} == {("btts", "yes", 1.72), ("btts", "no", 2.05)}
+
+
 def test_the_odds_api_requires_key_and_maps_errors():
     with pytest.raises(ProviderNotConfigured):
         TheOddsApiProvider(None)

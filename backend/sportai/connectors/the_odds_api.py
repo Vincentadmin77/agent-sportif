@@ -61,6 +61,18 @@ class TheOddsApiProvider:
         self.last_events = data
         return list(parse_odds(data, self._validity, live))
 
+    def event_odds(self, competition: str, event_id: str, markets: str = "btts,totals") -> list[OddsQuote]:
+        """Odds for one match. "Both teams to score" is only offered here, not on the league endpoint;
+        each market costs one credit per match."""
+        params = {"apiKey": self._key, "markets": markets, "oddsFormat": "decimal", "dateFormat": "iso"}
+        if self._bookmakers:
+            params["bookmakers"] = ",".join(self._bookmakers)
+        else:
+            params["regions"] = self._regions
+        data = self._http.get_json(f"/v4/sports/{SPORT_KEYS[competition]}/events/{event_id}/odds", params, ttl=self._ttl)
+        self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
+        return list(parse_odds([data], self._validity))
+
     def scores(self, competition: str, completed_too: bool = False) -> list[dict]:
         """Live scores (1 credit); with completed_too, also matches finished in the last day (2 credits)."""
         params = {"apiKey": self._key, "dateFormat": "iso"}
@@ -112,6 +124,9 @@ def _map(key: str, oc: dict, home: str, away: str):
     if key == "h2h":
         sel = {home: "home", away: "away", "Draw": "draw"}.get(oc["name"])
         return None if sel is None else ("1x2", sel, None)
+    if key == "btts":
+        sel = {"Yes": "yes", "No": "no"}.get(oc["name"])
+        return None if sel is None else ("btts", sel, None)
     if key == "totals" and oc.get("point") is not None:
         return ("totals", oc["name"].lower(), float(oc["point"]))
     return None
