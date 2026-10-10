@@ -12,9 +12,23 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 - Planning : une routine quotidienne à 8 h 52 (Paris) lit le calendrier (`agent_pass.py plan`, gratuit) et
   programme une routine ponctuelle par étape.
 
+## Préparer une session neuve
+Une routine déclenchée depuis la page (ou depuis une autre session) démarre dans une session neuve, sans le dépôt.
+```bash
+R=/home/user/agent-sportif; B=/mnt/project-files/agent-sportif/agent-sportif.git.bundle
+if [ ! -f $R/backend/scripts/agent_pass.py ]; then
+  if [ -f $B ]; then git clone -q -b claude/project-thread-mnjit9 $B $R
+  else git clone -q -b claude/project-thread-mnjit9 https://github.com/Vincentadmin77/agent-sportif $R; fi
+fi
+```
+Le clone GitHub demande d'abord `add_repo` (Vincentadmin77/agent-sportif) ; la copie `agent-sportif.git.bundle`
+du dossier partagé évite cette étape. Après chaque push sur la branche, la régénérer :
+`git bundle create /tmp/b.bundle claude/project-thread-mnjit9 main && cp /tmp/b.bundle $B`.
+
 ## Exécuter une étape
 ```bash
 cd /home/user/agent-sportif && git pull -q origin claude/project-thread-mnjit9
+mkdir -p /tmp/claude-0
 python3 -c "import sportai, scipy" 2>/dev/null || (cd backend && NO_PROXY=127.0.0.1 no_proxy=127.0.0.1 pip install -q -e ".[dev]")
 rm -rf /tmp/claude-0/page /tmp/claude-0/out
 ```
