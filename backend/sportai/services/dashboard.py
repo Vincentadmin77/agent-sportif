@@ -60,7 +60,7 @@ def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | No
     bet = f"{bet_label(c.market, c.selection, home, away)} à {c.odds:.2f}".replace(".", ",")
     reasons = " ".join(c.reasons)
     if "divergence" in reasons and c.market_fair_prob is not None:
-        why = (f"le modèle donne {c.p_win:.0%}, le marché {c.market_fair_prob:.0%} : écart trop grand, "
+        why = (f"le modèle donne {c.p_win * 100:.0f} %, le marché {c.market_fair_prob * 100:.0f} % : écart trop grand, "
                "il manque sans doute une information (blessure, composition)")
     elif "outside" in reasons:
         why = "cote hors de la plage retenue"
@@ -89,6 +89,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                    domicile=home, exterieur=away)
         doc.setdefault("statut", "a_venir")
         reason = f.get("skipped_reason")
+        if reason and reason.startswith("status") and key not in current:
+            continue  # already under way when first seen: nothing the agent analysed
         if reason and reason.startswith("more than"):
             out[key] = doc  # listed, analysed at a later pass
             continue
@@ -114,8 +116,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                 mv = moves.get(f"{c.market}:{c.selection}" + (f"@{c.line:g}" if c.line is not None else ""))
                 if mv:
                     s["mouvement"] = MOVE_KIND[mv["kind"]]
-                    s["mouvement_detail"] = (f"Marché {mv['before']:.0%} à H−3, {mv['after']:.0%} à H−45 "
-                                             f"(modèle {c.p_win:.0%}).")
+                    s["mouvement_detail"] = (f"Marché {mv['before'] * 100:.0f} % au passage précédent, "
+                                             f"{mv['after'] * 100:.0f} % maintenant (modèle {c.p_win * 100:.0f} %).")
                 selections.append(s)
             else:
                 text = rejection_text(c, home, away, run.config or {})
