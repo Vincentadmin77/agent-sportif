@@ -8,7 +8,8 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 - Uniquement les matchs du jour (heure de Paris).
 - Passage **H−3** (3 h avant le coup d'envoi) puis **H−45** (45 min avant : composition sortie, cotes qui bougent).
   À H−45, chaque sélection indique le mouvement du marché depuis H−3.
-- **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux, résultat des sélections). Le vrai suivi en direct (minute, cartons, xG) demande l'offre payante d'API-Football.
+- **Direct** (API-Football PRO, 7 500 requêtes par jour) : étapes 30, 75 et 115 min après chaque coup d'envoi, `agent_pass.py live --page P --out O <championnats>` : minute, score, cartons rouges, tirs, possession, xG, probabilités recalculées en direct (champ `direct` des documents) et réglement des sélections à la fin. Environ 1 + 2 requêtes par match suivi, aucun crédit de cotes.
+- **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux via The Odds API, 2 crédits par championnat) ; inutile quand l'étape direct de 115 min a vu le match terminé.
 - Planning : une routine quotidienne à 8 h 52 (Paris) lit le calendrier (`agent_pass.py plan`, gratuit) et
   programme une routine ponctuelle par étape.
 
