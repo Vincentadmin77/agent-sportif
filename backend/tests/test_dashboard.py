@@ -66,3 +66,19 @@ def test_match_under_way_keeps_published_analysis(tmp_path, monkeypatch):
         assert doc == {**published[key], "statut": "en_direct"}
     assert build_match_docs(db, run, {}) == {}
     get_settings.cache_clear()
+
+
+def test_champions_league_is_information_only(tmp_path, monkeypatch):
+    from sportai.services.dashboard import UCL_INFO
+    monkeypatch.setenv("DATA_MODE", "simulation")
+    get_settings.cache_clear()
+    eng = create_engine(f"sqlite:///{tmp_path}/d.db")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng, expire_on_commit=False)()
+    run = execute_prematch(db, get_settings(), "UCL", "test", now=T0)
+    docs = build_match_docs(db, run, {})
+    assert docs and run.config["enabled_markets"] == []
+    for d in docs.values():
+        assert d["selections"] == [] and d["verdict"] == "aucune"
+        assert d["rejets"][0] == UCL_INFO and d["rejets"][1].startswith("Modèle : ")
+    get_settings.cache_clear()

@@ -35,6 +35,28 @@ SKIP_REASONS = {
 }
 
 
+UCL_INFO = ("Ligue des champions : estimation du modèle entraîné sur les cinq grands championnats et la coupe "
+            "d'Europe ensemble. Comparer des clubs de championnats différents n'est pas encore validé par un test sur "
+            "matchs passés : information seulement, aucune sélection.")
+
+
+def ucl_model_line(f: dict, cands: list[CandidateRow], home: str, away: str) -> str | None:
+    p = f.get("probabilities") or {}
+    if "1x2:home" not in p:
+        return None
+    line = (f"Modèle : {home} {_whole(p['1x2:home'])}, nul {_whole(p.get('1x2:draw'))}, "
+            f"{away} {_whole(p.get('1x2:away'))}")
+    market = {c.selection: c.market_fair_prob for c in cands if c.market == "1x2" and c.market_fair_prob is not None}
+    if {"home", "draw", "away"} <= market.keys():
+        line += (f" ; bookmakers : {home} {_whole(market['home'])}, nul {_whole(market['draw'])}, "
+                 f"{away} {_whole(market['away'])}")
+    return line + "."
+
+
+def _whole(x: float | None) -> str:
+    return "–" if x is None else f"{x * 100:.0f} %"
+
+
 def doc_id(kickoff: datetime, home: str, away: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", f"{normalise(home)} {normalise(away)}").strip("-")
     return f"{kickoff.astimezone(LOCAL_TZ):%Y-%m-%d}-{slug}"
@@ -127,8 +149,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                 out[key] = {**current[key], "statut": "en_direct"}
             continue
         doc = dict(current.get(key) or {})
-        doc.update(jour=f"{today:%Y-%m-%d}", coup_envoi=ko.isoformat(), competition=COMPETITION_NAMES.get(run.competition, run.competition),
-                   domicile=home, exterieur=away)
+        doc.update(jour=f"{today:%Y-%m-%d}", coup_envoi=ko.isoformat(), competition=COMPETITION_NAMES.get(run.competition, run.competition))
+        doc.setdefault("domicile", home)  # keep the spelling first published
+        doc.setdefault("exterieur", away)
         doc.setdefault("statut", "a_venir")
         if reason and reason.startswith("more than"):
             out[key] = doc  # listed, analysed at a later pass
@@ -164,6 +187,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                     rejets.append(text)
         for label in set(previous) - {s["pari"] for s in selections}:
             rejets.insert(0, f"{label} : retenue à H−3 mais plus à H−45.")
+        if run.competition == "UCL":
+            rejets = [UCL_INFO] + [t for t in (ucl_model_line(f, mine, home, away),) if t]
         doc["selections"] = selections
         doc["rejets"] = rejets
         goals = goals_block(f, mine, (run.config or {}).get("info_markets", ("totals", "btts")))

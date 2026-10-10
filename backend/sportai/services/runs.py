@@ -6,6 +6,7 @@ candidates: the analysis is switched off, never filled with invented data.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session as DB
@@ -20,6 +21,7 @@ from sportai.connectors.teams import normalise
 from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import SelectionConfig
+from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey
 from sportai.services.movement import classify, previous_consensus
 from sportai.services.prematch import run_prematch
@@ -59,6 +61,10 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
         return [str(now.year - k) for k in (2, 1, 0)]
     y = now.year if now.month >= 7 else now.year - 1
     return [f"{y - k}-{str(y - k + 1)[-2:]}" for k in (2, 1, 0)]
+
+
+UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
+UCL_MIN_MATCHES = 20
 
 
 def load_history(db: DB, competition: str, now: datetime, primary, backup) -> tuple[list, set[str]]:
@@ -103,6 +109,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     now = now or datetime.now(timezone.utc)
     mode = mode or settings.data_mode
     cfg = selection_config(db)
+    if competition == "UCL":
+        cfg = replace(cfg, enabled_markets=())  # cross-league model not validated: information only
     run = AnalysisRun(kind="prematch", competition=competition, mode=mode, status="running",
                       config={**cfg.to_dict(), "enabled_markets": list(cfg.enabled_markets)}, triggered_by=triggered_by,
                       started_at=now)
@@ -126,6 +134,13 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
             current = fixtures_p.name
             history, used = load_history(db, competition, now, fixtures_p, backup)
+            if competition == "UCL":
+                # Clubs of different leagues are only comparable through a model fitted on all of them at once.
+                for dom in UCL_DOMESTIC:
+                    more, more_used = load_history(db, dom, now, fixtures_p,
+                                                   OpenFootballProvider() if dom in OPENFOOTBALL_FILES else None)
+                    history += more
+                    used |= more_used
             fixtures_source = fixtures_p.name
             try:
                 fixtures = fixtures_p.upcoming_fixtures(competition)
@@ -149,7 +164,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
         return run
 
     try:
-        report = run_prematch(history, fixtures, quotes, cfg, now=now)
+        # A club seen only in a few European matches cannot be placed against the five leagues.
+        fit_cfg = dc.FitConfig(min_matches_per_team=UCL_MIN_MATCHES) if competition == "UCL" else None
+        report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()
