@@ -58,6 +58,7 @@ def run_prematch(
     n_samples: int = 300,
 ) -> PrematchReport:
     now = now or datetime.now(timezone.utc)
+    cfg = cfg or SelectionConfig()
     modes = {r.mode for r in history} | {f.mode for f in fixtures} | {q.mode for q in quotes}
     if len(modes) > 1:
         raise MixedModeError(f"inputs mix data modes {sorted(modes)}")
@@ -74,6 +75,12 @@ def run_prematch(
         h, a = normalise(fx.home), normalise(fx.away)
         if fx.status != "scheduled":
             analyses.append(FixtureAnalysis(fx, None, skipped_reason=f"status {fx.status}"))
+            continue
+        if fx.kickoff <= now:
+            analyses.append(FixtureAnalysis(fx, None, skipped_reason="already kicked off"))
+            continue
+        if fx.kickoff > now + timedelta(hours=cfg.max_hours_ahead):
+            analyses.append(FixtureAnalysis(fx, None, skipped_reason=f"kick-off beyond {cfg.max_hours_ahead:g}h window"))
             continue
         if not (model.knows(h) and model.knows(a)):
             analyses.append(FixtureAnalysis(fx, None, skipped_reason="insufficient match history for one team"))

@@ -35,6 +35,7 @@ class SelectionConfig:
     # over 2.5 forecasts were no better than the base rate (docs/04-backtest.md).
     enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb")
     one_per_match: bool = True
+    max_hours_ahead: float = 48.0  # only analyse matches kicking off within this window
 
     def to_dict(self) -> dict:
         return asdict(self)

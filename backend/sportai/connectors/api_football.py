@@ -43,7 +43,7 @@ class ApiFootballProvider:
             raise ProviderUnavailable(f"api-football {path}: {data['errors']}")
         return data
 
-    def upcoming_fixtures(self, competition: str, days_ahead: int = 3, season: int | None = None) -> list[Fixture]:
+    def upcoming_fixtures(self, competition: str, days_ahead: int = 2, season: int | None = None) -> list[Fixture]:
         today = date.today()
         season = season or (today.year if today.month >= 7 else today.year - 1)
         data = self._get("/fixtures", {
