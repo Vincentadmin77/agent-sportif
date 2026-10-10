@@ -79,6 +79,20 @@ class ApiFootballProvider:
                                  ttl=10).get("response", [])
         return out
 
+    def lineups(self, fixture_id: int | str) -> list[dict]:
+        """Official line-ups (empty until they are published, about an hour before kick-off)."""
+        return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=300).get("response", [])
+
+    def team_players(self, team_id: int, season: int) -> list[dict]:
+        """Every player of a team in a season with their statistics, all pages."""
+        out, page = [], 1
+        while True:
+            data = self._get("/players", {"team": team_id, "season": season, "page": page}, ttl=6 * 3600)
+            out += data.get("response", [])
+            if page >= (data.get("paging") or {}).get("total", 1):
+                return out
+            page += 1
+
     def live_snapshot(self, provider_event_id: str) -> LiveSnapshot:
         fx = self._get("/fixtures", {"id": provider_event_id}, ttl=10)["response"][0]
         return self.live_details(fx)[0]

@@ -37,6 +37,8 @@ rm -rf /tmp/claude-0/page /tmp/claude-0/out
 2. `cd backend && python3 scripts/agent_pass.py prematch --page /tmp/claude-0/page --out /tmp/claude-0/out FR1 ...`
    (ajouter `--goals` au passage H−45 : « les deux équipes marquent » et nombre de buts, 2 crédits par match,
    affichés avec l'avertissement « marché non validé », jamais sélectionnés), ou `scores --final` pour le final.
+   À H−45, l'agent lit aussi les compositions officielles (API-Football) : titulaires, absents notables,
+   remplaçants notables (`compositions`) et probabilité de marquer de chaque titulaire (`buteurs.joueurs`, non validé).
 3. Écrire `out/matchs/*.json` dans `matchs` (ArtifactData `batch`, `set`, `if_version` = version lue pour un
    document existant) et `out/etat.json` dans `etat/agent`.
 4. Ne prévenir Vincent dans le fil que s'il y a une sélection, un résultat de sélection ou une panne.

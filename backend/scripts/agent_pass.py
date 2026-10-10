@@ -105,7 +105,7 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
 
     db = session_factory()()
     manage.init(db)
-    current, docs, notes = _load_page(page), {}, []
+    current, docs, notes, fixtures = _load_page(page), {}, [], []
     for comp in comps:
         if comp == "UCL":
             docs.update(_ucl_listing({**current, **docs}, now))
@@ -116,12 +116,61 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         if run.status == "completed":
             new = build_match_docs(db, run, {**current, **docs})
             docs.update(new)
+            fixtures += run.fixtures or []
     db.close()
+    try:
+        docs.update(_lineups(comps, docs, fixtures, now))
+    except Exception as e:  # line-ups are a bonus: never lose the pass for them
+        notes.append(f"line-ups unavailable ({str(e)[:120]})")
     STATE_DB.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(work, STATE_DB)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now: datetime,
+             window: timedelta = timedelta(minutes=75)) -> dict[str, dict]:
+    """Official line-ups, notable absentees and goalscorer estimates for the matches close to kick-off."""
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.lineups import SCORER_NO_ODDS, SCORER_WARNING, lineup_block, merge_players
+    from sportai.services.live_page import find_doc, pre_match_rates
+    from sportai.services.prematch import LOCAL_TZ
+
+    soon = {k: d for k, d in docs.items()
+            if d.get("coup_envoi") and now < datetime.fromisoformat(d["coup_envoi"]) <= now + window}
+    if not soon:
+        return {}
+    api = ApiFootballProvider(get_settings().api_football_key)
+    day = now.astimezone(LOCAL_TZ).date()
+    out = {}
+    for fx in api.fixtures_on([c for c in comps if c != "UCL"], day):
+        home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
+        key = find_doc(soon, f"{day:%Y-%m-%d}", home, away)
+        if not key:
+            continue
+        doc = dict(soon[key])
+        teams = {t["team"]["id"]: t for t in api.lineups(fx["fixture"]["id"])}
+        if len(teams) < 2:
+            doc["compositions"] = {"attente": "Compositions officielles pas encore publiées."}
+            out[key] = doc
+            continue
+        season = fx["league"]["season"]
+        pre = pre_match_rates(fixtures, doc["domicile"], doc["exterieur"])
+        xg = pre[0] if pre else (None, None)
+        blocks, scorers = {}, []
+        for side, team, team_xg in (("domicile", fx["teams"]["home"], xg[0]), ("exterieur", fx["teams"]["away"], xg[1])):
+            pages = [api.team_players(team["id"], s) for s in (season, season - 1)]
+            block = lineup_block(teams[team["id"]], merge_players(pages, season), team_xg)
+            scorers += [{**p, "equipe": doc[side]} for p in block.pop("buteurs", [])]
+            blocks[side] = block
+        doc["compositions"] = blocks
+        if scorers:
+            doc["buteurs"] = {"avertissement": SCORER_WARNING, "raison": SCORER_NO_ODDS,
+                              "joueurs": sorted(scorers, key=lambda p: -p["proba"])[:8]}
+        out[key] = doc
+    return out
 
 
 def _ucl_listing(current: dict[str, dict], now: datetime) -> dict[str, dict]:
