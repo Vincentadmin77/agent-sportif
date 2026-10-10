@@ -61,14 +61,15 @@ class TheOddsApiProvider:
         return list(parse_odds(data, self._validity, live))
 
 
-def fixtures_from_events(events: list[dict], competition: str, now: datetime, days_ahead: int = 3) -> list[Fixture]:
+def fixtures_from_events(events: list[dict], competition: str, now: datetime,
+                         horizon: timedelta = timedelta(hours=48)) -> list[Fixture]:
     """Upcoming matches as listed by the odds feed itself: the fixture source
     when no fixtures provider is available. Matches already under way are
     marked live so the pre-match analysis skips them."""
     out = []
     for ev in events:
         kickoff = _ts(ev["commence_time"])
-        if kickoff > now + timedelta(days=days_ahead):
+        if kickoff > now + horizon:
             continue
         out.append(Fixture(provider=TheOddsApiProvider.name, provider_event_id=ev["id"], competition=competition,
                            kickoff=kickoff, home=ev["home_team"], away=ev["away_team"], mode="real",

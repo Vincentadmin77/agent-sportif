@@ -78,4 +78,5 @@ def test_fixtures_from_odds_events():
     assert [(f.home, f.away, f.status, f.provider_event_id) for f in before] == [
         (events[0]["home_team"], events[0]["away_team"], "scheduled", events[0]["id"])]
     assert fixtures_from_events(events, "FR1", now=kickoff + timedelta(minutes=5))[0].status == "live"
-    assert fixtures_from_events(events, "FR1", now=kickoff - timedelta(days=5)) == []
+    assert fixtures_from_events(events, "FR1", now=kickoff - timedelta(hours=49)) == []
+    assert len(fixtures_from_events(events, "FR1", now=kickoff - timedelta(hours=47))) == 1

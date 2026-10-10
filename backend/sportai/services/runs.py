@@ -22,6 +22,8 @@ from sportai.selection.engine import SelectionConfig
 from sportai.services.prematch import run_prematch
 
 SELECTION_SETTINGS_KEY = "selection_config"
+# Only matches kicking off within this window are analysed (owner's choice: 48 h max).
+PREMATCH_HORIZON = timedelta(hours=48)
 
 
 def selection_config(db: DB) -> SelectionConfig:
@@ -113,7 +115,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             quotes = odds_p.odds(competition)
             _mark(db, odds_p.name, quota=odds_p.last_quota)
             if fixtures is None:
-                fixtures = fixtures_from_events(odds_p.last_events, competition, now)
+                fixtures = fixtures_from_events(odds_p.last_events, competition, now, PREMATCH_HORIZON)
+            fixtures = [f for f in fixtures if f.kickoff <= now + PREMATCH_HORIZON]
             run.data_sources = {"history": history_p.name, "fixtures": fixtures_source, "odds": odds_p.name}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
