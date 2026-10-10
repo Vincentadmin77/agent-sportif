@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -9,7 +9,7 @@ from sportai.connectors.api_football import ApiFootballProvider
 from sportai.connectors.base import ProviderNotConfigured, ProviderUnavailable
 from sportai.connectors.openfootball import parse as parse_openfootball
 from sportai.connectors.teams import normalise, same_team
-from sportai.connectors.the_odds_api import TheOddsApiProvider, parse_odds
+from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events, parse_odds
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -69,3 +69,13 @@ def test_api_football_plan_error_is_a_provider_failure():
     p = ApiFootballProvider("k", transport=httpx.MockTransport(lambda req: httpx.Response(200, json=body)))
     with pytest.raises(ProviderUnavailable, match="Free plans"):
         p.upcoming_fixtures("FR1", season=2026)
+
+
+def test_fixtures_from_odds_events():
+    events = json.loads((FIX / "the_odds_api_odds.json").read_text())
+    kickoff = datetime.fromisoformat(events[0]["commence_time"].replace("Z", "+00:00"))
+    before = fixtures_from_events(events, "FR1", now=kickoff - timedelta(hours=2))
+    assert [(f.home, f.away, f.status, f.provider_event_id) for f in before] == [
+        (events[0]["home_team"], events[0]["away_team"], "scheduled", events[0]["id"])]
+    assert fixtures_from_events(events, "FR1", now=kickoff + timedelta(minutes=5))[0].status == "live"
+    assert fixtures_from_events(events, "FR1", now=kickoff - timedelta(days=5)) == []

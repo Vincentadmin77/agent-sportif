@@ -16,7 +16,7 @@ from sportai.connectors.base import ProviderUnavailable
 from sportai.connectors.openfootball import FILES as OPENFOOTBALL_FILES
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
-from sportai.connectors.the_odds_api import TheOddsApiProvider
+from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import SelectionConfig
 from sportai.services.prematch import run_prematch
@@ -101,13 +101,20 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     if season == _history_seasons(now)[-1]:
                         raise
             _mark(db, history_p.name)
-            current = fixtures_p.name
-            fixtures = fixtures_p.upcoming_fixtures(competition)
-            _mark(db, fixtures_p.name)
+            fixtures_source = fixtures_p.name
+            try:
+                fixtures = fixtures_p.upcoming_fixtures(competition)
+                _mark(db, fixtures_p.name)
+            except ProviderUnavailable as e:
+                # Pre-match only needs who plays whom and when; the odds feed lists that too.
+                _mark(db, fixtures_p.name, str(e))
+                fixtures, fixtures_source = None, odds_p.name
             current = odds_p.name
             quotes = odds_p.odds(competition)
             _mark(db, odds_p.name, quota=odds_p.last_quota)
-            run.data_sources = {"history": history_p.name, "fixtures": fixtures_p.name, "odds": odds_p.name}
+            if fixtures is None:
+                fixtures = fixtures_from_events(odds_p.last_events, competition, now)
+            run.data_sources = {"history": history_p.name, "fixtures": fixtures_source, "odds": odds_p.name}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
         run.status, run.status_detail, run.finished_at = "provider_unavailable", str(e), datetime.now(timezone.utc)

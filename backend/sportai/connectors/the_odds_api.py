@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from sportai.connectors.base import OddsQuote, ProviderNotConfigured
+from sportai.connectors.base import Fixture, OddsQuote, ProviderNotConfigured
 from sportai.connectors.http import CachedClient
 
 BASE_URL = "https://api.the-odds-api.com"
@@ -46,6 +46,7 @@ class TheOddsApiProvider:
         self._validity = odds_validity
         self._http = CachedClient(BASE_URL, transport=transport)
         self.last_quota: dict[str, str] = {}
+        self.last_events: list[dict] = []
 
     def odds(self, competition: str, live: bool = False) -> list[OddsQuote]:
         sport = SPORT_KEYS[competition]
@@ -56,7 +57,23 @@ class TheOddsApiProvider:
             params["regions"] = self._regions
         data = self._http.get_json(f"/v4/sports/{sport}/odds", params, ttl=self._ttl)
         self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
+        self.last_events = data
         return list(parse_odds(data, self._validity, live))
+
+
+def fixtures_from_events(events: list[dict], competition: str, now: datetime, days_ahead: int = 3) -> list[Fixture]:
+    """Upcoming matches as listed by the odds feed itself: the fixture source
+    when no fixtures provider is available. Matches already under way are
+    marked live so the pre-match analysis skips them."""
+    out = []
+    for ev in events:
+        kickoff = _ts(ev["commence_time"])
+        if kickoff > now + timedelta(days=days_ahead):
+            continue
+        out.append(Fixture(provider=TheOddsApiProvider.name, provider_event_id=ev["id"], competition=competition,
+                           kickoff=kickoff, home=ev["home_team"], away=ev["away_team"], mode="real",
+                           status="scheduled" if kickoff > now else "live"))
+    return out
 
 
 def parse_odds(events: list[dict], validity: timedelta, live: bool = False):
