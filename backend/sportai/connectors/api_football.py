@@ -63,8 +63,29 @@ class ApiFootballProvider:
                                         f["teams"]["home"]["name"], f["teams"]["away"]["name"], g["home"], g["away"], "real"))
         return out
 
+    def live_fixtures(self, competitions: list[str]) -> list[dict]:
+        """Matches under way now in these competitions (raw API-Football fixtures), in one request."""
+        ids = "-".join(str(LEAGUE_IDS[c]) for c in competitions if c in LEAGUE_IDS)
+        return self._get("/fixtures", {"live": ids}, ttl=10).get("response", []) if ids else []
+
+    def fixtures_on(self, competitions: list[str], day: date) -> list[dict]:
+        """Every match of the day in these competitions (raw), finished ones included."""
+        season = day.year if day.month >= 7 else day.year - 1
+        out = []
+        for c in competitions:
+            if c in LEAGUE_IDS:
+                s = day.year if c == "BR1" else season  # Brazil plays calendar-year seasons
+                out += self._get("/fixtures", {"league": LEAGUE_IDS[c], "season": s, "date": day.isoformat()},
+                                 ttl=10).get("response", [])
+        return out
+
     def live_snapshot(self, provider_event_id: str) -> LiveSnapshot:
         fx = self._get("/fixtures", {"id": provider_event_id}, ttl=10)["response"][0]
+        return self.live_details(fx)[0]
+
+    def live_details(self, fx: dict) -> tuple[LiveSnapshot, list[dict]]:
+        """Snapshot of one raw fixture plus its raw statistics (two requests)."""
+        provider_event_id = fx["fixture"]["id"]
         observed = datetime.now(timezone.utc)
         events = self._get("/fixtures/events", {"fixture": provider_event_id}, ttl=10).get("response", [])
         stats = self._get("/fixtures/statistics", {"fixture": provider_event_id}, ttl=10).get("response", [])
@@ -87,7 +108,7 @@ class ApiFootballProvider:
             home_goals=fx["goals"]["home"] or 0, away_goals=fx["goals"]["away"] or 0,
             observed_at=observed, mode="real", home_red_cards=reds["home"], away_red_cards=reds["away"],
             home_xg=xg["home"], away_xg=xg["away"], events=events,
-        )
+        ), stats
 
     def _fixture(self, f: dict, competition: str) -> Fixture:
         return Fixture(

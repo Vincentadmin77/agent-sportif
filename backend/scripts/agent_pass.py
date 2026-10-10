@@ -3,6 +3,7 @@
     python scripts/agent_pass.py plan [--competitions FR1 ES1]  # today's kick-offs and pass times (free request)
     python scripts/agent_pass.py prematch --page P --out O [--goals] FR1 ES1
     python scripts/agent_pass.py scores --page P --out O [--final] FR1
+    python scripts/agent_pass.py live --page P --out O FR1 ES1  # matches under way (API-Football)
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -23,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
+LIVE_STEPS = (30, 75, 115)  # minutes after kick-off
 COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL"]
 # No reliable history for matches between clubs of different leagues on the free data sources.
 UCL_NOTE = ("Ligue des champions : l'agent n'a pas encore d'historique fiable pour comparer des clubs de championnats "
@@ -65,6 +67,11 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
         for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45))):
             if at > now:
                 steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
+        # Live follow-up (API-Football): first half, half-time / early second half, end of the match.
+        for minutes in LIVE_STEPS:
+            at = ko + timedelta(minutes=minutes)
+            if at > now:
+                steps.append({"at": at.isoformat(), "kind": "live", "kickoff": ko_s, "competitions": sorted(comps)})
     if by_time:
         # One final step after the last match settles the whole day (2 credits per competition).
         last = max(datetime.fromisoformat(k) for k in by_time)
@@ -158,12 +165,51 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
     print("quota:", odds.last_quota, file=sys.stderr)
 
 
+def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
+    """Follow the page's matches under way (and those that just finished) with API-Football."""
+    import sqlite3
+
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.live_page import find_doc, live_doc, pre_match_rates, stats_by_side
+    from sportai.services.prematch import LOCAL_TZ
+
+    api = ApiFootballProvider(get_settings().api_football_key)
+    current, docs = _load_page(page), {}
+    fixtures: list[dict] = []
+    if STATE_DB.exists():
+        con = sqlite3.connect(f"file:{STATE_DB}?mode=ro", uri=True)
+        for (raw,) in con.execute("SELECT fixtures FROM analysis_runs WHERE status = 'completed' AND fixtures IS NOT NULL "
+                                  "ORDER BY started_at DESC"):
+            fixtures += json.loads(raw) if isinstance(raw, str) else raw
+        con.close()
+    day = now.astimezone(LOCAL_TZ).date()
+    for fx in api.fixtures_on(comps, day):
+        short = fx["fixture"]["status"]["short"]
+        if short in ("NS", "TBD", "PST", "CANC"):
+            continue
+        home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
+        key = find_doc(current, f"{day:%Y-%m-%d}", home, away)
+        if not key or current[key].get("statut") == "termine":
+            continue
+        snap, raw_stats = api.live_details(fx)
+        doc = live_doc(current[key], fx, snap, stats_by_side(raw_stats, fx["teams"]["home"]["id"]),
+                       pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now)
+        docs[key] = doc
+    n_live = sum(d["statut"] == "en_direct" for d in docs.values())
+    _write(out, docs, f"Direct : {n_live} match(s) en cours, {len(docs) - n_live} terminé(s)", now)
+
+
 def main() -> None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("plan")
     pl.add_argument("--competitions", nargs="+", choices=COMPETITIONS, help="only these (the page's choice)")
+    lv = sub.add_parser("live")
+    lv.add_argument("competitions", nargs="+", choices=COMPETITIONS)
+    lv.add_argument("--page")
+    lv.add_argument("--out", required=True)
     for name in ("prematch", "scores"):
         p = sub.add_parser(name)
         p.add_argument("competitions", nargs="+", choices=COMPETITIONS)
@@ -180,6 +226,8 @@ def main() -> None:
         plan(now, a.competitions)
     elif a.cmd == "prematch":
         prematch(a.competitions, a.page, a.out, now, a.goals)
+    elif a.cmd == "live":
+        live(a.competitions, a.page, a.out, now)
     else:
         scores(a.competitions, a.page, a.out, a.final, now)
 
