@@ -59,10 +59,14 @@ def plan(now: datetime) -> None:
     steps = []
     for ko_s, comps in sorted(by_time.items()):
         ko = datetime.fromisoformat(ko_s)
-        for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45)),
-                         ("live", ko + timedelta(minutes=55)), ("final", ko + timedelta(minutes=125))):
+        for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45))):
             if at > now:
                 steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
+    if by_time:
+        # One final step after the last match settles the whole day (2 credits per competition).
+        last = max(datetime.fromisoformat(k) for k in by_time)
+        steps.append({"at": (last + timedelta(hours=2, minutes=15)).isoformat(), "kind": "final",
+                      "competitions": sorted(set().union(*by_time.values()))})
     merged: dict[tuple[str, str], set] = defaultdict(set)
     for st in steps:
         merged[(st["at"], st["kind"])].update(st["competitions"])
