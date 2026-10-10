@@ -120,13 +120,16 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             continue
         home, _, away = f["match"].partition(" - ")
         key = doc_id(ko, home, away)
+        reason = f.get("skipped_reason")
+        if reason and (reason.startswith("status") or reason == "already kicked off"):
+            # Under way: keep what the earlier passes published, only mark it live.
+            if key in current and current[key].get("statut", "a_venir") == "a_venir":
+                out[key] = {**current[key], "statut": "en_direct"}
+            continue
         doc = dict(current.get(key) or {})
         doc.update(jour=f"{today:%Y-%m-%d}", coup_envoi=ko.isoformat(), competition=COMPETITION_NAMES.get(run.competition, run.competition),
                    domicile=home, exterieur=away)
         doc.setdefault("statut", "a_venir")
-        reason = f.get("skipped_reason")
-        if reason and reason.startswith("status") and key not in current:
-            continue  # already under way when first seen: nothing the agent analysed
         if reason and reason.startswith("more than"):
             out[key] = doc  # listed, analysed at a later pass
             continue

@@ -49,3 +49,20 @@ def test_page_documents_from_a_run_then_scores(tmp_path, monkeypatch):
         assert done["statut"] == "termine" and done["score"] == "2 - 0"
         assert all(s["resultat"] in ("gagne", "perdu", "rembourse") for s in done["selections"])
     get_settings.cache_clear()
+
+
+def test_match_under_way_keeps_published_analysis(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_MODE", "simulation")
+    get_settings.cache_clear()
+    eng = create_engine(f"sqlite:///{tmp_path}/d.db")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng, expire_on_commit=False)()
+    run = execute_prematch(db, get_settings(), "SIM", "test", now=T0)
+    published = build_match_docs(db, run, {})
+    run.fixtures = [{**f, "skipped_reason": "status live"} for f in run.fixtures]
+    later = build_match_docs(db, run, published)
+    assert set(later) == set(published)
+    for key, doc in later.items():
+        assert doc == {**published[key], "statut": "en_direct"}
+    assert build_match_docs(db, run, {}) == {}
+    get_settings.cache_clear()
