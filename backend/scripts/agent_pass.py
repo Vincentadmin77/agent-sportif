@@ -111,14 +111,27 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     from sportai.connectors.the_odds_api import BASE_URL, SPORT_KEYS
     from sportai.services.prematch import LOCAL_TZ
 
-    http = CachedClient(BASE_URL)
-    key = get_settings().the_odds_api_key
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services import calendrier
+
+    comps = comps or COMPETITIONS
+    today = now.astimezone(LOCAL_TZ).date()
     by_time: dict[str, set] = defaultdict(set)
-    for comp in comps or COMPETITIONS:
-        for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
-            ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
-            if ko > now and ko.astimezone(LOCAL_TZ).date() == now.astimezone(LOCAL_TZ).date():
-                by_time[ko.isoformat()].add(comp)
+    source = "calendrier API-Football"
+    try:  # the season calendar of each competition says which matches are played today, and when
+        cals = calendrier.refresh(ApiFootballProvider(get_settings().api_football_key), comps, now)
+        by_time = calendrier.kickoffs_on(cals, today, now)
+        print("semaine:", json.dumps(calendrier.next_days(cals, today)), file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 - fall back on the odds feed's event list
+        print(f"calendrier unavailable ({str(e)[:160]}), odds events used", file=sys.stderr)
+        source = "événements The Odds API"
+        http = CachedClient(BASE_URL)
+        key = get_settings().the_odds_api_key
+        for comp in comps:
+            for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
+                ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
+                if ko > now and ko.astimezone(LOCAL_TZ).date() == today:
+                    by_time[ko.isoformat()].add(comp)
     steps = []
     for ko_s, comps in sorted(by_time.items()):
         ko = datetime.fromisoformat(ko_s)
@@ -139,7 +152,8 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     for st in steps:
         merged[(st["at"], st["kind"])].update(st["competitions"])
     steps = [{"at": at, "kind": kind, "competitions": sorted(c)} for (at, kind), c in sorted(merged.items())]
-    print(json.dumps({"kickoffs": {k: sorted(v) for k, v in sorted(by_time.items())}, "steps": steps}, indent=1))
+    print(json.dumps({"source": source, "kickoffs": {k: sorted(v) for k, v in sorted(by_time.items())},
+                      "steps": steps}, indent=1))
 
 
 def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals: bool = False,

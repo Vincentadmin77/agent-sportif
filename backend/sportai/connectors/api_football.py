@@ -79,6 +79,11 @@ class ApiFootballProvider:
                                  ttl=10).get("response", [])
         return out
 
+    def season_fixtures(self, competition: str, season: int) -> list[dict]:
+        """Every match of a competition's season (raw fixtures): the full calendar, played and to come."""
+        return self._get("/fixtures", {"league": LEAGUE_IDS[competition], "season": season},
+                         ttl=6 * 3600).get("response", [])
+
     def head_to_head(self, team_a: int, team_b: int, last: int = 5) -> list[dict]:
         """The last meetings of two teams (raw fixtures), all competitions."""
         return self._get("/fixtures/headtohead", {"h2h": f"{team_a}-{team_b}", "last": last},
