@@ -45,6 +45,10 @@ rm -rf /tmp/claude-0/page /tmp/claude-0/out
    remplaçants notables (`compositions`) et probabilité de marquer de chaque titulaire (`buteurs.joueurs`, non validé).
 3. Écrire `out/matchs/*.json` dans `matchs` (ArtifactData `batch`, `set`, `if_version` = version lue pour un
    document existant) et `out/etat.json` dans `etat/agent`.
+   Puis, pour que la boucle du direct ne republie pas l'ancienne version de ces documents :
+   `python3 scripts/mirror_sync.py /tmp/claude-0/out <doc_id>=<nouvelle version> ...` (versions rendues par le batch).
+   Si une écriture du direct échoue sur la version : relire `matchs` (`list`, `out_dir=/tmp/claude-0/mirror`), refaire
+   `versions.json` avec les versions lues, puis relancer le cycle.
 4. Ne prévenir Vincent dans le fil que s'il y a une sélection, un résultat de sélection ou une panne.
 
 L'état d'analyse (cotes de H−3 pour la comparaison à H−45) est dans
