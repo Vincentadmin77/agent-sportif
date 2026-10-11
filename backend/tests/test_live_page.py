@@ -130,3 +130,20 @@ def test_fixture_identity_gives_crests_and_round():
                                     "logo_exterieur": "https://media.api-sports.io/football/teams/91.png",
                                     "logo_competition": "https://media.api-sports.io/football/leagues/61.png",
                                     "journee": 8}
+
+
+def test_recent_form_and_head_to_head():
+    from sportai.services.live_page import head_to_head_rows, recent_form
+
+    def fx(day, h, a, hg, ag, hid=1, aid=2):
+        return {"fixture": {"date": f"{day}T18:00:00+00:00"}, "league": {"name": "Ligue 1"},
+                "teams": {"home": {"id": hid, "name": h}, "away": {"id": aid, "name": a}},
+                "goals": {"home": hg, "away": ag}}
+    games = [fx("2026-10-04", "Rennes", "Lyon", 2, 1), fx("2026-09-27", "Nice", "Rennes", 0, 0, 3, 1),
+             fx("2026-10-11", "Rennes", "Lens", None, None)]
+    assert recent_form(games, 1) == [
+        {"resultat": "N", "score": "0-0", "adversaire": "Nice", "domicile": False, "date": "2026-09-27",
+         "competition": "Ligue 1"},
+        {"resultat": "V", "score": "2-1", "adversaire": "Lyon", "domicile": True, "date": "2026-10-04",
+         "competition": "Ligue 1"}]
+    assert [r["date"] for r in head_to_head_rows(games)] == ["2026-10-04", "2026-09-27"]

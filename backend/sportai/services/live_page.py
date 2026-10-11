@@ -220,3 +220,33 @@ def fixture_identity(fx: dict) -> dict:
     if m:
         out["journee"] = int(m.group(1))
     return {k: v for k, v in out.items() if v is not None}
+
+
+def _played(fx: dict) -> tuple[str, str, str, int, int, str] | None:
+    g = fx.get("goals") or {}
+    if g.get("home") is None or g.get("away") is None:
+        return None
+    return (str(fx["fixture"]["date"])[:10], fx["teams"]["home"]["name"], fx["teams"]["away"]["name"],
+            int(g["home"]), int(g["away"]), (fx.get("league") or {}).get("name") or "")
+
+
+def recent_form(fixtures: list[dict], team_id: int) -> list[dict]:
+    """A team's last matches for the page, oldest first, result from that team's point of view."""
+    out = []
+    for fx in fixtures:
+        m = _played(fx)
+        if not m:
+            continue
+        day, home, away, hg, ag, comp = m
+        at_home = fx["teams"]["home"].get("id") == team_id
+        mine, theirs = (hg, ag) if at_home else (ag, hg)
+        out.append({"resultat": "V" if mine > theirs else "N" if mine == theirs else "D", "score": f"{hg}-{ag}",
+                    "adversaire": away if at_home else home, "domicile": at_home, "date": day, "competition": comp})
+    return sorted(out, key=lambda r: r["date"])[-5:]
+
+
+def head_to_head_rows(fixtures: list[dict]) -> list[dict]:
+    """The last meetings for the page, most recent first."""
+    rows = [{"date": m[0], "domicile": m[1], "exterieur": m[2], "score": f"{m[3]}-{m[4]}", "competition": m[5]}
+            for m in map(_played, fixtures) if m]
+    return sorted(rows, key=lambda r: r["date"], reverse=True)[:5]

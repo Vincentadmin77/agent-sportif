@@ -79,6 +79,15 @@ class ApiFootballProvider:
                                  ttl=10).get("response", [])
         return out
 
+    def head_to_head(self, team_a: int, team_b: int, last: int = 5) -> list[dict]:
+        """The last meetings of two teams (raw fixtures), all competitions."""
+        return self._get("/fixtures/headtohead", {"h2h": f"{team_a}-{team_b}", "last": last},
+                         ttl=86400).get("response", [])
+
+    def team_last(self, team_id: int, last: int = 5) -> list[dict]:
+        """A team's last played matches (raw fixtures), all competitions."""
+        return self._get("/fixtures", {"team": team_id, "last": last}, ttl=86400).get("response", [])
+
     def lineups(self, fixture_id: int | str) -> list[dict]:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
         return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=300).get("response", [])
