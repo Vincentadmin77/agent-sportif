@@ -4,6 +4,10 @@
     python scripts/agent_pass.py prematch --page P --out O [--goals] [--matin] FR1 ES1
     python scripts/agent_pass.py scores --page P --out O [--final] FR1
     python scripts/agent_pass.py live --page P --out O FR1 ES1  # matches under way (API-Football)
+    python scripts/agent_pass.py pronostic --page P --out O  # "Mon pronostic" tab again, no API call
+
+Every prematch pass and the final scores step also write pronostic/<day>.json for the "Mon pronostic"
+tab (the day's three best odds, a safe and a semi-safe ticket; sportai/services/pronostic.py).
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -42,6 +46,38 @@ def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None
     (Path(out) / "etat.json").write_text(json.dumps({"maj": now.isoformat(), "message": message}, ensure_ascii=False))
     (Path(out) / "manifest.json").write_text(json.dumps({"matchs": sorted(docs), "message": message}, ensure_ascii=False))
     print(json.dumps({"written": sorted(docs), "message": message}, ensure_ascii=False))
+
+
+def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datetime, passage: str,
+               day: str | None = None) -> str:
+    """Write out/pronostic/<day>.json from that day's priced bets (default today); returns its summary."""
+    from datetime import date
+
+    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.pronostic import build_pronostic, legs_from_db
+
+    day = day or f"{now.astimezone(LOCAL_TZ):%Y-%m-%d}"
+    prev = Path(page or "", "pronostic", f"{day}.json")
+    previous = json.loads(prev.read_text()) if page and prev.exists() else None
+    doc = build_pronostic(legs_from_db(db, date.fromisoformat(day)), {**_load_page(page), **docs},
+                          previous, now, passage, date.fromisoformat(day))
+    d = Path(out) / "pronostic"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{day}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+    return doc["message"]
+
+
+def _state_session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    return sessionmaker(bind=create_engine(f"sqlite:///file:{STATE_DB}?mode=ro&uri=true"))()
+
+
+def pronostic(page: str | None, out: str, now: datetime) -> None:
+    db = _state_session()
+    print(json.dumps({"pronostic": _pronostic(db, page, {}, out, now, "maj")}, ensure_ascii=False))
+    db.close()
 
 
 def plan(now: datetime, comps: list[str] | None = None) -> None:
@@ -112,6 +148,10 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
             new = build_match_docs(db, run, {**current, **docs})
             docs.update(new)
             fixtures += run.fixtures or []
+    try:
+        notes.append("pronostic: " + _pronostic(db, page, docs, out, now, "matin" if morning else "passage"))
+    except Exception as e:  # the tab is a bonus: never lose the pass for it
+        notes.append(f"pronostic unavailable ({str(e)[:120]})")
     db.close()
     try:
         docs.update(_lineups(comps, docs, fixtures, now))
@@ -178,6 +218,11 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
     current, docs = _load_page(page), {}
     for comp in comps:
         docs.update(apply_scores(odds.scores(comp, completed_too=final), current, now))
+    if final and STATE_DB.exists():
+        db = _state_session()
+        for day in sorted({d["jour"] for d in docs.values() if d.get("jour")}):  # a late final runs past midnight
+            print("pronostic:", _pronostic(db, page, docs, out, now, "resultats", day), file=sys.stderr)
+        db.close()
     _write(out, docs, f"scores mis à jour pour {len(docs)} match(s)", now)
     print("quota:", odds.last_quota, file=sys.stderr)
 
@@ -227,6 +272,9 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("plan")
     pl.add_argument("--competitions", nargs="+", choices=COMPETITIONS, help="only these (the page's choice)")
+    pr = sub.add_parser("pronostic")
+    pr.add_argument("--page")
+    pr.add_argument("--out", required=True)
     lv = sub.add_parser("live")
     lv.add_argument("competitions", nargs="+", choices=COMPETITIONS)
     lv.add_argument("--page")
@@ -248,6 +296,8 @@ def main() -> None:
         plan(now, a.competitions)
     elif a.cmd == "prematch":
         prematch(a.competitions, a.page, a.out, now, a.goals, a.matin)
+    elif a.cmd == "pronostic":
+        pronostic(a.page, a.out, now)
     elif a.cmd == "live":
         live(a.competitions, a.page, a.out, now)
     else:

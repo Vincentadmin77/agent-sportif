@@ -6,6 +6,11 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 
 ## Rythme (règle du propriétaire)
 - Uniquement les matchs du jour (heure de Paris).
+- **Onglet « Mon pronostic »** : chaque `prematch` (et `scores --final`) écrit aussi `OUT/pronostic/<jour>.json`, à écrire
+  dans la collection `pronostic` (doc_id = le jour, version gardée par `mirror_sync.py ... pronostic/<jour>=<version>`).
+  Les 3 meilleures cotes du jour, un ticket safe et un ticket semi safe (`sportai/services/pronostic.py`) ; ticket vide
+  si rien de correct ; un ticket est figé dès que son premier match commence. `agent_pass.py pronostic --page P --out O`
+  le refait sans appel d'API.
 - **Analyse du matin à 8 h** : tous les matchs du jour d'un coup (`agent_pass.py prematch --matin ...`, 1 crédit par championnat,
   sans `--goals`), pour que la page soit remplie à l'ouverture. Chaque match reçoit un `scenario` : buts attendus de chaque
   équipe, chance que chacune marque au moins un but (avantage du terrain du championnat compris).

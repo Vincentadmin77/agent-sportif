@@ -2,7 +2,7 @@
 
     python scripts/mirror_sync.py OUT_DIR doc_id=version ...
 
-Copies OUT_DIR/matchs/*.json into /tmp/claude-0/mirror/matchs and records each document's new
+Copies OUT_DIR/matchs/*.json (and pronostic/*.json) into /tmp/claude-0/mirror and records each document's new
 version (as the ArtifactData write returned it) in /tmp/claude-0/versions.json, so the next
 live_cycle.sh neither reverts what that pass published nor pins a stale version.
 """
@@ -19,6 +19,9 @@ def main(out: str, pins: list[str]) -> None:
     MIRROR.mkdir(parents=True, exist_ok=True)
     for p in sorted(Path(out, "matchs").glob("*.json")):
         shutil.copy(p, MIRROR / p.name)
+    for p in sorted(Path(out, "pronostic").glob("*.json")):  # the "Mon pronostic" tab, kept for the next pass
+        (MIRROR.parent / "pronostic").mkdir(exist_ok=True)
+        shutil.copy(p, MIRROR.parent / "pronostic" / p.name)
     v = json.loads(VERSIONS.read_text()) if VERSIONS.exists() else {}
     for pin in pins:
         doc, _, ver = pin.partition("=")
