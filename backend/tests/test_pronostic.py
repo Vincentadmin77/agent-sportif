@@ -78,3 +78,17 @@ def test_bankroll_and_bilan():
     assert bilan["par_type"]["score"]["non_valides"] == 1 and bilan["global"]["valides"] >= 2
     assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
     assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13
+
+
+def test_tickets_fixed_45_min_before_then_bonus():
+    first = build_pronostic(LEGS, {}, None, NOW, "matin")
+    assert not any(t.get("fige") for t in first["tickets"].values())
+    m45 = build_pronostic(LEGS, {}, first, NOW + timedelta(hours=3, minutes=15), "m45")
+    assert all(t["fige"] for t in m45["tickets"].values()) and m45["tickets"]["safe"]["message"].startswith("Ticket figé")
+    # Better bets found later do not change the fixed tickets: they make bonus tickets, apart.
+    later = [*LEGS, leg("m-n", "Victoire m", 1.95, 0.80, 0.75, hours=8), leg("o-p", "Victoire o", 1.60, 0.78, 0.74, hours=8)]
+    doc = build_pronostic(later, {}, m45, NOW + timedelta(hours=3, minutes=30), "h3")
+    assert all(doc["tickets"][k]["jambes"] == m45["tickets"][k]["jambes"] for k in doc["tickets"])
+    safe = doc["bonus"]["safe"]
+    assert {l["match"] for l in safe[-1]["jambes"]} == {"m-n", "o-p"} and not safe[-1]["fige"]
+    assert safe[-1]["titre"] == "Ticket bonus safe" and all(b["fige"] for b in safe[:-1])

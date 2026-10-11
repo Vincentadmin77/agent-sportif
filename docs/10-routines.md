@@ -11,7 +11,7 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   Les 3 meilleures cotes du jour et trois tickets (`sportai/services/pronostic.py`), règles de Vincent du 11/10 :
   safe = cote totale > 1,50 avec la plus forte probabilité ; semi safe = 2 paris au plus, cote > 1,90 ; fun = 3 paris au
   plus, cote > 2,50 (à chaque fois la combinaison la plus probable, différente des tickets précédents). Ticket vide
-  si rien de correct ; un ticket est figé dès que son premier match commence. `agent_pass.py pronostic --page P --out O`
+  si rien de correct ; un ticket est figé au passage 45 min avant son premier match (`fige`), les trouvailles suivantes vont dans `bonus` (listes par type). `agent_pass.py pronostic --page P --out O`
   le refait sans appel d'API. Il écrit aussi `OUT/stats/bilan.json` (collection `stats`, doc `bilan`) : onglet « Résultats et
   statistiques » (pronostics validés / non validés, taux global et par type) et bankroll (`sportai/services/bilan.py`).
   Bankroll : réglage `reglages/bankroll` (départ, objectif 100 000, mise par ticket : safe 3 %, semi safe 2 %, fun 1 % de
