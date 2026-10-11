@@ -67,7 +67,9 @@ def test_bankroll_and_bilan():
             "2026-10-11-c-d": {"statut": "termine", "score": "1 - 1", "domicile": "c", "exterieur": "d"},
             "2026-10-11-e-f": {"statut": "termine", "score": "0 - 1", "domicile": "e", "exterieur": "f"}}
     settle_score(page["2026-10-11-a-b"], 2, 0)
-    assert page["2026-10-11-a-b"]["score_estime"]["resultat"] == "rate"
+    # judged on the outcome: 1-0 estimated, 2-0 final is a home win called right, not the exact score
+    assert page["2026-10-11-a-b"]["score_estime"]["resultat"] == "reussi"
+    assert page["2026-10-11-a-b"]["score_estime"]["score_exact"] is False
     day = build_pronostic(LEGS, page, first, NOW + timedelta(hours=6), "resultats")
     assert day["tickets"]["safe"]["mise"] == 3.0  # frozen with its stake
     bank, history = replay({"2026-10-11": day}, settings)
@@ -75,7 +77,7 @@ def test_bankroll_and_bilan():
     assert [h["gain"] for h in history] == [2.1, -2.0, -1.0] and bank == 99.1
     bilan = build_bilan(page, {"2026-10-11": day}, settings, NOW)
     assert bilan["bankroll"]["actuelle"] == 99.1 and bilan["par_type"]["safe"]["taux"] == 1.0
-    assert bilan["par_type"]["score"]["non_valides"] == 1 and bilan["global"]["valides"] >= 2
+    assert bilan["par_type"]["score"]["valides"] == 1 and bilan["global"]["valides"] >= 2
     assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
     assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13
 

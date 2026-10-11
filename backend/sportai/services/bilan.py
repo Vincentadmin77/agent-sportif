@@ -99,7 +99,9 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
             items.append({"jour": m.get("jour"), "type": "Score estimé", "categorie": "score",
                           "libelle": f"{match} : {est['score']} (réel {m.get('score')})", "cote": None,
                           "proba": est.get("proba"), "match_id": key, "valide": est["resultat"] == "reussi",
-                          "explication": f"Score estimé {est['score']}, score final {m.get('score')}."})
+                          "explication": f"Score estimé {est['score']}, score final {m.get('score')} : issue "
+                                         + ("juste" if est["resultat"] == "reussi" else "fausse")
+                                         + (", score exact trouvé." if est.get("score_exact") else ".")})
     items.sort(key=lambda i: (i["jour"] or "", i["type"]), reverse=True)
     bank, history = replay(pronostics, settings)
     kinds = {}

@@ -155,11 +155,18 @@ def likely_score(f: dict) -> dict | None:
     return {"score": f"{hg} - {ag}", "domicile": hg, "exterieur": ag, "proba": p}
 
 
+def outcome(hg: int, ag: int) -> str:
+    return "domicile" if hg > ag else "exterieur" if ag > hg else "nul"
+
+
 def settle_score(doc: dict, hg: int, ag: int) -> None:
-    """Mark the estimated final score right ("reussi") or wrong ("rate") once the match is over."""
+    """Judge the estimated final score on the outcome (home win, draw, away win), not the exact score (owner,
+    2026-10-11: estimated 1-1, final 0-0 is a draw called right). The exact score is recorded apart."""
     if doc.get("score_estime"):
         est = doc["score_estime"]
-        doc["score_estime"] = {**est, "resultat": "reussi" if (est["domicile"], est["exterieur"]) == (hg, ag) else "rate"}
+        right = outcome(est["domicile"], est["exterieur"]) == outcome(hg, ag)
+        doc["score_estime"] = {**est, "resultat": "reussi" if right else "rate",
+                               "score_exact": (est["domicile"], est["exterieur"]) == (hg, ag)}
 
 
 def bet_label(market: str, selection: str, home: str, away: str) -> str:
