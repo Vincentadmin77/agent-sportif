@@ -19,7 +19,7 @@ def main(out: str, pins: list[str]) -> None:
     MIRROR.mkdir(parents=True, exist_ok=True)
     for p in sorted(Path(out, "matchs").glob("*.json")):
         shutil.copy(p, MIRROR / p.name)
-    for sub in ("pronostic", "stats"):  # "Mon pronostic" and "Résultats et statistiques", kept for the next pass
+    for sub in ("pronostic", "stats", "joueur"):  # "Mon pronostic" and "Résultats et statistiques", kept for the next pass
         for p in sorted(Path(out, sub).glob("*.json")):
             (MIRROR.parent / sub).mkdir(exist_ok=True)
             shutil.copy(p, MIRROR.parent / sub / p.name)

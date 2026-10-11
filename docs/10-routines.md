@@ -16,7 +16,10 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   statistiques » (pronostics validés / non validés, taux global et par type) et bankroll (`sportai/services/bilan.py`).
   Bankroll : réglage `reglages/bankroll` (départ, objectif 100 000, mise par ticket : safe 3 %, semi safe 2 %, fun 1 % de
   la bankroll du début de journée) ; le `--page` donné au passage doit contenir `matchs`, `pronostic`, `stats` et
-  `reglages` (ArtifactData `list` de chaque collection avec le même `out_dir`), sinon les tickets figés et les mises sont perdus.
+  `reglages` et `joueur` (ArtifactData `list` de chaque collection avec le même `out_dir`), sinon les tickets figés et les mises sont perdus.
+- **Agent joueur** (`sportai/services/joueur.py`, fil « Agent joueur pro ») : à chaque écriture de « Mon pronostic », il décide
+  quels tickets jouer et combien miser (réglage `reglages/joueur`). Il écrit `OUT/joueur/<jour>.json` et `OUT/joueur/etat.json`,
+  à écrire dans la collection `joueur` (doc_id = nom du fichier). Les mises des tickets et la bankroll de stats/bilan viennent de lui.
 - **Score final estimé** : chaque match reçoit `score_estime` (score le plus probable du modèle Dixon-Coles et sa probabilité),
   marqué `resultat` « reussi » ou « rate » quand le match se termine (direct ou scores).
 - **Modèle de buts du jour** : avant l'analyse du matin, `agent_pass.py goals-refresh` (≈ 6 requêtes API-Football, ~1 min).

@@ -74,7 +74,19 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
                           date.fromisoformat(day))
     bank_at_start, _ = replay({d: v for d, v in days.items() if d < day}, settings)
     days[day] = apply_stakes(doc, settings, bank_at_start)
-    for sub, name, body in (("pronostic", day, doc), ("stats", "bilan", build_bilan(matchs, days, settings, now))):
+    etat = None
+    try:  # "Agent joueur pro": decides which tickets / top 3 picks to play and the stakes (0 when it passes)
+        from sportai.services.joueur import ticket_stakes
+        from sportai.services.joueur import write as write_player
+
+        ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now))
+        etat = json.loads((Path(out) / "joueur" / "etat.json").read_text())
+    except Exception as e:  # the player is a bonus: never lose the pass for it
+        print(f"joueur unavailable ({str(e)[:160]})", file=sys.stderr)
+    bilan = build_bilan(matchs, days, settings, now)
+    if etat and isinstance(etat.get("bankroll"), dict):  # the bankroll follows the player's actual bets
+        bilan["bankroll"].update({k: v for k, v in etat["bankroll"].items() if k in ("actuelle", "historique")})
+    for sub, name, body in (("pronostic", day, doc), ("stats", "bilan", bilan)):
         (Path(out) / sub).mkdir(parents=True, exist_ok=True)
         (Path(out) / sub / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
     return doc["message"]

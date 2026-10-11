@@ -43,7 +43,7 @@ def replay(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dic
             r = _ticket_return(t) if t.get("jambes") else None
             if r is None:
                 continue
-            stake = t.get("mise") or round(start * settings["mises"][key], 2)
+            stake = t["mise"] if "mise" in t else round(start * settings["mises"][key], 2)
             bank = round(bank + stake * r, 2)
             history.append({"jour": day, "ticket": t.get("titre", key), "mise": stake,
                             "cote": t.get("cote_totale"), "resultat": t["resultat"], "gain": round(stake * r, 2),
