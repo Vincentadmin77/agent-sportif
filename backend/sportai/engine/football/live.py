@@ -34,8 +34,11 @@ class LiveState:
 @dataclass
 class LiveConfig:
     match_length: float = 95.0  # 90 + typical stoppage time
-    red_card_own_factor: float = 0.67  # scoring rate of the side down a player
-    red_card_opp_factor: float = 1.25  # scoring rate of its opponent
+    # Red-card multipliers on the remaining scoring rate, estimated on 424 matches
+    # (top 5 leagues, 2024-25 and 2025-26): 0.49 [0.41-0.58] and 1.60 [1.47-1.74].
+    # See docs/12-cartons-rouges.md. Previous uncalibrated values: 0.67 / 1.25.
+    red_card_own_factor: float = 0.49  # scoring rate of the side down a player
+    red_card_opp_factor: float = 1.60  # scoring rate of its opponent
     prior_strength_minutes: float = 60.0  # weight of the pre-match rate, in minutes of play
     max_goals_remaining: int = 10
     max_staleness_seconds: float = 60.0
