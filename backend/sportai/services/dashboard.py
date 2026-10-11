@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session as DB
 
 from sportai.connectors.teams import normalise, same_team
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Selection
+from sportai.services.lineups import scenario_with_squads
 from sportai.services.position import position
 from sportai.services.prematch import LOCAL_TZ
 
@@ -362,7 +363,7 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             doc["proba_1x2"] = {"domicile": p["1x2:home"], "nul": p["1x2:draw"], "exterieur": p["1x2:away"]}
         text = scenario(f, doc["domicile"], doc["exterieur"])
         if text:
-            doc["scenario"] = text
+            doc["scenario"] = scenario_with_squads({**doc, "scenario": text})  # keep absentees and XIs
         doc["verdict"] = "selection" if selections else "aucune"
         pos = position(doc)
         if pos:

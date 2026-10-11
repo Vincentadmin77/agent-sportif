@@ -93,9 +93,13 @@ class ApiFootballProvider:
         """A team's last played matches (raw fixtures), all competitions."""
         return self._get("/fixtures", {"team": team_id, "last": last}, ttl=86400).get("response", [])
 
-    def lineups(self, fixture_id: int | str) -> list[dict]:
+    def lineups(self, fixture_id: int | str, ttl: float = 300) -> list[dict]:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
-        return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=300).get("response", [])
+        return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=ttl).get("response", [])
+
+    def injuries(self, fixture_id: int | str) -> list[dict]:
+        """Players out or doubtful for one fixture (raw: player {id, name, type, reason}, team)."""
+        return self._get("/injuries", {"fixture": fixture_id}, ttl=3600).get("response", [])
 
     def live_odds(self, fixture_id: int | str) -> list[dict]:
         """In-play odds of one fixture (raw bets: name, values), [] when the feed has none or fails."""

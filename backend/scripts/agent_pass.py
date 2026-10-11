@@ -208,8 +208,8 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
     """Official line-ups, notable absentees and goalscorer estimates for the matches close to kick-off."""
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
-    from sportai.services.lineups import SCORER_NO_ODDS, SCORER_WARNING, lineup_block, merge_players
-    from sportai.services.live_page import find_doc, pre_match_rates
+    from sportai.services.lineups import scenario_with_squads
+    from sportai.services.live_page import find_doc
     from sportai.services.prematch import LOCAL_TZ
 
     soon = {k: d for k, d in docs.items()
@@ -225,26 +225,55 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
         if not key:
             continue
         doc = dict(soon[key])
-        teams = {t["team"]["id"]: t for t in api.lineups(fx["fixture"]["id"])}
-        if len(teams) < 2:
-            doc["compositions"] = {"attente": "Compositions officielles pas encore publiées."}
-            out[key] = doc
-            continue
-        season = fx["league"]["season"]
-        pre = pre_match_rates(fixtures, doc["domicile"], doc["exterieur"])
-        xg = pre[0] if pre else (None, None)
-        blocks, scorers = {}, []
-        for side, team, team_xg in (("domicile", fx["teams"]["home"], xg[0]), ("exterieur", fx["teams"]["away"], xg[1])):
-            pages = [api.team_players(team["id"], s) for s in (season, season - 1)]
-            block = lineup_block(teams[team["id"]], merge_players(pages, season), team_xg)
-            scorers += [{**p, "equipe": doc[side]} for p in block.pop("buteurs", [])]
-            blocks[side] = block
-        doc["compositions"] = blocks
-        if scorers:
-            doc["buteurs"] = {"avertissement": SCORER_WARNING, "raison": SCORER_NO_ODDS,
-                              "joueurs": sorted(scorers, key=lambda p: -p["proba"])[:8]}
+        _fill_lineups(api, fx, doc, fixtures)
+        doc["scenario"] = scenario_with_squads(doc)
         out[key] = doc
     return out
+
+
+def _fill_lineups(api, fx: dict, doc: dict, fixtures: list[dict], ttl: float = 300) -> bool:
+    """Official line-ups, notable absentees and goalscorer estimates of one fixture into its page document."""
+    from sportai.services.lineups import fill_compositions
+    from sportai.services.live_page import pre_match_rates
+
+    pre = pre_match_rates(fixtures, doc["domicile"], doc["exterieur"])
+    return fill_compositions(doc, fx, api.lineups(fx["fixture"]["id"], ttl=ttl), api.team_players,
+                             pre[0] if pre else None)
+
+
+def _squad_news(api, fx: dict, doc: dict, fixtures: list[dict], now: datetime) -> bool:
+    """Before kick-off: the day's absentees (once a day) and the official line-ups (polled from 75 min before
+    kick-off until both are out), then the scenario rebuilt with them. Returns True when the document changed."""
+    from sportai.services.lineups import absentees, lineup_published, regular_starters, scenario_with_squads
+    from sportai.services.prematch import LOCAL_TZ
+
+    changed = False
+    today = f"{now.astimezone(LOCAL_TZ).date():%Y-%m-%d}"
+    ko = fx["fixture"].get("timestamp")
+    ko = datetime.fromtimestamp(ko, timezone.utc) if ko else None
+    if ko and now < ko <= now + timedelta(minutes=75) and not lineup_published(doc):
+        before = doc.get("compositions")
+        try:
+            _fill_lineups(api, fx, doc, fixtures, ttl=120)
+            changed = doc.get("compositions") != before
+        except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
+            print(f"line-ups unavailable for {doc.get('domicile')} ({str(e)[:120]})", file=sys.stderr)
+    if (doc.get("absents") or {}).get("jour") != today:
+        try:
+            season, league = fx["league"]["season"], fx["league"].get("id")
+            regulars = {t["id"]: regular_starters(api.team_players(t["id"], season), t["id"], league)
+                        for t in (fx["teams"]["home"], fx["teams"]["away"])}
+            doc["absents"] = {"jour": today, **absentees(api.injuries(fx["fixture"]["id"]), fx, regulars)}
+            changed = True
+        except Exception as e:  # noqa: BLE001 - tried once a day only, so a failure does not eat the quota
+            doc["absents"] = {"jour": today, "indisponible": True}
+            changed = True
+            print(f"absents unavailable for {doc.get('domicile')} ({str(e)[:120]})", file=sys.stderr)
+    text = scenario_with_squads(doc)
+    if text != doc.get("scenario"):
+        doc["scenario"] = text
+        changed = True
+    return changed
 
 
 def scores(comps: list[str], page: str | None, out: str, final: bool, now: datetime) -> None:
@@ -311,6 +340,10 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
                               "exterieur": recent_form(api.team_last(a), a)}}
             except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
                 print(f"forme unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
+        if key and short in ("NS", "TBD"):  # absentees and starting XIs, a few requests per match
+            doc = dict(current[key])
+            if _squad_news(api, fx, doc, fixtures, now):
+                current[key] = docs[key] = doc
         if short in ("NS", "TBD", "PST", "CANC"):
             continue
         if not key or current[key].get("statut") == "termine":

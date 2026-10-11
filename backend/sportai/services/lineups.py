@@ -99,3 +99,124 @@ def lineup_block(team: dict, records: dict[int, PlayerRecord], team_xg: float | 
     if team_xg is not None:
         block["buteurs"] = scorer_probabilities(team_xg, starters, records)
     return block
+
+
+LINEUP_WAIT = "Compositions officielles pas encore publiées."
+# A player is a "titulaire habituel" when he started at least half of his team's league matches this season:
+# below that he is a rotation player whose absence says little about the side's strength.
+REGULAR_SHARE = 0.5
+
+
+def fill_compositions(doc: dict, fx: dict, lineups: list[dict], pages_for, xg: tuple | None) -> bool:
+    """Write the official line-ups (and goalscorer estimates) of an API-Football fixture into a page document.
+
+    lineups: /fixtures/lineups response; pages_for(team_id, season) -> /players response (list of items);
+    xg: each side's expected goals from the match model, or None. While both line-ups are not out, marks the
+    document as waiting, makes no player request and returns False."""
+    teams = {t["team"]["id"]: t for t in lineups}
+    home, away = fx["teams"]["home"], fx["teams"]["away"]
+    if home["id"] not in teams or away["id"] not in teams:
+        doc["compositions"] = {"attente": LINEUP_WAIT}
+        return False
+    season = fx["league"]["season"]
+    xg = xg or (None, None)
+    blocks, scorers = {}, []
+    for side, team, team_xg in (("domicile", home, xg[0]), ("exterieur", away, xg[1])):
+        pages = [pages_for(team["id"], s) for s in (season, season - 1)]
+        block = lineup_block(teams[team["id"]], merge_players(pages, season), team_xg)
+        scorers += [{**p, "equipe": doc.get(side) or team.get("name")} for p in block.pop("buteurs", [])]
+        blocks[side] = block
+    doc["compositions"] = blocks
+    if scorers:
+        doc["buteurs"] = {"avertissement": SCORER_WARNING, "raison": SCORER_NO_ODDS,
+                          "joueurs": sorted(scorers, key=lambda p: -p["proba"])[:8]}
+    return True
+
+
+def lineup_published(doc: dict) -> bool:
+    c = doc.get("compositions") or {}
+    return bool(c) and "attente" not in c
+
+
+def regular_starters(players: list[dict], team_id: int, league_id: int | None) -> set[int]:
+    """Ids of the players who started at least REGULAR_SHARE of the team's league matches this season.
+
+    players: /players?team=&season= (current season). The team's matches played is taken as the highest
+    number of appearances of one of its players in that league (someone, usually the goalkeeper, plays
+    every match): at worst a slight underestimate, never invented."""
+    starts: dict[int, int] = {}
+    played = 0
+    for item in players:
+        for s in item.get("statistics", []):
+            if (s.get("team") or {}).get("id") not in (None, team_id):
+                continue
+            if league_id is not None and (s.get("league") or {}).get("id") not in (None, league_id):
+                continue
+            g = s.get("games") or {}
+            played = max(played, g.get("appearences") or 0)
+            pid = item["player"]["id"]
+            starts[pid] = starts.get(pid, 0) + (g.get("lineups") or 0)
+    if played == 0:
+        return set()
+    return {pid for pid, n in starts.items() if n / played >= REGULAR_SHARE}
+
+
+_REASONS = (("suspen", "suspendu"), ("card", "suspendu"), ("injur", "blessure"), ("knock", "blessure"),
+            ("muscle", "blessure"), ("illness", "malade"), ("virus", "malade"), ("personal", "raisons personnelles"),
+            ("international", "en sélection"))
+
+
+def absence_reason(player: dict) -> str:
+    """API-Football /injuries entry -> plain French reason ("absent" when the provider's reason is unknown)."""
+    if player.get("type") == "Questionable":
+        return "incertain"
+    low = (player.get("reason") or "").lower()
+    return next((fr for word, fr in _REASONS if word in low), "absent")
+
+
+def absentees(injuries: list[dict], fx: dict, regulars: dict[int, set[int]]) -> dict:
+    """{"domicile": [...], "exterieur": [...]} from /injuries?fixture=ID, regular starters first.
+
+    regulars: team id -> ids of its regular starters (regular_starters)."""
+    out: dict[str, list] = {"domicile": [], "exterieur": []}
+    sides = {fx["teams"]["home"]["id"]: "domicile", fx["teams"]["away"]["id"]: "exterieur"}
+    seen = set()
+    for it in injuries:
+        tid, p = (it.get("team") or {}).get("id"), it.get("player") or {}
+        if tid not in sides or not p.get("name") or (tid, p.get("id")) in seen:
+            continue
+        seen.add((tid, p.get("id")))
+        out[sides[tid]].append({"joueur": p["name"], "raison": absence_reason(p), "detail": p.get("reason"),
+                                "titulaire_habituel": p.get("id") in regulars.get(tid, set())})
+    for side in out:
+        out[side].sort(key=lambda a: not a["titulaire_habituel"])
+    return out
+
+
+SQUAD_PREFIXES = ("Absents chez ", "Onze de départ publié")
+
+
+def scenario_with_squads(doc: dict) -> str | None:
+    """The match scenario followed by the absentees and the starting XIs, rebuilt from the document's data:
+    whatever an earlier pass appended is replaced, never repeated."""
+    base = doc.get("scenario") or ""
+    cuts = [i for i in (base.find(p) for p in SQUAD_PREFIXES) if i >= 0]
+    base = (base[:min(cuts)] if cuts else base).strip()
+    extra = []
+    for side in ("domicile", "exterieur"):
+        missing = (doc.get("absents") or {}).get(side) or []
+        if missing:
+            n = sum(a["titulaire_habituel"] for a in missing)
+            names = ", ".join(f"{a['joueur']} ({a['raison']})" for a in missing)
+            tail = "" if not n else ", dont 1 titulaire habituel" if n == 1 else f", dont {n} titulaires habituels"
+            extra.append(f"Absents chez {doc.get(side, side)} : {names}{tail}.")
+    if lineup_published(doc):
+        parts = []
+        for side in ("domicile", "exterieur"):
+            b = doc["compositions"].get(side) or {}
+            if b.get("titulaires"):
+                form = f" ({b['formation']})" if b.get("formation") else ""
+                parts.append(f"{doc.get(side, side)}{form} : {', '.join(b['titulaires'])}")
+        if parts:
+            extra.append("Onze de départ publié. " + " ; ".join(parts) + ".")
+    return " ".join(([base] if base else []) + extra) or None
