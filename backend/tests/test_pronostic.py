@@ -72,7 +72,7 @@ def test_bankroll_and_bilan():
     # safe a-b won at 1.70 (+2.10), semi a-b + c-d lost (-2.00), fun e-f won at 2.80 (+1.80)
     assert [h["gain"] for h in history] == [2.1, -2.0, 1.8] and bank == 101.9
     bilan = build_bilan(page, {"2026-10-11": day}, settings, NOW)
-    assert bilan["bankroll"]["actuelle"] == 101.9 and bilan["par_type"]["safe"]["taux"] == 1.0
+    assert "bankroll" not in bilan and bilan["par_type"]["safe"]["taux"] == 1.0
     assert bilan["par_type"]["score"]["non_valides"] == 1 and bilan["global"]["valides"] >= 2
     assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
     assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13

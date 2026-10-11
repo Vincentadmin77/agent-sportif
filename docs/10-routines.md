@@ -13,9 +13,9 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   plus, cote > 2,50 (à chaque fois la combinaison la plus probable, différente des tickets précédents). Ticket vide
   si rien de correct ; un ticket est figé dès que son premier match commence. `agent_pass.py pronostic --page P --out O`
   le refait sans appel d'API. Il écrit aussi `OUT/stats/bilan.json` (collection `stats`, doc `bilan`) : onglet « Résultats et
-  statistiques » (pronostics validés / non validés, taux global et par type) et bankroll (`sportai/services/bilan.py`).
-  Bankroll : réglage `reglages/bankroll` (départ, objectif 100 000, mise par ticket : safe 3 %, semi safe 2 %, fun 1 % de
-  la bankroll du début de journée) ; le `--page` donné au passage doit contenir `matchs`, `pronostic`, `stats` et
+  statistiques » (pronostics validés / non validés, taux global et par type, `sportai/services/bilan.py`).
+  Bankroll et mises : calculées par la page elle-même (quart de Kelly plafonné, réglage `reglages/bankroll` modifié par
+  Vincent) ; l'agent n'écrit ni `mise` ni ce réglage. Le `--page` donné au passage doit contenir `matchs`, `pronostic`, `stats` et
   `reglages` (ArtifactData `list` de chaque collection avec le même `out_dir`), sinon les tickets figés et les mises sont perdus.
 - **Score final estimé** : chaque match reçoit `score_estime` (score le plus probable du modèle Dixon-Coles et sa probabilité),
   marqué `resultat` « reussi » ou « rate » quand le match se termine (direct ou scores).

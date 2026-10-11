@@ -2,8 +2,8 @@
 
 Every settled forecast of every day: the tickets and the three best odds of "Mon pronostic", the
 selections and the estimated final score of each match, each marked right or wrong, with the hit rate
-overall and per kind. The bankroll starts from the page's setting (reglages/bankroll) and follows the
-tickets: each ticket stakes a fixed share of the bankroll as it stood at the start of its day.
+overall and per kind. The page computes the stakes and the bankroll itself (quarter Kelly, capped, from
+reglages/bankroll); replay() and apply_stakes() give the fixed-share alternative, unused for now.
 """
 
 from __future__ import annotations
@@ -99,7 +99,6 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                           "libelle": f"{match} : {est['score']} (réel {m.get('score')})", "cote": None,
                           "proba": est.get("proba"), "valide": est["resultat"] == "reussi"})
     items.sort(key=lambda i: (i["jour"] or "", i["type"]), reverse=True)
-    bank, history = replay(pronostics, settings)
     kinds = {}
     for key, label in (("safe", "Ticket safe"), ("semi_safe", "Ticket semi safe"), ("fun", "Ticket fun"),
                        ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés")):
@@ -107,8 +106,5 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     return {
         "maj": now.isoformat(), "global": _rate(items), "par_type": kinds,
         "valides": [i for i in items if i["valide"]], "non_valides": [i for i in items if not i["valide"]],
-        "bankroll": {"depart": settings["depart"], "objectif": settings["objectif"], "actuelle": bank,
-                     "progression": round(bank / settings["objectif"], 6), "mises": settings["mises"],
-                     "historique": history},
         "note": NOTE,
     }
