@@ -118,3 +118,15 @@ def test_live_odds_checked_against_the_match():
     assert all(r["statut"] != "opportunite" for r in late)
     calm = {r["pari"]: r for r in live_odds_rows(m, odds, "Côme", "Roma", 70, [0, 0], {})}
     assert calm["Victoire Roma"]["statut"] == "opportunite"
+
+
+def test_fixture_identity_gives_crests_and_round():
+    from sportai.services.live_page import fixture_identity
+    fx = {"teams": {"home": {"id": 85, "logo": "https://media.api-sports.io/football/teams/85.png"},
+                    "away": {"id": 91, "logo": "https://media.api-sports.io/football/teams/91.png"}},
+          "league": {"logo": "https://media.api-sports.io/football/leagues/61.png", "round": "Regular Season - 8"}}
+    assert fixture_identity(fx) == {"id_domicile": 85, "id_exterieur": 91,
+                                    "logo_domicile": "https://media.api-sports.io/football/teams/85.png",
+                                    "logo_exterieur": "https://media.api-sports.io/football/teams/91.png",
+                                    "logo_competition": "https://media.api-sports.io/football/leagues/61.png",
+                                    "journee": 8}

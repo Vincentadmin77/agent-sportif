@@ -94,3 +94,14 @@ def test_tickets_fixed_45_min_before_then_bonus():
     safe = doc["bonus"]["safe"]
     assert {l["match"] for l in safe[-1]["jambes"]} == {"m-n", "o-p"} and not safe[-1]["fige"]
     assert safe[-1]["titre"] == "Ticket bonus safe" and all(b["fige"] for b in safe[:-1])
+
+
+def test_match_odds_1x2_prefers_winamax():
+    from types import SimpleNamespace as R
+    from sportai.services.dashboard import match_odds_1x2
+    rows = [R(event_id="m", bookmaker=b, selection=s, odds=o) for b, s, o in
+            [("betclic_fr", "home", 2.25), ("betclic_fr", "draw", 3.55), ("betclic_fr", "away", 2.9),
+             ("winamax_fr", "home", 2.2), ("winamax_fr", "draw", 3.6), ("winamax_fr", "away", 2.8),
+             ("pmu_fr", "home", 2.2)]]
+    assert match_odds_1x2(rows) == {"m": {"domicile": 2.2, "nul": 3.6, "exterieur": 2.8, "bookmaker": "Winamax"}}
+    assert match_odds_1x2(rows[:3])["m"]["bookmaker"] == "Betclic"

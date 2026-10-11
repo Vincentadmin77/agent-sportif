@@ -8,6 +8,7 @@ updated with in-play xG). Observations only: nothing here is a selection.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 import numpy as np
@@ -208,3 +209,14 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
         direct["sans_modele"] = "Pas d'analyse d'avant-match pour ce match : score et statistiques seulement."
     doc["direct"] = direct
     return doc
+
+
+def fixture_identity(fx: dict) -> dict:
+    """Team ids, crests, competition logo and round of an API-Football fixture, for the page."""
+    out = {"id_domicile": fx["teams"]["home"].get("id"), "id_exterieur": fx["teams"]["away"].get("id"),
+           "logo_domicile": fx["teams"]["home"].get("logo"), "logo_exterieur": fx["teams"]["away"].get("logo"),
+           "logo_competition": (fx.get("league") or {}).get("logo")}
+    m = re.search(r"(\d+)\s*$", str((fx.get("league") or {}).get("round") or ""))
+    if m:
+        out["journee"] = int(m.group(1))
+    return {k: v for k, v in out.items() if v is not None}

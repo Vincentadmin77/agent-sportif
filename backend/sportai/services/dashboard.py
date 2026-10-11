@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from sportai.connectors.teams import normalise, same_team
-from sportai.db.models import AnalysisRun, CandidateRow, Selection
+from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Selection
 from sportai.services.prematch import LOCAL_TZ
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
@@ -238,6 +238,26 @@ def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | No
     return f"{bet} : {why}."
 
 
+BOOK_NAMES = {"winamax_fr": "Winamax", "betclic_fr": "Betclic", "unibet_fr": "Unibet", "pmu_fr": "PMU",
+              "netbet_fr": "NetBet"}
+
+
+def match_odds_1x2(rows) -> dict[str, dict]:
+    """The 1X2 odds of each match of a run, Winamax first, else the first bookmaker quoting all three."""
+    books: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        books.setdefault(r.event_id, {}).setdefault(r.bookmaker, {})[r.selection] = r.odds
+    out = {}
+    for match, by_book in books.items():
+        full = {b: o for b, o in by_book.items() if {"home", "draw", "away"} <= o.keys()}
+        if full:
+            b = "winamax_fr" if "winamax_fr" in full else sorted(full)[0]
+            o = full[b]
+            out[match] = {"domicile": o["home"], "nul": o["draw"], "exterieur": o["away"],
+                          "bookmaker": BOOK_NAMES.get(b, b)}
+    return out
+
+
 def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict[str, dict]:
     """Documents to write for one completed pre-match run, merged into the page's current documents."""
     out: dict[str, dict] = {}
@@ -245,6 +265,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
     today = started.astimezone(LOCAL_TZ).date()
     cands = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id)))
     sels = {s.candidate_id: s for s in db.scalars(select(Selection).where(Selection.run_id == run.id))}
+    odds_1x2 = match_odds_1x2(db.scalars(select(OddsObservation).where(OddsObservation.run_id == run.id,
+                                                                       OddsObservation.market == "1x2")))
     for f in run.fixtures or []:
         ko = datetime.fromisoformat(f["kickoff"])
         if ko.astimezone(LOCAL_TZ).date() != today:
@@ -265,6 +287,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if reason and reason.startswith("more than"):
             out[key] = doc  # listed, analysed at a later pass
             continue
+        if f["match_id"] in odds_1x2:
+            doc["cotes_1x2"] = odds_1x2[f["match_id"]]
         which = pass_name(started, ko)
         doc["passages"] = {**(doc.get("passages") or {}), which: started.isoformat()}
         if reason:

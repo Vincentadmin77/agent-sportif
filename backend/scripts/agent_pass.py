@@ -258,7 +258,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
 
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
-    from sportai.services.live_page import FINISHED, find_doc, live_doc, pre_match_rates, stats_by_side
+    from sportai.services.live_page import FINISHED, find_doc, fixture_identity, live_doc, pre_match_rates, stats_by_side
     from sportai.services.prematch import LOCAL_TZ
 
     api = ApiFootballProvider(get_settings().api_football_key)
@@ -277,10 +277,13 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     raw = [(day, fx) for day in sorted(days) for fx in api.fixtures_on(comps, day)]
     for day, fx in raw:
         short = fx["fixture"]["status"]["short"]
-        if short in ("NS", "TBD", "PST", "CANC"):
-            continue
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
         key = find_doc(current, f"{day:%Y-%m-%d}", home, away)
+        ident = fixture_identity(fx)
+        if key and any(current[key].get(k) != v for k, v in ident.items()):  # crests for the page, once
+            current[key] = docs[key] = {**current[key], **ident}
+        if short in ("NS", "TBD", "PST", "CANC"):
+            continue
         if not key or current[key].get("statut") == "termine":
             continue
         snap, raw_stats = api.live_details(fx)
@@ -294,7 +297,8 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         live_write(page, out, {**current, **docs}, now)
     except Exception as e:
         print(f"joueur live unavailable ({str(e)[:160]})", file=sys.stderr)
-    _write(out, docs, f"Direct : {n_live} match(s) en cours, {len(docs) - n_live} terminé(s)", now)
+    n_done = sum(d["statut"] == "termine" for d in docs.values())
+    _write(out, docs, f"Direct : {n_live} match(s) en cours, {n_done} terminé(s)", now)
 
 
 def goals_refresh(now: datetime, max_requests: int, download: bool = True) -> None:
