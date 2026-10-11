@@ -183,14 +183,15 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         first = min(datetime.fromisoformat(l["coup_envoi"]) for l in ticket_legs)
         return first - FIX_BEFORE <= now + FIX_SLACK
 
-    def build(rules: tuple, old: dict | None, taken: list[set], empty_message: bool) -> dict | None:
+    def build(rules: tuple, old: dict | None, taken: list[set], empty_message: bool,
+              pool: list[dict] | None = None) -> dict | None:
         _, title, min_legs, max_legs, min_odds, min_total, min_leg = rules
         if old and old.get("jambes") and (old.get("fige") or any(started(l) for l in old["jambes"])):
             frozen = {**old, "fige": True, "jambes": [{**l, "verrouille": True} if started(l) else l
                                                       for l in old["jambes"]]}
             return _settle_ticket(frozen, page)
         for fewest in range(min_legs, 0, -1):
-            combos = [c for c in _combos(open_legs, fewest, max_legs, min_odds, min_total, min_leg)
+            combos = [c for c in _combos(open_legs if pool is None else pool, fewest, max_legs, min_odds, min_total, min_leg)
                       if {(l["match_id"], l["pari"]) for l in c} not in taken]
             if combos:
                 break
@@ -231,10 +232,13 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         if not (tickets[key].get("fige") and ((previous.get("tickets") or {}).get(key) or {}).get("fige")):
             continue
         rules = (key, title.replace("Ticket", "Ticket bonus"), *rest)
+        # a bonus shares no bet with the official ticket of its kind: other bets, not a variant of it
+        official = bets(tickets[key])
         kept = [build(rules, b, [], False) for b in (previous.get("bonus") or {}).get(key) or []
-                if b.get("fige") or any(started(l) for l in b["jambes"])]
+                if (b.get("fige") or any(started(l) for l in b["jambes"])) and not bets(b) & official]
         taken = [bets(t) for t in [*tickets.values(), *kept, *(b for group in bonus.values() for b in group)]]
-        new = build(rules, None, taken, False)
+        new = build(rules, None, taken, False,
+                    [l for l in open_legs if (l["match_id"], l["pari"]) not in official])
         bonus[key] = kept + ([new] if new and len(kept) < MAX_BONUS else [])
 
     filled = [t["titre"] for t in tickets.values() if t["jambes"]]
