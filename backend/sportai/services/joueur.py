@@ -20,6 +20,7 @@ from datetime import datetime
 import numpy as np
 
 from sportai.services.prematch import LOCAL_TZ
+from sportai.services.dashboard import settle
 from sportai.services.pronostic import _settle_ticket
 
 # Fraction of the Kelly stake, most of the bankroll on one bet and on one day, least value and chance to play.
@@ -266,6 +267,109 @@ def ticket_stakes(pronostic: dict, day: dict) -> dict:
     return pronostic
 
 
+LIVE_ODDS_RULE = ("Je ne mise pas en direct : le modèle du direct n'est pas encore validé sur des matchs passés. "
+                  "Je note l'occasion pour mesurer plus tard si elle aurait payé.")
+
+
+def leg_live_chance(leg: dict, m: dict) -> float | None:
+    """Chance that a leg wins from the match document as it stands (None when the live model cannot say)."""
+    if not m:
+        return None
+    hg, ag = (int(x) for x in m["score"].split(" - ")) if m.get("score") else (0, 0)
+    if m.get("statut") == "termine" and m.get("score"):
+        return 1.0 if settle(leg["pari"], m["domicile"], m["exterieur"], hg, ag) == "gagne" else 0.0
+    pari, home, away = leg["pari"], m.get("domicile", ""), m.get("exterieur", "")
+    if pari.startswith(("Plus de ", "Moins de ")):
+        line = float(pari.split()[2].replace(",", "."))
+        if hg + ag > line:
+            return 1.0 if pari.startswith("Plus") else 0.0
+        return None
+    if pari.startswith("Les deux équipes marquent"):
+        if hg and ag:
+            return 1.0 if pari.endswith("oui") else 0.0
+        return None
+    p = (m.get("direct") or {}).get("proba")
+    if not p:
+        return None
+    dom, nul, ext = p["domicile"], p["nul"], p["exterieur"]
+    table = {f"Victoire {home}": dom, f"Victoire {away}": ext, "Match nul": nul, f"{home} ou nul": dom + nul,
+             f"{away} ou nul": ext + nul, "Pas de match nul": dom + ext, f"{home} (remboursé si nul)": dom,
+             f"{away} (remboursé si nul)": ext}
+    return table.get(pari)
+
+
+def live(day: dict, page: dict[str, dict], now: datetime) -> dict:
+    """The day's player document during the matches: where each bet played stands, minute by minute, what changed
+    (journal), and the in-play opportunities it saw and why it left them."""
+    day = {**day, "decisions": [dict(d) for d in day.get("decisions") or []], "journal": list(day.get("journal") or [])}
+    heure = f"{now.astimezone(LOCAL_TZ):%H:%M}"
+    lines = []
+    for d in day["decisions"]:
+        docs = [page.get(l["match_id"]) or {} for l in d["jambes"]]
+        if not d["joue"] or not any(x.get("statut") in ("en_direct", "termine") for x in docs):
+            continue
+        legs, chances = [], []
+        for l, m in zip(d["jambes"], docs):
+            c = leg_live_chance(l, m) if m.get("statut") in ("en_direct", "termine") else l["proba"]
+            chances.append(l["proba"] if c is None else c)
+            legs.append({"match": l["match"], "pari": l["pari"], "statut": m.get("statut", "a_venir"),
+                         "score": m.get("score"), "minute": m.get("minute"),
+                         "chance": None if c is None else round(c, 4)})
+        chance = round(math.prod(chances), 4)
+        old = d.get("direct") or {}
+        scores = [x["score"] for x in legs]
+        d["direct"] = {"maj": now.isoformat(), "chance": chance, "chance_avant": d["proba"], "jambes": legs,
+                       "etat": "termine" if all(x["statut"] == "termine" for x in legs) else "en_cours"}
+        if scores != old.get("scores_vus") or abs(chance - old.get("chance", d["proba"])) >= 0.15:
+            where = ", ".join(f"{x['match']} {x['score'] or ''}" + (f" ({x['minute']}e)" if x["statut"] == "en_direct"
+                                                                   and x["minute"] else "") for x in legs
+                              if x["statut"] != "a_venir")
+            mood = ("en bonne voie" if chance >= max(d["proba"], 0.5) else "en danger" if chance < d["proba"] / 2
+                    else "incertain")
+            day["journal"].append({"heure": heure, "texte": f"{d['quoi']} ({_fr(d['mise'])} €) : {where}. Chance de "
+                                   f"gagner {_pct(chance, 0)} (avant le match {_pct(d['proba'], 0)}), {mood}."})
+        d["direct"]["scores_vus"] = scores
+        lines.append(f"{d['quoi']} {_pct(chance, 0)}")
+
+    seen = {(o["match_id"], o["pari"]) for o in day.get("direct_vus") or []}
+    vus = list(day.get("direct_vus") or [])
+    for key, m in page.items():
+        if m.get("jour") != day["jour"] or m.get("statut") != "en_direct":
+            continue
+        for r in (m.get("direct") or {}).get("cotes_direct") or []:
+            if r.get("statut") != "opportunite" or (key, r["pari"]) in seen:
+                continue
+            seen.add((key, r["pari"]))
+            entry = {"match_id": key, "match": f"{m['domicile']} - {m['exterieur']}", "minute": m.get("minute"),
+                     "score": m.get("score"), "pari": r["pari"], "cote": r["cote"], "proba": r["proba"],
+                     "valeur": r["valeur"], "joue": False, "raison": LIVE_ODDS_RULE}
+            vus.append(entry)
+            day["journal"].append({"heure": heure, "texte": f"Vu en direct ({entry['match']}, {entry['minute']}e) : "
+                                   f"{r['pari']} à {_fr(r['cote'])}, valeur {_pct(r['valeur'])}. Je ne joue pas : "
+                                   "modèle du direct non validé."})
+    day["direct_vus"] = vus[-30:]
+    day["journal"] = day["journal"][-60:]
+    if lines:
+        day["en_direct"] = {"maj": now.isoformat(), "resume": "En direct : " + " ; ".join(lines) + "."}
+    return day
+
+
+def live_write(page_folder: str | None, out: str, page: dict[str, dict], now: datetime) -> list[str]:
+    """Update out/joueur/<day>.json for each day with a match under way; returns the days written."""
+    import json
+    from pathlib import Path
+
+    folder = Path(page_folder or "/nonexistent") / "joueur"
+    days = {m.get("jour") for m in page.values() if m.get("statut") in ("en_direct", "termine")}
+    written = []
+    for name in sorted(d for d in days if d and (folder / f"{d}.json").exists()):
+        doc = live(json.loads((folder / f"{name}.json").read_text()), page, now)
+        (Path(out) / "joueur").mkdir(parents=True, exist_ok=True)
+        (Path(out) / "joueur" / f"{name}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+        written.append(name)
+    return written
+
+
 def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], page: dict[str, dict],
         settings: dict, choix: dict | None, previous_etat: dict | None, now: datetime) -> tuple[dict, dict]:
     """The day's joueur/<day> and joueur/etat documents.
@@ -297,7 +401,10 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
 
     doc = {"jour": day, "maj": now.isoformat(), "profil": profil, "profil_choisi": choisi,
            "bankroll_du_jour": round(bank_start, 2), "budget_max": round(PROFILS[profil]["max_jour"] * bank_start, 2),
-           "decisions": decisions, "resume": resume, "journal": journal[-40:]}
+           "decisions": decisions, "resume": resume, "journal": journal[-60:]}
+    for key in ("direct_vus", "en_direct"):  # written by the live loop, kept across the pre-match passes
+        if (previous_day or {}).get(key):
+            doc[key] = previous_day[key]
 
     bank, pic, history = replay({**earlier, day: doc}, depart)
     prev_sim = (previous_etat or {}).get("simulation") or {}

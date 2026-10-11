@@ -289,6 +289,11 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
                        pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds)
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
+    try:  # the "Joueur pro" player's bets followed live
+        from sportai.services.joueur import live_write
+        live_write(page, out, {**current, **docs}, now)
+    except Exception as e:
+        print(f"joueur live unavailable ({str(e)[:160]})", file=sys.stderr)
     _write(out, docs, f"Direct : {n_live} match(s) en cours, {len(docs) - n_live} terminé(s)", now)
 
 

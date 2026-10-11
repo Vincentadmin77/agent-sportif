@@ -105,3 +105,35 @@ def test_write_reads_the_page_copy(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "out" / "joueur" / "etat.json").read_text())["profil"] == "agressif"
     prono = joueur.ticket_stakes(json.loads(json.dumps(PRONO)), doc)
     assert prono["tickets"]["fun"]["mise"] == 0.0 and prono["tickets"]["fun"]["joue"] is False
+
+
+def test_live_follow_up_and_live_odds_seen():
+    day, _ = run(PRONO, None, {}, {}, {"depart": 100.0, "objectif": 1e5}, {"profil": "equilibre"},
+                 {"simulation": {"depart": 100.0, "objectif": 1e5, "profils": {k: {"scenarios": {s: {
+                     "mediane_1an": 1, "chance_objectif": 0, "risque_ruine": 0} for s in joueur.SCENARIOS}}
+                     for k in joueur.PROFILS}}}, NOW)
+    page = {"2026-10-11-a-b": {"jour": "2026-10-11", "statut": "en_direct", "score": "1 - 0", "minute": 52,
+                               "domicile": "a", "exterieur": "b",
+                               "direct": {"proba": {"domicile": 0.85, "nul": 0.11, "exterieur": 0.04},
+                                          "cotes_direct": [{"pari": "Plus de 2,5 buts", "cote": 2.1, "proba": 0.55,
+                                                            "valeur": 0.155, "statut": "opportunite"}]}}}
+    later = NOW + timedelta(hours=5)
+    live = joueur.live(day, page, later)
+    safe = next(d for d in live["decisions"] if d["id"] == "ticket:safe")
+    assert safe["joue"] and safe["direct"]["chance"] == 0.85 and safe["direct"]["chance_avant"] == 0.62
+    assert "en bonne voie" in live["journal"][-2]["texte"]
+    assert live["direct_vus"][0]["pari"] == "Plus de 2,5 buts" and not live["direct_vus"][0]["joue"]
+    # Same minute again: nothing new in the journal.
+    again = joueur.live(live, page, later)
+    assert len(again["journal"]) == len(live["journal"])
+    # A pre-match pass afterwards keeps what the live loop wrote.
+    day2, _ = run(PRONO, again, {}, page, {"depart": 100.0, "objectif": 1e5}, {"profil": "equilibre"}, None, later)
+    assert day2["direct_vus"] and next(d for d in day2["decisions"] if d["id"] == "ticket:safe")["direct"]
+
+
+def test_leg_live_chance_goals_and_finished():
+    m = {"statut": "en_direct", "score": "2 - 1", "domicile": "a", "exterieur": "b", "direct": {}}
+    assert joueur.leg_live_chance({"pari": "Plus de 2,5 buts"}, m) == 1.0
+    assert joueur.leg_live_chance({"pari": "Les deux équipes marquent : non"}, m) == 0.0
+    assert joueur.leg_live_chance({"pari": "Victoire a"}, m) is None
+    assert joueur.leg_live_chance({"pari": "Victoire a"}, {**m, "statut": "termine"}) == 1.0
