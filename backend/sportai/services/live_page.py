@@ -13,7 +13,7 @@ from datetime import datetime
 from sportai.connectors.base import LiveSnapshot
 from sportai.connectors.teams import same_team
 from sportai.engine.football.live import LiveState, final_score_matrix
-from sportai.services.dashboard import settle
+from sportai.services.dashboard import settle, settle_score
 
 LIVE_NOTE = ("Suivi en direct : probabilités recalculées avec le score, la minute, les cartons rouges et les "
              "occasions (xG) quand le flux les donne. Information seulement, pas une sélection.")
@@ -65,6 +65,7 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
         doc["statut"] = "termine"
         doc["selections"] = [{**s, "resultat": settle(s["pari"], doc["domicile"], doc["exterieur"], hg, ag)}
                              for s in doc.get("selections") or []]
+        settle_score(doc, hg, ag)
     else:
         doc["statut"] = "en_direct"
     if pre:

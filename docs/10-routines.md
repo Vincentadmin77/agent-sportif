@@ -12,7 +12,13 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   safe = cote totale > 1,50 avec la plus forte probabilité ; semi safe = 2 paris au plus, cote > 1,90 ; fun = 3 paris au
   plus, cote > 2,50 (à chaque fois la combinaison la plus probable, différente des tickets précédents). Ticket vide
   si rien de correct ; un ticket est figé dès que son premier match commence. `agent_pass.py pronostic --page P --out O`
-  le refait sans appel d'API.
+  le refait sans appel d'API. Il écrit aussi `OUT/stats/bilan.json` (collection `stats`, doc `bilan`) : onglet « Résultats et
+  statistiques » (pronostics validés / non validés, taux global et par type) et bankroll (`sportai/services/bilan.py`).
+  Bankroll : réglage `reglages/bankroll` (départ, objectif 100 000, mise par ticket : safe 3 %, semi safe 2 %, fun 1 % de
+  la bankroll du début de journée) ; le `--page` donné au passage doit contenir `matchs`, `pronostic`, `stats` et
+  `reglages` (ArtifactData `list` de chaque collection avec le même `out_dir`), sinon les tickets figés et les mises sont perdus.
+- **Score final estimé** : chaque match reçoit `score_estime` (score le plus probable du modèle Dixon-Coles et sa probabilité),
+  marqué `resultat` « reussi » ou « rate » quand le match se termine (direct ou scores).
 - **Analyse du matin à 8 h** : tous les matchs du jour d'un coup (`agent_pass.py prematch --matin ...`, 1 crédit par championnat,
   sans `--goals`), pour que la page soit remplie à l'ouverture. Chaque match reçoit un `scenario` : buts attendus de chaque
   équipe, chance que chacune marque au moins un but (avantage du terrain du championnat compris).

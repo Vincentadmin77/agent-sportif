@@ -43,6 +43,7 @@ class FixtureAnalysis:
     probabilities: dict[str, float] = field(default_factory=dict)
     skipped_reason: str | None = None
     n_quotes: int = 0
+    likely_score: tuple[int, int, float] | None = None  # most likely final score and its probability
 
 
 @dataclass
@@ -103,6 +104,8 @@ def run_prematch(
         samples = model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode()))
         fq = by_event.get(fx.provider_event_id, [])
         fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq))
+        i, j = np.unravel_index(int(np.argmax(central)), central.shape)
+        fa.likely_score = (int(i), int(j), round(float(central[i, j]), 4))
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)

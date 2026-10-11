@@ -93,6 +93,28 @@ def scenario(f: dict, home: str, away: str) -> str | None:
     return text
 
 
+def likely_score(f: dict) -> dict | None:
+    """The most likely final score (Dixon-Coles); runs stored before it existed fall back to Poisson."""
+    if f.get("likely_score"):
+        hg, ag, p = f["likely_score"]
+    elif f.get("expected_goals"):
+        from sportai.engine.football.dixon_coles import score_matrix
+
+        m = score_matrix(*f["expected_goals"], 0.0)
+        hg, ag = (int(x) for x in divmod(int(m.argmax()), m.shape[1]))
+        p = round(float(m[hg, ag]), 4)
+    else:
+        return None
+    return {"score": f"{hg} - {ag}", "domicile": hg, "exterieur": ag, "proba": p}
+
+
+def settle_score(doc: dict, hg: int, ag: int) -> None:
+    """Mark the estimated final score right ("reussi") or wrong ("rate") once the match is over."""
+    if doc.get("score_estime"):
+        est = doc["score_estime"]
+        doc["score_estime"] = {**est, "resultat": "reussi" if (est["domicile"], est["exterieur"]) == (hg, ag) else "rate"}
+
+
 def bet_label(market: str, selection: str, home: str, away: str) -> str:
     return {
         ("1x2", "home"): f"Victoire {home}", ("1x2", "away"): f"Victoire {away}", ("1x2", "draw"): "Match nul",
@@ -221,6 +243,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if goals:
             doc["buts"] = goals
         doc["buteurs"] = {"raison": SCORER_NOTE}
+        est = likely_score(f)
+        if est:
+            doc["score_estime"] = est
         text = scenario(f, doc["domicile"], doc["exterieur"])
         if text:
             doc["scenario"] = text
@@ -268,6 +293,7 @@ def apply_scores(events: list[dict], current: dict[str, dict], now: datetime) ->
             doc["statut"] = "termine"
             doc["selections"] = [{**s, "resultat": settle(s["pari"], doc["domicile"], doc["exterieur"], hg, ag)}
                                  for s in doc.get("selections") or []]
+            settle_score(doc, hg, ag)
         else:
             doc["statut"] = "en_direct"
         out[key] = doc

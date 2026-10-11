@@ -101,15 +101,17 @@ def _combos(legs: list[dict], max_legs: int, min_odds: float, min_total: float, 
                 yield list(combo)
 
 
+def _settle_leg(leg: dict, page: dict[str, dict]) -> dict:
+    leg = dict(leg)
+    doc = page.get(leg["match_id"]) or {}
+    if doc.get("statut") == "termine" and doc.get("score"):
+        hg, ag = (int(x) for x in doc["score"].split(" - "))
+        leg["resultat"] = settle(leg["pari"], doc["domicile"], doc["exterieur"], hg, ag)
+    return leg
+
+
 def _settle_ticket(ticket: dict, page: dict[str, dict]) -> dict:
-    legs = []
-    for leg in ticket["jambes"]:
-        leg = dict(leg)
-        doc = page.get(leg["match_id"]) or {}
-        if doc.get("statut") == "termine" and doc.get("score"):
-            hg, ag = (int(x) for x in doc["score"].split(" - "))
-            leg["resultat"] = settle(leg["pari"], doc["domicile"], doc["exterieur"], hg, ag)
-        legs.append(leg)
+    legs = [_settle_leg(leg, page) for leg in ticket["jambes"]]
     out = {**ticket, "jambes": legs}
     results = [l.get("resultat") for l in legs]
     if legs:
@@ -132,7 +134,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     notes = []
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
-    kept = [{**l, "verrouille": True} for l in previous.get("top3") or [] if started(l)]
+    kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]
     fresh = sorted((l for l in open_legs if l["proba"] >= TOP_MIN_PROBA and l["cote"] <= TOP_MAX_ODDS),
                    key=lambda l: -l["valeur"])
     top3 = kept[:]

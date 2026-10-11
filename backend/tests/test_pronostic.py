@@ -50,3 +50,29 @@ def test_ticket_frozen_after_first_kickoff_then_settled():
     assert [l["pari"] for l in safe["jambes"]] == [l["pari"] for l in first["tickets"]["semi_safe"]["jambes"]]
     assert all(l["verrouille"] for l in safe["jambes"])
     assert {l["resultat"] for l in safe["jambes"]} == {"gagne", "perdu"} and safe["resultat"] == "perdu"
+
+
+def test_bankroll_and_bilan():
+    from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay
+    from sportai.services.dashboard import likely_score, settle_score
+
+    settings = bankroll_settings(None)
+    assert settings["depart"] == 100 and settings["objectif"] == 100000
+    first = apply_stakes(build_pronostic(LEGS, {}, None, NOW, "matin"), settings, 100.0)
+    assert first["tickets"]["safe"]["mise"] == 3.0 and first["tickets"]["fun"]["mise"] == 1.0
+    page = {"2026-10-11-a-b": {"statut": "termine", "score": "2 - 0", "domicile": "a", "exterieur": "b", "jour": "2026-10-11",
+                               "score_estime": {"score": "1 - 0", "domicile": 1, "exterieur": 0, "proba": 0.12}},
+            "2026-10-11-c-d": {"statut": "termine", "score": "1 - 1", "domicile": "c", "exterieur": "d"},
+            "2026-10-11-e-f": {"statut": "termine", "score": "0 - 1", "domicile": "e", "exterieur": "f"}}
+    settle_score(page["2026-10-11-a-b"], 2, 0)
+    assert page["2026-10-11-a-b"]["score_estime"]["resultat"] == "rate"
+    day = build_pronostic(LEGS, page, first, NOW + timedelta(hours=6), "resultats")
+    assert day["tickets"]["safe"]["mise"] == 3.0  # frozen with its stake
+    bank, history = replay({"2026-10-11": day}, settings)
+    # safe a-b won at 1.70 (+2.10), semi a-b + c-d lost (-2.00), fun e-f won at 2.80 (+1.80)
+    assert [h["gain"] for h in history] == [2.1, -2.0, 1.8] and bank == 101.9
+    bilan = build_bilan(page, {"2026-10-11": day}, settings, NOW)
+    assert bilan["bankroll"]["actuelle"] == 101.9 and bilan["par_type"]["safe"]["taux"] == 1.0
+    assert bilan["par_type"]["score"]["non_valides"] == 1 and bilan["global"]["valides"] >= 2
+    assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
+    assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13

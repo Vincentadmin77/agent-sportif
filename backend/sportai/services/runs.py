@@ -184,7 +184,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     run.model_name, run.model_version = report.model_name, report.model_version
     run.fixtures = [{"match_id": f.fixture.provider_event_id, "match": f"{f.fixture.home} - {f.fixture.away}",
                      "kickoff": f.fixture.kickoff.isoformat(), "expected_goals": f.expected_goals,
-                     "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes}
+                     "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes,
+                     "likely_score": f.likely_score}
                     for f in report.fixtures]
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)

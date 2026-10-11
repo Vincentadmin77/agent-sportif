@@ -7,7 +7,8 @@
     python scripts/agent_pass.py pronostic --page P --out O  # "Mon pronostic" tab again, no API call
 
 Every prematch pass and the final scores step also write pronostic/<day>.json for the "Mon pronostic"
-tab (the day's three best odds, a safe and a semi-safe ticket; sportai/services/pronostic.py).
+tab (the day's three best odds and three tickets; sportai/services/pronostic.py) and stats/bilan.json
+for "Résultats et statistiques" with the bankroll (sportai/services/bilan.py, setting reglages/bankroll).
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -50,20 +51,26 @@ def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None
 
 def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datetime, passage: str,
                day: str | None = None) -> str:
-    """Write out/pronostic/<day>.json from that day's priced bets (default today); returns its summary."""
+    """Write out/pronostic/<day>.json (default today) and out/stats/bilan.json; returns the day's summary."""
     from datetime import date
 
+    from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay
     from sportai.services.prematch import LOCAL_TZ
     from sportai.services.pronostic import build_pronostic, legs_from_db
 
     day = day or f"{now.astimezone(LOCAL_TZ):%Y-%m-%d}"
-    prev = Path(page or "", "pronostic", f"{day}.json")
-    previous = json.loads(prev.read_text()) if page and prev.exists() else None
-    doc = build_pronostic(legs_from_db(db, date.fromisoformat(day)), {**_load_page(page), **docs},
-                          previous, now, passage, date.fromisoformat(day))
-    d = Path(out) / "pronostic"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{day}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+    folder = Path(page or "/nonexistent")
+    days = {p.stem: json.loads(p.read_text()) for p in (folder / "pronostic").glob("*.json")}
+    raw = folder / "reglages" / "bankroll.json"
+    settings = bankroll_settings(json.loads(raw.read_text()) if raw.exists() else None)
+    matchs = {**_load_page(page), **docs}
+    doc = build_pronostic(legs_from_db(db, date.fromisoformat(day)), matchs, days.get(day), now, passage,
+                          date.fromisoformat(day))
+    bank_at_start, _ = replay({d: v for d, v in days.items() if d < day}, settings)
+    days[day] = apply_stakes(doc, settings, bank_at_start)
+    for sub, name, body in (("pronostic", day, doc), ("stats", "bilan", build_bilan(matchs, days, settings, now))):
+        (Path(out) / sub).mkdir(parents=True, exist_ok=True)
+        (Path(out) / sub / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
     return doc["message"]
 
 
