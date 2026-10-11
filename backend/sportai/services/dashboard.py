@@ -243,10 +243,11 @@ BOOK_NAMES = {"winamax_fr": "Winamax", "betclic_fr": "Betclic", "unibet_fr": "Un
 
 
 def match_odds_1x2(rows) -> dict[str, dict]:
-    """The 1X2 odds of each match of a run, Winamax first, else the first bookmaker quoting all three."""
+    """The 1X2 odds of each match of a run by its "Home - Away" label, Winamax first, else the first bookmaker
+    quoting all three."""
     books: dict[str, dict[str, dict]] = {}
     for r in rows:
-        books.setdefault(r.event_id, {}).setdefault(r.bookmaker, {})[r.selection] = r.odds
+        books.setdefault(r.event_label, {}).setdefault(r.bookmaker, {})[r.selection] = r.odds
     out = {}
     for match, by_book in books.items():
         full = {b: o for b, o in by_book.items() if {"home", "draw", "away"} <= o.keys()}
@@ -287,8 +288,11 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if reason and reason.startswith("more than"):
             out[key] = doc  # listed, analysed at a later pass
             continue
-        if f["match_id"] in odds_1x2:
-            doc["cotes_1x2"] = odds_1x2[f["match_id"]]
+        for label, o in odds_1x2.items():  # the odds feed spells teams its own way
+            h, _, a = label.partition(" - ")
+            if same_team(h, home) and same_team(a, away):
+                doc["cotes_1x2"] = o
+                break
         which = pass_name(started, ko)
         doc["passages"] = {**(doc.get("passages") or {}), which: started.isoformat()}
         if reason:
