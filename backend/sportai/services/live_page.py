@@ -25,6 +25,9 @@ FINISHED = {"FT", "AET", "PEN"}
 ODDS_NOTE = ("Cotes en direct du flux API-Football (pas forcément un bookmaker français). Modèle du direct non "
              "validé sur matchs passés : information, pas une sélection.")
 MIN_VALUE, MAX_GAP = 0.05, 0.10
+# Checks before a live price is called an opportunity (owner, 2026-10-11: the model offered Roma to win at 10
+# while Roma played with ten and Como had the ball). A row that fails one is kept with statut "ecarte" and why.
+LATE_MINUTE, MAX_LIVE_ODDS = 80, 6.0
 _1X2 = {"Home": "home", "Draw": "draw", "Away": "away"}
 
 
@@ -65,9 +68,39 @@ def _odd(v: dict) -> float | None:
     return o if o > 1 and not v.get("suspended") else None
 
 
-def live_odds_rows(m, odds: list[dict], home: str, away: str) -> list[dict]:
+def _against_the_match(side: str | None, odd: float, minute: float, reds: list[int], stats: dict[str, list]) -> str | None:
+    """Why a live price should not be offered whatever the model says: too late, a long shot, or a win for a
+    side that is a player down or outplayed (shots on target, possession, xG)."""
+    if side in ("home", "away"):
+        why = _outplayed(side, reds, stats)
+        if why:
+            return why
+    if minute >= LATE_MINUTE:
+        return f"Après la {LATE_MINUTE}e minute, cotes trop instables pour en tirer quelque chose."
+    if odd > MAX_LIVE_ODDS:
+        return "Cote trop longue : le modèle du direct n'est pas fiable sur les issues aussi rares."
+    return None
+
+
+def _outplayed(side: str, reds: list[int], stats: dict[str, list]) -> str | None:
+    me, them = (0, 1) if side == "home" else (1, 0)
+    if reds[me] > reds[them]:
+        return "Cette équipe joue en infériorité numérique."
+    on_target, possession, xg = stats.get("tirs_cadres"), stats.get("possession"), stats.get("xg")
+    if on_target and on_target[them] >= on_target[me] + 2:
+        return f"L'adversaire cadre plus ({on_target[them]} tirs cadrés contre {on_target[me]})."
+    if possession and possession[me] <= 40:
+        return f"Cette équipe subit le match ({possession[me]} % de possession)."
+    if xg and xg[them] >= xg[me] + 0.5:
+        return f"L'adversaire se crée plus d'occasions (xG {xg[them]:.2f} contre {xg[me]:.2f})."
+    return None
+
+
+def live_odds_rows(m, odds: list[dict], home: str, away: str, minute: float = 0, reds: list[int] | None = None,
+                   stats: dict[str, list] | None = None) -> list[dict]:
     """Model (final score matrix m) against de-vigged in-play odds: 1X2, final total goals lines and both teams
-    to score. Keeps outcomes worth at least 5 % more than their price, decided outcomes left out."""
+    to score. Keeps outcomes worth at least 5 % more than their price, decided outcomes left out; an outcome the
+    match itself argues against (red card, run of play, late minute, long shot) is kept as "ecarte"."""
     n = m.shape[0]
     i, j = np.indices(m.shape)
     total = i + j
@@ -83,7 +116,7 @@ def live_odds_rows(m, odds: list[dict], home: str, away: str) -> list[dict]:
             if name == "Fulltime Result" and val in _1X2:
                 sel = _1X2[val]
                 p = {"home": p_home, "draw": p_draw, "away": 1 - p_home - p_draw}[sel]
-                markets.setdefault((name, None), []).append((bet_label("1x2", sel, home, away), p, odd))
+                markets.setdefault((name, None), []).append((bet_label("1x2", sel, home, away), p, odd, sel))
             elif name == "Match Goals":
                 side, _, rest = val.partition(" ")
                 try:
@@ -95,26 +128,30 @@ def live_odds_rows(m, odds: list[dict], home: str, away: str) -> list[dict]:
                 p_over = float(m[total > line].sum())
                 sel = side.lower()
                 markets.setdefault((name, line), []).append(
-                    (goal_label("ou", sel, line), p_over if sel == "over" else 1 - p_over, odd))
+                    (goal_label("ou", sel, line), p_over if sel == "over" else 1 - p_over, odd, None))
             elif name == "Both Teams to Score" and val in ("Yes", "No"):
                 sel = "yes" if val == "Yes" else "no"
                 markets.setdefault((name, None), []).append(
-                    (goal_label("btts", sel, None), p_btts if sel == "yes" else 1 - p_btts, odd))
+                    (goal_label("btts", sel, None), p_btts if sel == "yes" else 1 - p_btts, odd, None))
     rows = []
     for (name, _), outs in markets.items():
         if len(outs) != (3 if name == "Fulltime Result" else 2):
             continue  # an outcome missing or suspended: no fair market price
-        book = sum(1 / o for _, _, o in outs)
-        for label, p, odd in outs:
+        book = sum(1 / o for _, _, o, _ in outs)
+        for label, p, odd, side in outs:
             if not 0.001 < p < 0.999:
                 continue
             pm, value = (1 / odd) / book, p * odd - 1
             if value < MIN_VALUE:
                 continue
             gap = abs(p - pm)
-            rows.append({"pari": label, "cote": odd, "proba": round(p, 4), "proba_marche": round(pm, 4),
-                         "valeur": round(value, 4), "ecart": round(gap, 4),
-                         "statut": "opportunite" if gap <= MAX_GAP else "ecart_trop_grand"})
+            row = {"pari": label, "cote": odd, "proba": round(p, 4), "proba_marche": round(pm, 4),
+                   "valeur": round(value, 4), "ecart": round(gap, 4),
+                   "statut": "opportunite" if gap <= MAX_GAP else "ecart_trop_grand"}
+            why = row["statut"] == "opportunite" and _against_the_match(side, odd, minute, reds or [0, 0], stats or {})
+            if why:
+                row["statut"], row["raison"] = "ecarte", why
+            rows.append(row)
     return sorted(rows, key=lambda r: -r["valeur"])
 
 
@@ -160,7 +197,8 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
             elif gap <= -0.6 and ag < hg:
                 alerts.append(f"{doc['exterieur']} domine (xG {snap.away_xg:.2f} contre {snap.home_xg:.2f}) mais est mené.")
         if odds and status not in FINISHED:
-            rows = live_odds_rows(m, odds, doc["domicile"], doc["exterieur"])
+            rows = live_odds_rows(m, odds, doc["domicile"], doc["exterieur"], snap.minute,
+                                  [snap.home_red_cards, snap.away_red_cards], stats)
             direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
             for r in rows:
                 if r["statut"] == "opportunite":

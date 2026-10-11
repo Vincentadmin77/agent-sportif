@@ -100,3 +100,21 @@ def test_live_odds_statuses_and_no_odds_keeps_old_behaviour():
     assert "cotes_direct" not in doc["direct"]
     done = live_doc(PAGE["2026-10-10-lorient-paris"], _fx("FT", 90, 1, 0), _snap(90, 1, 0), {}, pre, NOW, [odds[0]])
     assert "cotes_direct" not in done["direct"]
+
+
+def test_live_odds_checked_against_the_match():
+    # Como - Roma, 2026-10-11: Roma a player down, Como with the ball. The model's Roma win is not offered.
+    m = np.zeros((3, 3))
+    m[1, 0], m[0, 0], m[0, 1] = 0.25, 0.5, 0.25
+    odds = [_bet("Fulltime Result", ("Home", None, "2.10", False), ("Draw", None, "2.10", False),
+                 ("Away", None, "5.50", False))]
+    rows = {r["pari"]: r for r in live_odds_rows(m, odds, "Côme", "Roma", 70, [0, 1],
+                                                 {"possession": [58, 42], "tirs_cadres": [2, 2]})}
+    assert rows["Victoire Roma"]["statut"] == "ecarte" and "infériorité" in rows["Victoire Roma"]["raison"]
+    rows = {r["pari"]: r for r in live_odds_rows(m, odds, "Côme", "Roma", 70, [0, 0],
+                                                 {"possession": [62, 38]})}
+    assert rows["Victoire Roma"]["statut"] == "ecarte" and "possession" in rows["Victoire Roma"]["raison"]
+    late = live_odds_rows(m, odds, "Côme", "Roma", 85, [0, 0], {})
+    assert all(r["statut"] != "opportunite" for r in late)
+    calm = {r["pari"]: r for r in live_odds_rows(m, odds, "Côme", "Roma", 70, [0, 0], {})}
+    assert calm["Victoire Roma"]["statut"] == "opportunite"
