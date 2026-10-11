@@ -26,9 +26,12 @@ MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
 GOAL_WARNING = ("Marché non validé : le test sur 10 000 matchs passés n'a pas montré d'avantage du modèle sur "
                 "ce marché. Chiffres donnés pour information, jamais proposés comme sélection.")
-SCORER_NOTE = ("Analyse buteur indisponible : aucun bookmaker français ne propose ce marché chez notre fournisseur "
-               "de cotes, et les données joueurs (buts, tirs, temps de jeu, composition) demandent l'offre payante "
-               "d'API-Football.")
+SCORER_NOTE = ("Compositions officielles et chances de marquer de chaque titulaire publiées au passage 45 min avant "
+               "le match (les compositions sortent environ 1 h avant). Aucun bookmaker français ne propose le marché "
+               "buteur chez notre fournisseur de cotes : pas de cote à comparer.")
+GOAL_ODDS_LATER = ("Cotes de ce marché chargées au passage 45 min avant le match seulement : chaque match coûte 2 crédits "
+                   "sur notre forfait de cotes (500 par mois).")
+GOAL_ODDS_NONE = "Aucun bookmaker français ne propose ces cotes pour ce match chez notre fournisseur."
 SKIP_REASONS = {
     "insufficient match history for one team": "Historique insuffisant pour une des deux équipes (souvent un promu).",
     "already kicked off": "Le match avait déjà commencé au moment du passage.",
@@ -135,7 +138,7 @@ def goal_label(market: str, selection: str, line: float | None) -> str:
     return f"{side} {line:g} buts".replace(".", ",")
 
 
-def goals_block(f: dict, cands: list[CandidateRow], info_markets) -> dict | None:
+def goals_block(f: dict, cands: list[CandidateRow], info_markets, odds_asked: bool = True) -> dict | None:
     """Model probabilities for "both teams to score" and the number of goals, with the best odds when
     the bookmakers offer them. Information only (markets not validated by the backtest)."""
     if not f.get("expected_goals"):
@@ -156,7 +159,10 @@ def goals_block(f: dict, cands: list[CandidateRow], info_markets) -> dict | None
                 row["proba_marche"] = round(c.market_fair_prob, 4)
         rows.append(row)
     lam, mu = f["expected_goals"]
-    return {"buts_attendus": round(lam + mu, 2), "marches": rows, "avertissement": GOAL_WARNING}
+    block = {"buts_attendus": round(lam + mu, 2), "marches": rows, "avertissement": GOAL_WARNING}
+    if not any("cote" in r for r in rows):  # say why the odds columns are empty instead of dashes only
+        block["cotes_info"] = GOAL_ODDS_NONE if odds_asked else GOAL_ODDS_LATER
+    return block
 
 
 def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | None:
@@ -239,10 +245,12 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             rejets = [UCL_INFO] + [t for t in (ucl_model_line(f, mine, home, away),) if t]
         doc["selections"] = selections
         doc["rejets"] = rejets
-        goals = goals_block(f, mine, (run.config or {}).get("info_markets", ("totals", "btts")))
+        info = (run.config or {}).get("info_markets", ("totals", "btts"))
+        goals = goals_block(f, mine, info, odds_asked=any(c.market in info for c in cands))
         if goals:
             doc["buts"] = goals
-        doc["buteurs"] = {"raison": SCORER_NOTE}
+        if not (doc.get("buteurs") or {}).get("joueurs"):  # keep the line-up estimates once published
+            doc["buteurs"] = {"raison": SCORER_NOTE}
         est = likely_score(f)
         if est:
             doc["score_estime"] = est
