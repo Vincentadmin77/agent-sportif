@@ -9,14 +9,17 @@ documents, so a pass never erases what an earlier pass wrote.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from sportai.connectors.teams import normalise
+from sportai.connectors.teams import normalise, same_team
 from sportai.db.models import AnalysisRun, CandidateRow, Selection
 from sportai.services.prematch import LOCAL_TZ
 
@@ -106,6 +109,35 @@ def scenario(f: dict, home: str, away: str) -> str | None:
         text += f"{weaker}, moins fort sur le papier, garde une bonne chance de marquer ({side}). "
     text += "L'avantage du terrain du championnat est compté. Estimation du modèle, pas un pari."
     return text
+
+
+SHOTS_FILE = Path(os.getenv("SHOTS_FILE", "/mnt/project-files/agent-sportif/data/tirs-equipes-2026.json"))
+SHOTS_NOTE = ("Tirs totaux par match cette saison (API-Football), à domicile pour l'équipe qui reçoit et à l'extérieur "
+              "pour l'autre ; l'écart-type mesure la régularité. Pour information : le test du 11/10 montre que les tirs "
+              "n'améliorent pas la prévision des buts, et aucun bookmaker de notre fournisseur ne propose ce marché.")
+
+
+def shots_block(competition: str, home: str, away: str, table: dict | None = None) -> dict | None:
+    """Each team's average total shots for and against (home team at home, away team away), when known."""
+    if table is None:
+        try:
+            table = json.loads(SHOTS_FILE.read_text())
+        except (OSError, ValueError):
+            return None
+    teams = (table.get("leagues") or {}).get(competition) or {}
+
+    def find(name: str) -> dict | None:
+        return next((v for k, v in teams.items() if same_team(k, name)), None)
+
+    h, a = find(home), find(away)
+    if not h or not a:
+        return None
+
+    def side(t: dict, venue: str) -> dict:
+        f, c = t[f"{venue}_for"], t[f"{venue}_against"]
+        return {"pour": f["mean"], "contre": c["mean"], "ecart_type_pour": f["sd"], "matchs": f["n"]}
+
+    return {"domicile": side(h, "home"), "exterieur": side(a, "away"), "maj": table.get("snapshot"), "note": SHOTS_NOTE}
 
 
 def likely_score(f: dict) -> dict | None:
@@ -267,6 +299,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             doc["buts"] = goals
         if not (doc.get("buteurs") or {}).get("joueurs"):  # keep the line-up estimates once published
             doc["buteurs"] = {"raison": SCORER_NOTE}
+        shots = shots_block(run.competition, doc["domicile"], doc["exterieur"])
+        if shots:
+            doc["tirs"] = shots
         est = likely_score(f)
         if est:
             doc["score_estime"] = est

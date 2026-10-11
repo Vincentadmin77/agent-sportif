@@ -106,3 +106,13 @@ def test_settle_goal_bets():
     assert settle("Les deux équipes marquent : non", "A", "B", 1, 1) == "perdu"
     assert settle("Plus de 2,5 buts", "A", "B", 2, 1) == "gagne"
     assert settle("Moins de 1,5 buts", "A", "B", 1, 1) == "perdu"
+
+
+def test_shots_block():
+    from sportai.services.dashboard import shots_block
+
+    row = {k: {"n": 3, "mean": 12.0, "sd": 2.0} for k in ("home_for", "home_against", "away_for", "away_against")}
+    table = {"snapshot": "2026-10-11", "leagues": {"FR1": {"Nice": row, "Strasbourg": row}}}
+    b = shots_block("FR1", "Nice", "Strasbourg", table)
+    assert b["domicile"]["pour"] == 12.0 and b["exterieur"]["matchs"] == 3
+    assert shots_block("FR1", "Nice", "Lens", table) is None
