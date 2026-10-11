@@ -54,7 +54,7 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     """Write out/pronostic/<day>.json (default today) and out/stats/bilan.json; returns the day's summary."""
     from datetime import date
 
-    from sportai.services.bilan import bankroll_settings, build_bilan
+    from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay
     from sportai.services.prematch import LOCAL_TZ
     from sportai.services.pronostic import build_pronostic, legs_from_db
 
@@ -66,7 +66,8 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     matchs = {**_load_page(page), **docs}
     doc = build_pronostic(legs_from_db(db, date.fromisoformat(day)), matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
-    days[day] = doc  # stakes and the bankroll are computed by the page itself (quarter Kelly, reglages/bankroll)
+    bank_at_start, _ = replay({d: v for d, v in days.items() if d < day}, settings)
+    days[day] = apply_stakes(doc, settings, bank_at_start)
     for sub, name, body in (("pronostic", day, doc), ("stats", "bilan", build_bilan(matchs, days, settings, now))):
         (Path(out) / sub).mkdir(parents=True, exist_ok=True)
         (Path(out) / sub / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
