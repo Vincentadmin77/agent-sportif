@@ -254,6 +254,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         est = likely_score(f)
         if est:
             doc["score_estime"] = est
+        p = f.get("probabilities") or {}
+        if {"1x2:home", "1x2:draw", "1x2:away"} <= p.keys():
+            doc["proba_1x2"] = {"domicile": p["1x2:home"], "nul": p["1x2:draw"], "exterieur": p["1x2:away"]}
         text = scenario(f, doc["domicile"], doc["exterieur"])
         if text:
             doc["scenario"] = text
