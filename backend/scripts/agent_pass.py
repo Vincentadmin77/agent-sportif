@@ -258,7 +258,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
 
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
-    from sportai.services.live_page import find_doc, live_doc, pre_match_rates, stats_by_side
+    from sportai.services.live_page import FINISHED, find_doc, live_doc, pre_match_rates, stats_by_side
     from sportai.services.prematch import LOCAL_TZ
 
     api = ApiFootballProvider(get_settings().api_football_key)
@@ -284,8 +284,9 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         if not key or current[key].get("statut") == "termine":
             continue
         snap, raw_stats = api.live_details(fx)
+        odds = None if fx["fixture"]["status"]["short"] in FINISHED else api.live_odds(fx["fixture"]["id"])
         doc = live_doc(current[key], fx, snap, stats_by_side(raw_stats, fx["teams"]["home"]["id"]),
-                       pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now)
+                       pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds)
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
     _write(out, docs, f"Direct : {n_live} match(s) en cours, {len(docs) - n_live} terminé(s)", now)

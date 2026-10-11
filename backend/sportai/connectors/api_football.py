@@ -83,6 +83,14 @@ class ApiFootballProvider:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
         return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=300).get("response", [])
 
+    def live_odds(self, fixture_id: int | str) -> list[dict]:
+        """In-play odds of one fixture (raw bets: name, values), [] when the feed has none or fails."""
+        try:
+            resp = self._get("/odds/live", {"fixture": fixture_id}, ttl=30).get("response") or []
+        except Exception:  # noqa: BLE001 - odds are optional, never break the live follow-up
+            return []
+        return (resp[0].get("odds") or []) if resp else []
+
     def team_players(self, team_id: int, season: int) -> list[dict]:
         """Every player of a team in a season with their statistics, all pages."""
         out, page = [], 1

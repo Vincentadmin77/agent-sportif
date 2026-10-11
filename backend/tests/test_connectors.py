@@ -80,6 +80,17 @@ def test_api_football_plan_error_is_a_provider_failure():
         p.upcoming_fixtures("FR1", season=2026)
 
 
+def test_api_football_live_odds_tolerates_empty_and_failing_replies():
+    bets = [{"id": 1, "name": "Fulltime Result", "values": [{"value": "Home", "odd": "2.10", "suspended": False}]}]
+    replies = {"101": {"errors": [], "response": [{"fixture": {"id": 101}, "odds": bets}]},
+               "102": {"errors": [], "response": []},
+               "103": {"errors": {"plan": "no access"}, "response": []}}
+    p = ApiFootballProvider("k", transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, json=replies[req.url.params["fixture"]])))
+    assert p.live_odds(101) == bets
+    assert p.live_odds(102) == [] and p.live_odds(103) == []
+
+
 def test_fixtures_from_odds_events():
     events = json.loads((FIX / "the_odds_api_odds.json").read_text())
     kickoff = datetime.fromisoformat(events[0]["commence_time"].replace("Z", "+00:00"))

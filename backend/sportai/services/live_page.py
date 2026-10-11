@@ -10,16 +10,22 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import numpy as np
+
 from sportai.connectors.base import LiveSnapshot
 from sportai.connectors.teams import same_team
 from sportai.engine.football.live import LiveState, final_score_matrix
-from sportai.services.dashboard import settle, settle_score
+from sportai.services.dashboard import bet_label, goal_label, settle, settle_score
 
 LIVE_NOTE = ("Suivi en direct : probabilités recalculées avec le score, la minute, les cartons rouges et les "
              "occasions (xG) quand le flux les donne. Information seulement, pas une sélection.")
 STAT_NAMES = {"Total Shots": "tirs", "Shots on Goal": "tirs_cadres", "Ball Possession": "possession",
               "Corner Kicks": "corners", "expected_goals": "xg"}
 FINISHED = {"FT", "AET", "PEN"}
+ODDS_NOTE = ("Cotes en direct du flux API-Football (pas forcément un bookmaker français). Modèle du direct non "
+             "validé sur matchs passés : information, pas une sélection.")
+MIN_VALUE, MAX_GAP = 0.05, 0.10
+_1X2 = {"Home": "home", "Draw": "draw", "Away": "away"}
 
 
 def find_doc(current: dict[str, dict], day: str, home: str, away: str) -> str | None:
@@ -51,7 +57,69 @@ def stats_by_side(stats: list[dict], home_id: int) -> dict[str, list]:
     return {k: v for k, v in out.items() if None not in v}
 
 
-def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pre: tuple | None, now: datetime) -> dict:
+def _odd(v: dict) -> float | None:
+    try:
+        o = float(v.get("odd"))
+    except (TypeError, ValueError):
+        return None
+    return o if o > 1 and not v.get("suspended") else None
+
+
+def live_odds_rows(m, odds: list[dict], home: str, away: str) -> list[dict]:
+    """Model (final score matrix m) against de-vigged in-play odds: 1X2, final total goals lines and both teams
+    to score. Keeps outcomes worth at least 5 % more than their price, decided outcomes left out."""
+    n = m.shape[0]
+    i, j = np.indices(m.shape)
+    total = i + j
+    p_home, p_draw = float(m[i > j].sum()), float(m[i == j].sum())
+    p_btts = float(m[1:, 1:].sum()) if n > 1 else 0.0
+    markets: dict[tuple, list] = {}  # (bet, line) -> [(label, model prob, odd)]
+    for bet in odds:
+        name = bet.get("name")
+        for v in bet.get("values") or []:
+            odd, val = _odd(v), str(v.get("value", ""))
+            if odd is None:
+                continue
+            if name == "Fulltime Result" and val in _1X2:
+                sel = _1X2[val]
+                p = {"home": p_home, "draw": p_draw, "away": 1 - p_home - p_draw}[sel]
+                markets.setdefault((name, None), []).append((bet_label("1x2", sel, home, away), p, odd))
+            elif name == "Match Goals":
+                side, _, rest = val.partition(" ")
+                try:
+                    line = float(v.get("handicap") or rest)
+                except ValueError:
+                    continue
+                if side not in ("Over", "Under"):
+                    continue
+                p_over = float(m[total > line].sum())
+                sel = side.lower()
+                markets.setdefault((name, line), []).append(
+                    (goal_label("ou", sel, line), p_over if sel == "over" else 1 - p_over, odd))
+            elif name == "Both Teams to Score" and val in ("Yes", "No"):
+                sel = "yes" if val == "Yes" else "no"
+                markets.setdefault((name, None), []).append(
+                    (goal_label("btts", sel, None), p_btts if sel == "yes" else 1 - p_btts, odd))
+    rows = []
+    for (name, _), outs in markets.items():
+        if len(outs) != (3 if name == "Fulltime Result" else 2):
+            continue  # an outcome missing or suspended: no fair market price
+        book = sum(1 / o for _, _, o in outs)
+        for label, p, odd in outs:
+            if not 0.001 < p < 0.999:
+                continue
+            pm, value = (1 / odd) / book, p * odd - 1
+            if value < MIN_VALUE:
+                continue
+            gap = abs(p - pm)
+            rows.append({"pari": label, "cote": odd, "proba": round(p, 4), "proba_marche": round(pm, 4),
+                         "valeur": round(value, 4), "ecart": round(gap, 4),
+                         "statut": "opportunite" if gap <= MAX_GAP else "ecart_trop_grand"})
+    return sorted(rows, key=lambda r: -r["valeur"])
+
+
+def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pre: tuple | None, now: datetime,
+             odds: list[dict] | None = None) -> dict:
     doc = dict(doc)
     status = fx["fixture"]["status"]["short"]
     hg, ag = snap.home_goals, snap.away_goals
@@ -91,6 +159,13 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
                 alerts.append(f"{doc['domicile']} domine (xG {snap.home_xg:.2f} contre {snap.away_xg:.2f}) mais est mené.")
             elif gap <= -0.6 and ag < hg:
                 alerts.append(f"{doc['exterieur']} domine (xG {snap.away_xg:.2f} contre {snap.home_xg:.2f}) mais est mené.")
+        if odds and status not in FINISHED:
+            rows = live_odds_rows(m, odds, doc["domicile"], doc["exterieur"])
+            direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
+            for r in rows:
+                if r["statut"] == "opportunite":
+                    alerts.append(f"Cote en direct intéressante : {r['pari']} à {str(r['cote']).replace('.', ',')} (modèle "
+                                  f"{r['proba']:.0%}, marché {r['proba_marche']:.0%}, valeur {r['valeur']:+.0%}).")
     else:
         direct["sans_modele"] = "Pas d'analyse d'avant-match pour ce match : score et statistiques seulement."
     doc["direct"] = direct
