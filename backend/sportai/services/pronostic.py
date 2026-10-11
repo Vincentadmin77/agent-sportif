@@ -31,6 +31,7 @@ from sportai.services.dashboard import (
     bet_label,
     doc_id,
     goal_label,
+    goal_market_validated,
     settle,
 )
 from sportai.services.prematch import LOCAL_TZ
@@ -65,8 +66,9 @@ def legs_from_db(db: DB, day) -> list[dict]:
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
-        # Goal markets enter the tickets at the owner's request (2026-10-11), flagged "non validé" until their
-        # backtest validates them; their odds exist only after a pass run with --goals (45 min before kick-off).
+        # Goal markets enter the tickets at the owner's request (2026-10-11). Validated (fragile): over/under
+        # 1.5 and 3.5 when priced by the enriched goals model (docs/11-backtest-buts.md); btts and 2.5 stay
+        # "non validé". Their odds exist only after a pass run with --goals (45 min before kick-off).
         goals = cfg.get("info_markets", ("totals", "btts"))
         home, _, away = f["match"].partition(" - ")
         ko = datetime.fromisoformat(f["kickoff"])
@@ -83,7 +85,10 @@ def legs_from_db(db: DB, day) -> list[dict]:
                 "pari": pari, "marche": marche,
                 "cote": c.odds, "bookmaker": c.bookmaker, "proba": round(c.p_win, 4),
                 "proba_marche": None if c.market_fair_prob is None else round(c.market_fair_prob, 4),
-                "valeur": round(c.ev, 4), "valide": c.market in enabled,
+                "valeur": round(c.ev, 4),
+                # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
+                "valide": c.market in enabled if c.market not in GOAL_MARKETS
+                else goal_market_validated(c.market, c.line, f.get("goals_model")),
                 "_divergence_max": cfg.get("max_market_divergence", 0.10),
             })
     return legs

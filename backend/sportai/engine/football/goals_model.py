@@ -394,6 +394,37 @@ class GoalsModel:
             out[mk] = float(predict_logistic(np.array(self.coefs[mk]), z)[0])
         return out
 
+    def predict_pairs(self, comp_matches: list[Match], pairs: list[tuple[str, str]], at: datetime, season: int,
+                      dc_model: dc.DixonColesModel, markets: tuple[str, ...] = tuple(MARKETS)
+                      ) -> dict[tuple[str, str], dict]:
+        """Enriched (and plain DC) probabilities for many (home, away) pairs at once, as of `at`.
+
+        Same features as predict(), computed in one pass: every pair is a pseudo-match
+        kicking off at `at`, so all of them see exactly the matches before `at` and none
+        sees another. Pairs with a team unknown to dc_model are left out.
+        """
+        past = sorted((m for m in comp_matches if m.kickoff < at), key=lambda m: (m.kickoff, m.fid))
+        comp = past[0].comp if past else ""
+        known = [(h, a) for h, a in pairs if h != a and dc_model.knows(h) and dc_model.knows(a)]
+        targets = [Match(-(k + 1), comp, season, at, h, a, 0, 0) for k, (h, a) in enumerate(known)]
+        feats = build_features(past + targets)
+        rows = []
+        for t in targets:
+            lam, mu = dc_model.expected_goals(t.home, t.away)
+            rows.append({"m": t, "f": feats[t.fid], "lam": lam, "mu": mu, "rho": dc_model.rho,
+                         "dc": market_probs(dc.score_matrix(lam, mu, dc_model.rho))})
+        out: dict[tuple[str, str], dict] = {(r["m"].home, r["m"].away): {"lam": r["lam"], "mu": r["mu"], "dc": r["dc"]}
+                                            for r in rows}
+        if not rows:
+            return out
+        for mk in markets:
+            X = logit_design(rows, mk, self.featset)
+            z = (X - np.array(self.means[mk])) / np.array(self.scales[mk])
+            p = predict_logistic(np.array(self.coefs[mk]), z)
+            for r, pi in zip(rows, p):
+                out[(r["m"].home, r["m"].away)][mk] = float(pi)
+        return out
+
     def to_dict(self) -> dict:
         return dict(self.__dict__)
 

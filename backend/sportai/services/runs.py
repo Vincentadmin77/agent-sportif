@@ -23,6 +23,7 @@ from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Provid
 from sportai.selection.engine import SelectionConfig
 from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey
+from sportai.services.goals_refresh import load_book_safely
 from sportai.services.movement import classify, previous_consensus
 from sportai.services.prematch import run_prematch
 
@@ -170,7 +171,14 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     try:
         # A club seen only in a few European matches cannot be placed against the five leagues.
         fit_cfg = dc.FitConfig(min_matches_per_team=UCL_MIN_MATCHES) if competition == "UCL" else None
-        report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now)
+        goals_lookup = goals_label = None
+        if mode == "real" and competition != "UCL":
+            book = load_book_safely(now)
+            if book is not None:
+                goals_lookup = lambda h, a: book.lookup(competition, h, a)  # noqa: E731
+                goals_label = book.data["model"]
+        report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now, goals_lookup=goals_lookup,
+                              goals_model_label=goals_label)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()
@@ -185,7 +193,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     run.fixtures = [{"match_id": f.fixture.provider_event_id, "match": f"{f.fixture.home} - {f.fixture.away}",
                      "kickoff": f.fixture.kickoff.isoformat(), "expected_goals": f.expected_goals,
                      "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes,
-                     "likely_score": f.likely_score}
+                     "likely_score": f.likely_score, "goals_model": f.goals_model,
+                     "goals_model_note": f.goals_model_note}
                     for f in report.fixtures]
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)

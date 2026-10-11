@@ -8,6 +8,7 @@ error, not a warning.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -20,7 +21,7 @@ from sportai.connectors.base import Fixture, HistoricalResult, OddsQuote
 from sportai.connectors.teams import normalise
 from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey, market_group, outcome
-from sportai.engine.value import devig_shin
+from sportai.engine.value import Outcome, devig_shin
 from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult, select
 
 
@@ -30,6 +31,14 @@ LOCAL_TZ = ZoneInfo("Europe/Paris")
 # Goal markets always computed from the model, with or without odds.
 GOAL_KEYS = [MarketKey("btts", "yes"), MarketKey("btts", "no")] + [
     MarketKey("totals", side, line) for line in (1.5, 2.5, 3.5) for side in ("over", "under")]
+
+
+# Enriched goals model (sportai/services/goals_refresh.py): it replaces Dixon-Coles on these labels when
+# the day's saved model knows both teams. Its probabilities come with no parameter samples of their own,
+# so the pessimistic quantile reuses Dixon-Coles' spread around the enriched value, minus a modest haircut.
+GOALS_HAIRCUT = 0.02
+GOALS_MODEL_DC = f"{dc.MODEL_NAME} {dc.MODEL_VERSION}"
+GoalsLookup = Callable[[str, str], tuple[dict[str, float] | None, str | None]]
 
 
 class MixedModeError(ValueError):
@@ -44,6 +53,8 @@ class FixtureAnalysis:
     skipped_reason: str | None = None
     n_quotes: int = 0
     likely_score: tuple[int, int, float] | None = None  # most likely final score and its probability
+    goals_model: str | None = None  # which model priced btts / totals
+    goals_model_note: str | None = None  # why the enriched model was not used, when it was not
 
 
 @dataclass
@@ -66,7 +77,11 @@ def run_prematch(
     fit_cfg: dc.FitConfig | None = None,
     now: datetime | None = None,
     n_samples: int = 300,
+    goals_lookup: GoalsLookup | None = None,
+    goals_model_label: str | None = None,
 ) -> PrematchReport:
+    """goals_lookup(home, away) -> (enriched probabilities by market label, None) or (None, reason): when
+    given, btts and over/under 1.5 / 2.5 / 3.5 are priced by the enriched goals model (fallback: Dixon-Coles)."""
     now = now or datetime.now(timezone.utc)
     cfg = cfg or SelectionConfig()
     modes = {r.mode for r in history} | {f.mode for f in fixtures} | {q.mode for q in quotes}
@@ -101,9 +116,14 @@ def run_prematch(
         lam_mu = model.expected_goals(h, a)
         central = model.score_matrix(h, a)
         model_only = {k.label(): round(outcome(central, k).win, 4) for k in GOAL_KEYS}
+        enriched, note = goals_lookup(fx.home, fx.away) if goals_lookup else (None, None)
+        if enriched:
+            model_only.update({k: round(v, 4) for k, v in enriched.items()})
         samples = model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode()))
         fq = by_event.get(fx.provider_event_id, [])
-        fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq))
+        fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq),
+                             goals_model=(goals_model_label or "enriched") if enriched else GOALS_MODEL_DC,
+                             goals_model_note=None if enriched else note)
         i, j = np.unravel_index(int(np.argmax(central)), central.shape)
         fa.likely_score = (int(i), int(j), round(float(central[i, j]), 4))
         if not fq:
@@ -111,8 +131,12 @@ def run_prematch(
         consensus = _market_consensus(fq)
         for key, best in _best_prices(fq, now).items():
             out = outcome(central, key)
-            fa.probabilities[key.label()] = round(out.win, 4)
             win_samples = np.array([outcome(s, key).win for s in samples])
+            if enriched and key.label() in enriched:
+                p = float(enriched[key.label()])
+                win_samples = np.clip((p + win_samples - out.win) * (1 - GOALS_HAIRCUT), 0.0, 1.0)
+                out = Outcome(win=p)  # half lines only: no push
+            fa.probabilities[key.label()] = round(out.win, 4)
             min_matches = min(model.matches_per_team[h], model.matches_per_team[a])
             age = (now - best.observed_at).total_seconds()
             quality = (0.5 * min(1.0, min_matches / 30)

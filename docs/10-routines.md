@@ -19,6 +19,10 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   `reglages` (ArtifactData `list` de chaque collection avec le même `out_dir`), sinon les tickets figés et les mises sont perdus.
 - **Score final estimé** : chaque match reçoit `score_estime` (score le plus probable du modèle Dixon-Coles et sa probabilité),
   marqué `resultat` « reussi » ou « rate » quand le match se termine (direct ou scores).
+- **Modèle de buts du jour** : avant l'analyse du matin, `agent_pass.py goals-refresh` (≈ 6 requêtes API-Football, ~1 min).
+  Il réajuste le modèle de buts enrichi (docs/11-backtest-buts.md) et l'enregistre dans `state/goals_model.json`. Sans fichier
+  du jour, les passages calculent les buts avec Dixon-Coles seul, et rien n'est validé. Plus/moins de 1,5 et 3,5 buts calculés par
+  ce modèle sont « validés (fragile) » ; « les deux équipes marquent » et 2,5 restent non validés.
 - **Analyse du matin à 8 h** : tous les matchs du jour d'un coup (`agent_pass.py prematch --matin ...`, 1 crédit par championnat,
   sans `--goals`), pour que la page soit remplie à l'ouverture. Chaque match reçoit un `scenario` : buts attendus de chaque
   équipe, chance que chacune marque au moins un but (avantage du terrain du championnat compris).

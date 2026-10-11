@@ -24,8 +24,20 @@ COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga",
                      "IT1": "Serie A", "UCL": "Ligue des champions", "BR1": "Brasileirão"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul"}
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
-GOAL_WARNING = ("Marché non validé : le test sur 10 000 matchs passés n'a pas montré d'avantage du modèle sur "
-                "ce marché. Chiffres donnés pour information, jamais proposés comme sélection.")
+GOAL_WARNING = ("Marchés non validés pour ce match : probabilités du modèle Dixon-Coles seul, qui ne fait pas mieux "
+                "qu'une fréquence moyenne sur ces marchés. Chiffres donnés pour information, jamais proposés comme "
+                "sélection.")
+GOAL_WARNING_ENRICHED = ("Modèle de buts enrichi (forme, xG, tirs). Plus/moins de 1,5 et de 3,5 buts : validés, mais "
+                         "de justesse (fragile), par le test hors échantillon sur 2 583 matchs. Les deux équipes "
+                         "marquent et plus/moins de 2,5 buts : non validés (pas d'avantage prouvé sur une fréquence "
+                         "moyenne). Faire mieux qu'une moyenne n'est pas battre les bookmakers.")
+# Goal markets validated by docs/11-backtest-buts.md, only when priced by the enriched goals model.
+VALIDATED_GOAL_LINES = (1.5, 3.5)
+
+
+def goal_market_validated(market: str, line: float | None, goals_model: str | None) -> bool:
+    return (market == "totals" and line in VALIDATED_GOAL_LINES
+            and bool(goals_model) and goals_model.startswith("goals-logit"))
 SCORER_NOTE = ("Compositions officielles et chances de marquer de chaque titulaire publiées au passage 45 min avant "
                "le match (les compositions sortent environ 1 h avant). Aucun bookmaker français ne propose le marché "
                "buteur chez notre fournisseur de cotes : pas de cote à comparer.")
@@ -152,14 +164,18 @@ def goals_block(f: dict, cands: list[CandidateRow], info_markets, odds_asked: bo
         selection, _, line = rest.partition("@")
         line_v = float(line) if line else None
         c = priced.get((market, selection, line_v))
-        row = {"pari": goal_label(market, selection, line_v), "proba": p}
+        row = {"pari": goal_label(market, selection, line_v), "proba": p,
+               "valide": goal_market_validated(market, line_v, f.get("goals_model"))}
         if c is not None:
             row.update(cote=c.odds, bookmaker=c.bookmaker, valeur=round(c.ev, 4))
             if c.market_fair_prob is not None:
                 row["proba_marche"] = round(c.market_fair_prob, 4)
         rows.append(row)
     lam, mu = f["expected_goals"]
-    block = {"buts_attendus": round(lam + mu, 2), "marches": rows, "avertissement": GOAL_WARNING}
+    enriched = goal_market_validated("totals", 1.5, f.get("goals_model"))
+    block = {"buts_attendus": round(lam + mu, 2), "marches": rows,
+             "avertissement": GOAL_WARNING_ENRICHED if enriched else GOAL_WARNING,
+             "modele": f.get("goals_model") or "dixon-coles"}
     if not any("cote" in r for r in rows):  # say why the odds columns are empty instead of dashes only
         block["cotes_info"] = GOAL_ODDS_NONE if odds_asked else GOAL_ODDS_LATER
     return block

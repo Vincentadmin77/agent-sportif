@@ -5,10 +5,16 @@
     python scripts/agent_pass.py scores --page P --out O [--final] FR1
     python scripts/agent_pass.py live --page P --out O FR1 ES1  # matches under way (API-Football)
     python scripts/agent_pass.py pronostic --page P --out O  # "Mon pronostic" tab again, no API call
+    python scripts/agent_pass.py goals-refresh [--max-requests 60]  # once a day, before the first prematch pass
 
 Every prematch pass and the final scores step also write pronostic/<day>.json for the "Mon pronostic"
 tab (the day's three best odds and three tickets; sportai/services/pronostic.py) and stats/bilan.json
 for "Résultats et statistiques" with the bankroll (sportai/services/bilan.py, setting reglages/bankroll).
+
+goals-refresh updates the current-season results and match statistics from API-Football (cached,
+incremental, at most --max-requests requests), refits the enriched goals model and saves it to
+GOALS_MODEL_PATH (default state/goals_model.json). Prematch passes of the same day (Paris) then price
+btts and over/under 1.5 / 2.5 / 3.5 with it; without it, or for a team it does not know, Dixon-Coles.
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -273,6 +279,14 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     _write(out, docs, f"Direct : {n_live} match(s) en cours, {len(docs) - n_live} terminé(s)", now)
 
 
+def goals_refresh(now: datetime, max_requests: int, download: bool = True) -> None:
+    from sportai.config import get_settings
+    from sportai.services.goals_refresh import run_refresh
+
+    report = run_refresh(now, get_settings().api_football_key, max_requests=max_requests, download=download)
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+
+
 def main() -> None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     ap = argparse.ArgumentParser()
@@ -282,6 +296,9 @@ def main() -> None:
     pr = sub.add_parser("pronostic")
     pr.add_argument("--page")
     pr.add_argument("--out", required=True)
+    gr = sub.add_parser("goals-refresh")
+    gr.add_argument("--max-requests", type=int, default=60)
+    gr.add_argument("--no-download", action="store_true", help="refit from the cache only, no API request")
     lv = sub.add_parser("live")
     lv.add_argument("competitions", nargs="+", choices=COMPETITIONS)
     lv.add_argument("--page")
@@ -303,6 +320,8 @@ def main() -> None:
         plan(now, a.competitions)
     elif a.cmd == "prematch":
         prematch(a.competitions, a.page, a.out, now, a.goals, a.matin)
+    elif a.cmd == "goals-refresh":
+        goals_refresh(now, a.max_requests, not a.no_download)
     elif a.cmd == "pronostic":
         pronostic(a.page, a.out, now)
     elif a.cmd == "live":
