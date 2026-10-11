@@ -77,12 +77,12 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                 items.append({"jour": day, "type": t.get("titre", key), "categorie": key,
                               "libelle": " + ".join(f"{l['pari']} ({l['match']})" for l in t["jambes"]),
                               "cote": t.get("cote_totale"), "proba": t.get("proba_totale"),
-                              "valide": t["resultat"] == "gagne"})
+                              "jambes": t["jambes"], "valide": t["resultat"] == "gagne"})
         for leg in doc.get("top3") or []:
             if leg.get("resultat") in ("gagne", "perdu"):
                 items.append({"jour": day, "type": "Top 3 des cotes", "categorie": "top3",
                               "libelle": f"{leg['pari']} ({leg['match']})", "cote": leg["cote"], "proba": leg["proba"],
-                              "valide": leg["resultat"] == "gagne"})
+                              "match_id": leg["match_id"], "valide": leg["resultat"] == "gagne"})
     for key in sorted(matchs):
         m = matchs[key]
         if m.get("statut") != "termine":
@@ -92,12 +92,14 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
             if s.get("resultat") in ("gagne", "perdu"):
                 items.append({"jour": m.get("jour"), "type": "Sélection", "categorie": "selection",
                               "libelle": f"{s['pari']} ({match})", "cote": s.get("cote_45") or s.get("cote_3h")
-                              or s.get("cote_matin"), "proba": s.get("proba"), "valide": s["resultat"] == "gagne"})
+                              or s.get("cote_matin"), "proba": s.get("proba"), "match_id": key,
+                              "valide": s["resultat"] == "gagne"})
         est = m.get("score_estime") or {}
         if est.get("resultat"):
             items.append({"jour": m.get("jour"), "type": "Score estimé", "categorie": "score",
                           "libelle": f"{match} : {est['score']} (réel {m.get('score')})", "cote": None,
-                          "proba": est.get("proba"), "valide": est["resultat"] == "reussi"})
+                          "proba": est.get("proba"), "match_id": key, "valide": est["resultat"] == "reussi",
+                          "explication": f"Score estimé {est['score']}, score final {m.get('score')}."})
     items.sort(key=lambda i: (i["jour"] or "", i["type"]), reverse=True)
     bank, history = replay(pronostics, settings)
     kinds = {}
