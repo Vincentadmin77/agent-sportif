@@ -38,7 +38,10 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   possession, xG, probabilités recalculées (champ `direct`) et le règlement des sélections à la fin. 1 + 2 requêtes par match.
 - **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux via The Odds API, 2 crédits par championnat) ; inutile quand l'étape direct de 115 min a vu le match terminé.
 - Planning : une routine quotidienne à 7 h 50 (Paris) fait l'analyse du matin, puis lit le calendrier (`agent_pass.py plan`, gratuit) et
-  programme une routine ponctuelle par étape.
+  programme une routine ponctuelle par étape. Le calendrier est celui de la saison complète de chaque championnat
+  (API-Football, 1 requête par championnat, rafraîchi toutes les 6 h), gardé dans
+  `/mnt/project-files/agent-sportif/data/calendrier/<championnat>.json` ; il donne les matchs du jour et leurs heures
+  (seuls les matchs du jour sont analysés). Si API-Football ne répond pas, `plan` reprend la liste de The Odds API.
 
 ## Préparer une session neuve
 Une routine déclenchée depuis la page (ou depuis une autre session) démarre dans une session neuve, sans le dépôt.
