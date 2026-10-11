@@ -17,7 +17,7 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   versions, puis Bash en arrière-plan `sleep 100; live_cycle.sh`. Chaque document reçoit minute, score, cartons rouges, tirs,
   possession, xG, probabilités recalculées (champ `direct`) et le règlement des sélections à la fin. 1 + 2 requêtes par match.
 - **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux via The Odds API, 2 crédits par championnat) ; inutile quand l'étape direct de 115 min a vu le match terminé.
-- Planning : une routine quotidienne à 7 h 50 (Paris) fait l'analyse du matin lit le calendrier (`agent_pass.py plan`, gratuit) et
+- Planning : une routine quotidienne à 7 h 50 (Paris) fait l'analyse du matin, puis lit le calendrier (`agent_pass.py plan`, gratuit) et
   programme une routine ponctuelle par étape.
 
 ## Préparer une session neuve
