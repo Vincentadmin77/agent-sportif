@@ -80,6 +80,13 @@ def test_bankroll_and_bilan():
     assert bilan["par_type"]["score"]["valides"] == 1 and bilan["global"]["valides"] >= 2
     assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
     assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13
+    # A run stored with the old modal 1-1 while its own probabilities favour the home side: the outcome decides.
+    old_run = {"likely_score": [1, 1, 0.1079], "expected_goals": [1.9, 1.0],
+               "probabilities": {"1x2:home": 0.5514, "1x2:draw": 0.2315, "1x2:away": 0.2171}}
+    est = likely_score(old_run)
+    assert est["domicile"] > est["exterieur"]
+    agree = {**old_run, "probabilities": {"1x2:home": 0.30, "1x2:draw": 0.40, "1x2:away": 0.30}}
+    assert likely_score(agree)["score"] == "1 - 1"
 
 
 def test_tickets_fixed_45_min_before_then_bonus():

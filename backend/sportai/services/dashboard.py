@@ -16,6 +16,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import numpy as np
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
@@ -141,15 +143,26 @@ def shots_block(competition: str, home: str, away: str, table: dict | None = Non
 
 
 def likely_score(f: dict) -> dict | None:
-    """The most likely final score (Dixon-Coles); runs stored before it existed fall back to Poisson."""
-    if f.get("likely_score"):
-        hg, ag, p = f["likely_score"]
-    elif f.get("expected_goals"):
-        from sportai.engine.football.dixon_coles import score_matrix
+    """The estimated final score: the most likely outcome (home win, draw, away win), then the most likely score
+    inside it (sportai.engine.football.markets.likely_score). Runs stored before 2026-10-11 kept the single most
+    likely exact score, often a 1-1 even with a clear favourite: when that score disagrees with the run's own 1X2
+    probabilities, it is recomputed from the expected goals (Poisson). Older runs without a score do the same."""
+    from sportai.engine.football.dixon_coles import score_matrix
+    from sportai.engine.football.markets import likely_score as decide
 
+    p1x2 = [(f.get("probabilities") or {}).get(f"1x2:{s}") for s in ("home", "draw", "away")]
+    best = max(range(3), key=lambda k: (p1x2[k], k != 1)) if None not in p1x2 else None
+    stored = f.get("likely_score")
+    if stored and (best is None or outcome(stored[0], stored[1]) == ("domicile", "nul", "exterieur")[best]):
+        hg, ag, p = stored
+    elif f.get("expected_goals"):
         m = score_matrix(*f["expected_goals"], 0.0)
-        hg, ag = (int(x) for x in divmod(int(m.argmax()), m.shape[1]))
-        p = round(float(m[hg, ag]), 4)
+        if best is not None:  # the run's own outcome probabilities (Dixon-Coles, with its low-score correction) decide
+            i, j = np.indices(m.shape)
+            m = np.where((i > j, i == j, i < j)[best], m, 0.0)
+        hg, ag, p = decide(m)
+    elif stored:
+        hg, ag, p = stored
     else:
         return None
     return {"score": f"{hg} - {ag}", "domicile": hg, "exterieur": ag, "proba": p}

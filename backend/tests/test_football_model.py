@@ -66,3 +66,17 @@ def test_uncertainty_samples_spread_around_centre():
 def test_refuses_tiny_samples():
     with pytest.raises(ValueError):
         dc.fit([dc.MatchResult(date(2024, 1, 1), "A", "B", 1, 0)] * 5)
+
+
+def test_likely_score_picks_the_outcome_first():
+    from sportai.engine.football.markets import likely_score
+
+    # Home side favourite at 50 %: 1-1 is the single most likely exact score, yet the estimate must be a home win.
+    m = dc.score_matrix(1.6, 1.0, -0.08)
+    assert divmod(int(m.argmax()), m.shape[1]) == (1, 1)
+    hg, ag, p = likely_score(m)
+    assert hg > ag and p == round(float(m[hg, ag]), 4)
+    assert likely_score(dc.score_matrix(0.9, 1.4, -0.08))[:2] == (0, 1)  # away favourite, playing away
+    # A draw only when it is truly the most likely of the three outcomes.
+    hg, ag, _ = likely_score(dc.score_matrix(0.5, 0.5, -0.1))
+    assert hg == ag

@@ -23,3 +23,9 @@ Plus c'est bas, mieux c'est.
 ## Ce que cela ne montre pas
 - **Aucune rentabilité.** Ce jeu de données n'a pas de cotes. Pour référence, les cotes de clôture des bookmakers atteignent typiquement un Brier d'environ 0,57 à 0,58 sur ces championnats (ordre de grandeur, non mesuré ici) : le modèle est probablement **moins précis que le marché**. C'est attendu pour un modèle fondé uniquement sur les scores, et c'est pourquoi le filtre exige un avantage robuste et rejette les écarts trop grands avec le marché.
 - Étape suivante indispensable : backtest contre les cotes historiques (The Odds API, offre payante, historique depuis 2020) en mesurant la valeur par rapport à la cote de clôture (CLV).
+
+## Score estimé : l'issue d'abord (11 octobre 2026)
+Même backtest (10 174 matchs, 5 championnats, hors échantillon). L'ancien score estimé prenait le score exact le plus probable : c'est souvent 1-1 même quand une équipe est favorite (domicile à 50 % → 1-1 reste le score le plus probable). Résultat : **55,7 % de nuls annoncés pour 24,6 % de nuls réels**, issue juste dans **42,0 %** des cas.
+Nouvelle règle : on choisit d'abord l'issue la plus probable (1, N ou 2), puis le score le plus probable dans cette issue. Un nul n'est annoncé que s'il est vraiment l'issue la plus probable (0,5 % des matchs). **Issue juste dans 52,6 %** des cas (Ligue 1 39,5 → 51,4 %, Premier League 42,9 → 54,0 %, LaLiga 45,4 → 52,4 %, Bundesliga 38,0 → 51,3 %, Serie A 43,3 → 53,6 %). Le score exact tombe un peu moins souvent (12,5 → 11,1 %).
+
+**Avantage du terrain :** il est ajusté par championnat (modèle refait pour chaque championnat) et il est bien calibré : victoires à domicile prévues 43,2 %, observées 43,5 % ; extérieur prévu 32,4 %, observé 32,0 % ; écart de buts domicile prévu +0,27, observé +0,27. Sur les matchs serrés (écart 1/2 < 10 points, 1 965 matchs) : domicile prévu 36,2 %, observé 37,6 %, dans la marge d'erreur. Pas de correction nécessaire.

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sportai.connectors.openfootball import OpenFootballProvider  # noqa: E402
 from sportai.engine.evaluation import brier_multiclass, calibration, log_loss  # noqa: E402
 from sportai.engine.football import dixon_coles as dc  # noqa: E402
-from sportai.engine.football.markets import MarketKey, outcome  # noqa: E402
+from sportai.engine.football.markets import MarketKey, likely_score, outcome  # noqa: E402
 
 SEASONS = ["2018-19", "2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26"]
 TEST_FROM = "2020-21"  # earlier seasons are warm-up only
@@ -45,6 +45,7 @@ def run_league(comp: str, provider: OpenFootballProvider, xi: float) -> dict:
     test_start = next(m.played_on for m in results if m.played_on.isoformat() >= f"{TEST_FROM[:4]}-08-01")
 
     probs, outs, base_probs, over_p, over_hit = [], [], [], [], []
+    modal, decided = [], []  # outcome of the single most likely exact score vs of the estimated score
     day = test_start
     last = matches[-1].played_on
     cfg = dc.FitConfig(xi=xi)
@@ -65,6 +66,10 @@ def run_league(comp: str, provider: OpenFootballProvider, xi: float) -> dict:
                 outs.append(0 if m.home_goals > m.away_goals else 1 if m.home_goals == m.away_goals else 2)
                 over_p.append(outcome(sm, MarketKey("totals", "over", 2.5)).win)
                 over_hit.append(m.home_goals + m.away_goals > 2.5)
+                i, j = divmod(int(sm.argmax()), sm.shape[1])
+                modal.append(0 if i > j else 1 if i == j else 2)
+                i, j, _ = likely_score(sm)
+                decided.append(0 if i > j else 1 if i == j else 2)
         day += timedelta(days=7)
 
     P, B, O = np.array(probs), np.array(base_probs), np.array(outs)
@@ -79,6 +84,11 @@ def run_league(comp: str, provider: OpenFootballProvider, xi: float) -> dict:
         "logloss_1x2_baseline": round(log_loss(B, O), 4),
         "brier_over25_model": round(float(np.mean((op - oh) ** 2)), 4),
         "brier_over25_baseline": round(float(np.mean((oh.mean() - oh) ** 2)), 4),
+        "draw_rate_actual": round(float(np.mean(O == 1)), 4),
+        "estimated_score_modal": {"draw_share": round(float(np.mean(np.array(modal) == 1)), 4),
+                                  "outcome_hit": round(float(np.mean(np.array(modal) == O)), 4)},
+        "estimated_score_outcome_first": {"draw_share": round(float(np.mean(np.array(decided) == 1)), 4),
+                                          "outcome_hit": round(float(np.mean(np.array(decided) == O)), 4)},
         "calibration_home_win": [b.__dict__ for b in calibration(P[:, 0], (O == 0).astype(float))],
         "calibration_over25": [b.__dict__ for b in calibration(op, oh)],
     }

@@ -20,7 +20,7 @@ import numpy as np
 from sportai.connectors.base import Fixture, HistoricalResult, OddsQuote
 from sportai.connectors.teams import normalise
 from sportai.engine.football import dixon_coles as dc
-from sportai.engine.football.markets import MarketKey, market_group, outcome
+from sportai.engine.football.markets import MarketKey, likely_score, market_group, outcome
 from sportai.engine.value import Outcome, devig_shin
 from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult, select
 
@@ -52,7 +52,7 @@ class FixtureAnalysis:
     probabilities: dict[str, float] = field(default_factory=dict)
     skipped_reason: str | None = None
     n_quotes: int = 0
-    likely_score: tuple[int, int, float] | None = None  # most likely final score and its probability
+    likely_score: tuple[int, int, float] | None = None  # estimated final score (most likely outcome, then score) and its probability
     goals_model: str | None = None  # which model priced btts / totals
     goals_model_note: str | None = None  # why the enriched model was not used, when it was not
 
@@ -124,8 +124,7 @@ def run_prematch(
         fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq),
                              goals_model=(goals_model_label or "enriched") if enriched else GOALS_MODEL_DC,
                              goals_model_note=None if enriched else note)
-        i, j = np.unravel_index(int(np.argmax(central)), central.shape)
-        fa.likely_score = (int(i), int(j), round(float(central[i, j]), 4))
+        fa.likely_score = likely_score(central)
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)

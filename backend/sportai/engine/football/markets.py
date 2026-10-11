@@ -80,3 +80,16 @@ def market_group(key: MarketKey) -> list[MarketKey]:
         sides = {"btts": ("yes", "no"), "totals": ("over", "under"), "dnb": ("home", "away")}[key.market]
         return [MarketKey(key.market, s, key.line) for s in sides]
     return []  # double chance overlaps; no clean complete market
+
+
+def likely_score(m: np.ndarray) -> tuple[int, int, float]:
+    """The estimated final score: the most likely outcome (home win, draw, away win) first, then the most likely
+    exact score inside it. Taking the single most likely exact score instead calls a draw far too often: 1-1 is
+    often the modal score even when one side is clearly favourite (owner, 2026-10-11; backtest in docs/04-backtest.md).
+    A draw is only estimated when the draw is truly the most likely of the three outcomes."""
+    i, j = np.indices(m.shape)
+    masks = (i > j, i == j, i < j)
+    best = max(range(3), key=lambda k: (float(m[masks[k]].sum()), k != 1))  # on an exact tie, not the draw
+    inside = np.where(masks[best], m, -1.0)
+    hg, ag = divmod(int(np.argmax(inside)), m.shape[1])
+    return int(hg), int(ag), round(float(m[hg, ag]), 4)
