@@ -82,3 +82,18 @@ def test_champions_league_is_information_only(tmp_path, monkeypatch):
         assert d["selections"] == [] and d["verdict"] == "aucune"
         assert d["rejets"][0] == UCL_INFO and d["rejets"][1].startswith("Modèle : ")
     get_settings.cache_clear()
+
+
+def test_morning_pass_and_scenario():
+    from datetime import datetime, timedelta, timezone
+
+    from sportai.services.dashboard import pass_name, scenario
+
+    ko = datetime(2026, 10, 11, 18, 45, tzinfo=timezone.utc)
+    assert pass_name(ko - timedelta(hours=10), ko) == "matin"
+    assert pass_name(ko - timedelta(hours=3), ko) == "h3"
+    assert pass_name(ko - timedelta(minutes=45), ko) == "m45"
+    text = scenario({"expected_goals": [1.1, 1.7]}, "Lecce", "Bologna")
+    assert "Lecce 1,1" in text and "Bologna 1,7" in text
+    assert "Lecce, moins fort sur le papier, garde une bonne chance de marquer (à domicile)" in text
+    assert scenario({"expected_goals": None}, "A", "B") is None

@@ -9,6 +9,7 @@ documents, so a pass never erases what an earlier pass wrote.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -63,8 +64,33 @@ def doc_id(kickoff: datetime, home: str, away: str) -> str:
 
 
 def pass_name(started_at: datetime, kickoff: datetime) -> str:
-    """Which of the two passes (3 h or 45 min before kick-off) a run belongs to."""
+    """Which pass a run belongs to: the 8 am pass ("matin"), 3 h or 45 min before kick-off."""
+    if kickoff - started_at >= timedelta(hours=3, minutes=30):
+        return "matin"
     return "h3" if kickoff - started_at >= timedelta(minutes=105) else "m45"
+
+
+ODDS_FIELD = {"matin": "cote_matin", "h3": "cote_3h", "m45": "cote_45"}
+
+
+def scenario(f: dict, home: str, away: str) -> str | None:
+    """How the match should unfold according to the model, without picking a winner: goals expected from
+    each side (home advantage of the league included) and the chance that each side scores at least once."""
+    if not f.get("expected_goals"):
+        return None
+    lam, mu = f["expected_goals"]
+    p_h, p_a = 1 - math.exp(-lam), 1 - math.exp(-mu)
+    total = lam + mu
+    tempo = "match ouvert" if total >= 3.0 else "match fermé" if total < 2.3 else "match équilibré en buts"
+    n = lambda x: f"{x:.1f}".replace(".", ",")
+    text = (f"Buts attendus : {home} {n(lam)}, {away} {n(mu)} ({tempo}, {n(total)} au total). "
+            f"Chance de marquer au moins un but : {home} {p_h * 100:.0f} %, {away} {p_a * 100:.0f} %. ")
+    weaker, p_weak = (home, p_h) if lam < mu else (away, p_a)
+    if abs(lam - mu) >= 0.4 and p_weak >= 0.6:
+        side = "à domicile" if weaker == home else "à l'extérieur"
+        text += f"{weaker}, moins fort sur le papier, garde une bonne chance de marquer ({side}). "
+    text += "L'avantage du terrain du championnat est compté. Estimation du modèle, pas un pari."
+    return text
 
 
 def bet_label(market: str, selection: str, home: str, away: str) -> str:
@@ -174,7 +200,7 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                 s = dict(previous.get(label) or {})
                 s.update(pari=label, marche=MARKET_NAMES.get(c.market, c.market), proba=round(c.p_win, 4),
                          valeur=round(c.ev, 4), bookmaker=c.bookmaker, raison=sels[c.id].rationale)
-                s["cote_3h" if which == "h3" else "cote_45"] = c.odds
+                s[ODDS_FIELD[which]] = c.odds
                 mv = moves.get(f"{c.market}:{c.selection}" + (f"@{c.line:g}" if c.line is not None else ""))
                 if mv:
                     s["mouvement"] = MOVE_KIND[mv["kind"]]
@@ -195,6 +221,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if goals:
             doc["buts"] = goals
         doc["buteurs"] = {"raison": SCORER_NOTE}
+        text = scenario(f, doc["domicile"], doc["exterieur"])
+        if text:
+            doc["scenario"] = text
         doc["verdict"] = "selection" if selections else "aucune"
         out[key] = doc
     return out

@@ -1,7 +1,7 @@
 """One scheduled step of the agent, for the routines that drive the results page.
 
     python scripts/agent_pass.py plan [--competitions FR1 ES1]  # today's kick-offs and pass times (free request)
-    python scripts/agent_pass.py prematch --page P --out O [--goals] FR1 ES1
+    python scripts/agent_pass.py prematch --page P --out O [--goals] [--matin] FR1 ES1
     python scripts/agent_pass.py scores --page P --out O [--final] FR1
     python scripts/agent_pass.py live --page P --out O FR1 ES1  # matches under way (API-Football)
 
@@ -81,7 +81,8 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     print(json.dumps({"kickoffs": {k: sorted(v) for k, v in sorted(by_time.items())}, "steps": steps}, indent=1))
 
 
-def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals: bool = False) -> None:
+def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals: bool = False,
+             morning: bool = False) -> None:
     work = Path(tempfile.mkdtemp()) / "agent.db"
     if STATE_DB.exists():
         shutil.copy(STATE_DB, work)
@@ -104,7 +105,8 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     manage.init(db)
     current, docs, notes, fixtures = _load_page(page), {}, [], []
     for comp in comps:
-        run = execute_prematch(db, get_settings(), comp, "routine", now=now, goal_markets=goals)
+        run = execute_prematch(db, get_settings(), comp, "routine", now=now, goal_markets=goals,
+                              max_hours_ahead=24 if morning else None)
         notes.append(f"{comp} {run.status}" + (f" ({run.status_detail[:120]})" if run.status_detail else ""))
         if run.status == "completed":
             new = build_match_docs(db, run, {**current, **docs})
@@ -239,12 +241,13 @@ def main() -> None:
         else:
             p.add_argument("--goals", action="store_true",
                            help="also price both-teams-to-score and totals, match by match (2 credits per match)")
+            p.add_argument("--matin", action="store_true", help="8 am pass: every match of the day, not only the next 3 h")
     a = ap.parse_args()
     now = datetime.now(timezone.utc)
     if a.cmd == "plan":
         plan(now, a.competitions)
     elif a.cmd == "prematch":
-        prematch(a.competitions, a.page, a.out, now, a.goals)
+        prematch(a.competitions, a.page, a.out, now, a.goals, a.matin)
     elif a.cmd == "live":
         live(a.competitions, a.page, a.out, now)
     else:

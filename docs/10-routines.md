@@ -6,6 +6,9 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 
 ## Rythme (règle du propriétaire)
 - Uniquement les matchs du jour (heure de Paris).
+- **Analyse du matin à 8 h** : tous les matchs du jour d'un coup (`agent_pass.py prematch --matin ...`, 1 crédit par championnat,
+  sans `--goals`), pour que la page soit remplie à l'ouverture. Chaque match reçoit un `scenario` : buts attendus de chaque
+  équipe, chance que chacune marque au moins un but (avantage du terrain du championnat compris).
 - Passage **H−3** (3 h avant le coup d'envoi) puis **H−45** (45 min avant : composition sortie, cotes qui bougent).
   À H−45, chaque sélection indique le mouvement du marché depuis H−3.
 - **Direct** (API-Football PRO, 7 500 requêtes par jour) : des étapes toutes les 15 min à partir du coup d'envoi (re)lancent
@@ -14,7 +17,7 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
   versions, puis Bash en arrière-plan `sleep 100; live_cycle.sh`. Chaque document reçoit minute, score, cartons rouges, tirs,
   possession, xG, probabilités recalculées (champ `direct`) et le règlement des sélections à la fin. 1 + 2 requêtes par match.
 - **Final** : une étape 2 h 15 après le dernier coup d'envoi du jour (scores finaux via The Odds API, 2 crédits par championnat) ; inutile quand l'étape direct de 115 min a vu le match terminé.
-- Planning : une routine quotidienne à 8 h 52 (Paris) lit le calendrier (`agent_pass.py plan`, gratuit) et
+- Planning : une routine quotidienne à 7 h 50 (Paris) fait l'analyse du matin lit le calendrier (`agent_pass.py plan`, gratuit) et
   programme une routine ponctuelle par étape.
 
 ## Préparer une session neuve

@@ -103,12 +103,16 @@ def _mark(db: DB, provider: str, error: str | None = None, quota: dict | None = 
 
 
 def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by: str,
-                     mode: str | None = None, now: datetime | None = None, goal_markets: bool = False) -> AnalysisRun:
+                     mode: str | None = None, now: datetime | None = None, goal_markets: bool = False,
+                     max_hours_ahead: float | None = None) -> AnalysisRun:
     """goal_markets: also fetch "both teams to score" and totals odds, match by match, for the matches
-    inside the analysis window (costs 2 credits per match; used at the 45 min pass)."""
+    inside the analysis window (costs 2 credits per match; used at the 45 min pass).
+    max_hours_ahead: widen the analysis window (the 8 am pass covers every match of the day)."""
     now = now or datetime.now(timezone.utc)
     mode = mode or settings.data_mode
     cfg = selection_config(db)
+    if max_hours_ahead is not None:
+        cfg = replace(cfg, max_hours_ahead=max_hours_ahead)
     if competition == "UCL":
         cfg = replace(cfg, enabled_markets=())  # cross-league model not validated: information only
     run = AnalysisRun(kind="prematch", competition=competition, mode=mode, status="running",
