@@ -21,11 +21,15 @@ LEGS = [leg("a-b", "Victoire a", 1.70, 0.66, 0.58), leg("c-d", "Victoire c", 1.6
 def test_top3_and_tickets():
     doc = build_pronostic(LEGS, {}, None, NOW, "matin")
     assert [l["match"] for l in doc["top3"]] == ["g-h", "e-f", "a-b"]
-    safe, semi = doc["tickets"]["safe"], doc["tickets"]["semi_safe"]
-    assert {l["match"] for l in safe["jambes"]} == {"a-b", "c-d"}
-    assert safe["cote_totale"] == 2.72 and safe["proba_totale"] == 0.4224
-    assert semi["proba_totale"] >= 0.25 and {l["match"] for l in semi["jambes"]} != {"a-b", "c-d"}
-    assert not any(k.startswith("_") for t in (safe, semi) for l in t["jambes"] for k in l)
+    safe, semi, fun = (doc["tickets"][k] for k in ("safe", "semi_safe", "fun"))
+    # Safe: above 1.50, the best chance: a-b alone (1.70, 66 %).
+    assert [l["match"] for l in safe["jambes"]] == ["a-b"] and safe["cote_totale"] == 1.7
+    # Semi-safe: at most 2 bets above 1.90, not the safe ticket again: a-b with c-d.
+    assert {l["match"] for l in semi["jambes"]} == {"a-b", "c-d"} and semi["cote_totale"] == 2.72
+    assert semi["proba_totale"] == 0.4224
+    # Fun: at most 3 bets above 2.50: e-f alone (2.80, 42 %).
+    assert [l["match"] for l in fun["jambes"]] == ["e-f"] and fun["cote_totale"] > 2.5
+    assert not any(k.startswith("_") for t in (safe, semi, fun) for l in t["jambes"] for k in l)
     assert "i-j" not in str(doc) and "k-l" not in str(doc)
 
 
@@ -42,7 +46,7 @@ def test_ticket_frozen_after_first_kickoff_then_settled():
     page = {"2026-10-11-a-b": {"statut": "termine", "score": "2 - 0", "domicile": "a", "exterieur": "b"},
             "2026-10-11-c-d": {"statut": "termine", "score": "1 - 1", "domicile": "c", "exterieur": "d"}}
     doc = build_pronostic(LEGS, page, first, later, "resultats")
-    safe = doc["tickets"]["safe"]
-    assert [l["pari"] for l in safe["jambes"]] == [l["pari"] for l in first["tickets"]["safe"]["jambes"]]
+    safe = doc["tickets"]["semi_safe"]
+    assert [l["pari"] for l in safe["jambes"]] == [l["pari"] for l in first["tickets"]["semi_safe"]["jambes"]]
     assert all(l["verrouille"] for l in safe["jambes"])
     assert {l["resultat"] for l in safe["jambes"]} == {"gagne", "perdu"} and safe["resultat"] == "perdu"

@@ -1,12 +1,14 @@
-"""The "Mon pronostic" tab of the results page: the day's three best odds and two combined tickets.
+"""The "Mon pronostic" tab of the results page: the day's three best odds and three tickets.
 
 Built at every pass from the bets the model priced today (validated markets only, Champions League
 excluded), with the page's documents for the match status and the final scores. Nothing is filled in
 for the sake of it: a ticket with no correct bets stays empty and says why.
 
 - Top 3: the bets where the model sees the most value over the bookmaker, for reasonable odds.
-- Safe ticket: 2 or 3 bets, the combination the model finds most likely to come in.
-- Semi-safe ticket: 2 or 3 bets, the best value whose combined probability stays at least 25 %.
+Tickets, by the owner's rules (2026-10-11), each the first that differs from the ones before it:
+- Safe: total odds above 1.50, the most likely combination (at least 50 %).
+- Semi-safe: at most 2 bets, total odds above 1.90, the most likely combination (at least 30 %).
+- Fun: at most 3 bets, total odds above 2.50, the most likely combination (at least 15 %).
 
 A leg must have model value >= 0 and agree with the market within the selection engine's divergence
 limit (a larger gap usually means missing information). A ticket whose first match has kicked off is
@@ -33,8 +35,10 @@ from sportai.services.dashboard import (
 from sportai.services.prematch import LOCAL_TZ
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
-SAFE_MIN_PROBA, SAFE_MIN_TOTAL = 0.55, 0.40
-SEMI_MIN_PROBA, SEMI_MIN_TOTAL = 0.35, 0.25
+# key, title, most bets, total odds above, combined probability at least, each bet at least
+TICKETS = (("safe", "Ticket safe", 3, 1.50, 0.50, 0.55),
+           ("semi_safe", "Ticket semi safe", 2, 1.90, 0.30, 0.35),
+           ("fun", "Ticket fun", 3, 2.50, 0.15, 0.30))
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
            "de l'agent : ces propositions sont plus larges. Estimation, jamais une garantie.")
@@ -88,11 +92,12 @@ def _ticket(legs: list[dict], title: str, message: str | None = None) -> dict:
             "proba_totale": round(math.prod(l["proba"] for l in legs), 4), "message": message}
 
 
-def _combos(legs: list[dict], min_proba: float, min_total: float):
-    pool = [l for l in legs if l["proba"] >= min_proba]
-    for n in (2, 3):
+def _combos(legs: list[dict], max_legs: int, min_odds: float, min_total: float, min_leg: float):
+    pool = [l for l in legs if l["proba"] >= min_leg]
+    for n in range(1, max_legs + 1):
         for combo in combinations(pool, n):
-            if len({l["match_id"] for l in combo}) == n and math.prod(l["proba"] for l in combo) >= min_total:
+            if (len({l["match_id"] for l in combo}) == n and math.prod(l["cote"] for l in combo) > min_odds
+                    and math.prod(l["proba"] for l in combo) >= min_total):
                 yield list(combo)
 
 
@@ -140,35 +145,31 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         notes.append("Aucune cote correcte pour l'instant : le modèle ne voit d'avantage sur aucun pari à venir "
                      "sans contredire nettement le marché.")
 
-    tickets = {}
-    for key, title, pick, min_p, min_t, empty in (
-        ("safe", "Ticket safe", lambda c: (math.prod(l["proba"] for l in c), len(c) == 2), SAFE_MIN_PROBA,
-         SAFE_MIN_TOTAL, ("Pas de ticket safe correct : il faudrait au moins deux paris à {p} % ou plus chacun, avec "
-                          "une valeur positive, pour une chance combinée d'au moins {t} %.")),
-        ("semi_safe", "Ticket semi safe",
-         lambda c: (math.prod(l["proba"] for l in c) * math.prod(l["cote"] for l in c), len(c) == 2), SEMI_MIN_PROBA,
-         SEMI_MIN_TOTAL, ("Pas de ticket semi safe correct : il faudrait au moins deux paris à {p} % ou plus, avec une "
-                          "valeur positive, pour une chance combinée d'au moins {t} %.")),
-    ):
+    tickets: dict[str, dict] = {}
+    for key, title, max_legs, min_odds, min_total, min_leg in TICKETS:
         old = (previous.get("tickets") or {}).get(key)
         if old and old.get("jambes") and any(started(l) for l in old["jambes"]):
             frozen = {**old, "jambes": [{**l, "verrouille": True} if started(l) else l for l in old["jambes"]],
                       "message": "Ticket figé : son premier match a commencé."}
             tickets[key] = _settle_ticket(frozen, page)
             continue
-        combos = list(_combos(open_legs, min_p, min_t))
-        if key == "semi_safe" and tickets.get("safe", {}).get("jambes"):
-            same = {(l["match_id"], l["pari"]) for l in tickets["safe"]["jambes"]}
-            combos = [c for c in combos if {(l["match_id"], l["pari"]) for l in c} != same]
+        taken = [{(l["match_id"], l["pari"]) for l in t["jambes"]} for t in tickets.values() if t["jambes"]]
+        combos = [c for c in _combos(open_legs, max_legs, min_odds, min_total, min_leg)
+                  if {(l["match_id"], l["pari"]) for l in c} not in taken]
         if combos:
-            best = max(combos, key=pick)
+            # The target odds reached with the best chance; the fewer bets the better on a tie.
+            best = max(combos, key=lambda c: (math.prod(l["proba"] for l in c), -len(c)))
             tickets[key] = _ticket(sorted(best, key=lambda l: l["coup_envoi"]), title)
         else:
-            tickets[key] = _ticket([], title, empty.format(p=round(min_p * 100), t=round(min_t * 100)))
+            most = "un seul pari" if max_legs == 1 else f"{max_legs} paris au plus"
+            tickets[key] = _ticket([], title, (
+                f"Pas de {title.lower()} correct : il faudrait une cote totale au-dessus de "
+                f"{min_odds:.2f}".replace(".", ",") + f" avec {most}, chacun à {round(min_leg * 100)} % ou plus "
+                f"et de valeur positive, pour une chance combinée d'au moins {round(min_total * 100)} %."))
 
     filled = [t["titre"] for t in tickets.values() if t["jambes"]]
     if filled:
-        notes.append(f"{len(top3)} cote(s) proposée(s). Prêt : " + " et ".join(filled).lower() + ".")
+        notes.append(f"{len(top3)} cote(s) proposée(s). Prêt : " + ", ".join(filled).lower() + ".")
     else:
         notes.append("Aucun ticket correct pour l'instant, on n'en invente pas.")
     clean = lambda l: {k: v for k, v in l.items() if not k.startswith("_")}

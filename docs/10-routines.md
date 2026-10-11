@@ -8,7 +8,9 @@ https://claude.ai/artifact/6qUcoCoWxoAamzK8C7fVmP (base `matchs`, document `etat
 - Uniquement les matchs du jour (heure de Paris).
 - **Onglet « Mon pronostic »** : chaque `prematch` (et `scores --final`) écrit aussi `OUT/pronostic/<jour>.json`, à écrire
   dans la collection `pronostic` (doc_id = le jour, version gardée par `mirror_sync.py ... pronostic/<jour>=<version>`).
-  Les 3 meilleures cotes du jour, un ticket safe et un ticket semi safe (`sportai/services/pronostic.py`) ; ticket vide
+  Les 3 meilleures cotes du jour et trois tickets (`sportai/services/pronostic.py`), règles de Vincent du 11/10 :
+  safe = cote totale > 1,50 avec la plus forte probabilité ; semi safe = 2 paris au plus, cote > 1,90 ; fun = 3 paris au
+  plus, cote > 2,50 (à chaque fois la combinaison la plus probable, différente des tickets précédents). Ticket vide
   si rien de correct ; un ticket est figé dès que son premier match commence. `agent_pass.py pronostic --page P --out O`
   le refait sans appel d'API.
 - **Analyse du matin à 8 h** : tous les matchs du jour d'un coup (`agent_pass.py prematch --matin ...`, 1 crédit par championnat,
