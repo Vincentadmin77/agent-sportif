@@ -37,10 +37,12 @@ from sportai.services.dashboard import (
 from sportai.services.prematch import LOCAL_TZ
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
-# key, title, most bets, total odds above, combined probability at least, each bet at least
-TICKETS = (("safe", "Ticket safe", 3, 1.50, 0.50, 0.55),
-           ("semi_safe", "Ticket semi safe", 2, 1.90, 0.30, 0.35),
-           ("fun", "Ticket fun", 3, 2.50, 0.15, 0.30))
+# key, title, fewest bets, most bets, total odds above, combined probability at least, each bet at least.
+# Tickets are combined bets ("combinés", owner 2026-10-11): two bets at least, three for the fun one; when no
+# such combination is correct, the ticket falls back to fewer bets and says so.
+TICKETS = (("safe", "Ticket safe", 2, 3, 1.50, 0.50, 0.55),
+           ("semi_safe", "Ticket semi safe", 2, 2, 1.90, 0.30, 0.35),
+           ("fun", "Ticket fun", 3, 3, 2.50, 0.15, 0.30))
 GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
@@ -106,9 +108,9 @@ def _ticket(legs: list[dict], title: str, message: str | None = None) -> dict:
             "proba_totale": round(math.prod(l["proba"] for l in legs), 4), "message": message}
 
 
-def _combos(legs: list[dict], max_legs: int, min_odds: float, min_total: float, min_leg: float):
+def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min_total: float, min_leg: float):
     pool = [l for l in legs if l["proba"] >= min_leg]
-    for n in range(1, max_legs + 1):
+    for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
             if (len({l["match_id"] for l in combo}) == n and math.prod(l["cote"] for l in combo) > min_odds
                     and math.prod(l["proba"] for l in combo) >= min_total):
@@ -162,7 +164,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                      "sans contredire nettement le marché.")
 
     tickets: dict[str, dict] = {}
-    for key, title, max_legs, min_odds, min_total, min_leg in TICKETS:
+    for key, title, min_legs, max_legs, min_odds, min_total, min_leg in TICKETS:
         old = (previous.get("tickets") or {}).get(key)
         if old and old.get("jambes") and any(started(l) for l in old["jambes"]):
             frozen = {**old, "jambes": [{**l, "verrouille": True} if started(l) else l for l in old["jambes"]],
@@ -170,12 +172,18 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             tickets[key] = _settle_ticket(frozen, page)
             continue
         taken = [{(l["match_id"], l["pari"]) for l in t["jambes"]} for t in tickets.values() if t["jambes"]]
-        combos = [c for c in _combos(open_legs, max_legs, min_odds, min_total, min_leg)
-                  if {(l["match_id"], l["pari"]) for l in c} not in taken]
+        for fewest in range(min_legs, 0, -1):
+            combos = [c for c in _combos(open_legs, fewest, max_legs, min_odds, min_total, min_leg)
+                      if {(l["match_id"], l["pari"]) for l in c} not in taken]
+            if combos:
+                break
         if combos:
             # The target odds reached with the best chance; the fewer bets the better on a tie.
             best = max(combos, key=lambda c: (math.prod(l["proba"] for l in c), -len(c)))
-            tickets[key] = _ticket(sorted(best, key=lambda l: l["coup_envoi"]), title)
+            short = None if len(best) >= min_legs else (
+                f"Pas de combiné de {min_legs} paris correct pour l'instant : "
+                + ("un seul pari" if len(best) == 1 else f"{len(best)} paris") + " atteint la cote visée.")
+            tickets[key] = _ticket(sorted(best, key=lambda l: l["coup_envoi"]), title, short)
         else:
             most = "un seul pari" if max_legs == 1 else f"{max_legs} paris au plus"
             tickets[key] = _ticket([], title, (
