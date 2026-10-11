@@ -30,6 +30,7 @@ from sportai.services.dashboard import (
     MARKET_NAMES,
     bet_label,
     doc_id,
+    goal_label,
     settle,
 )
 from sportai.services.prematch import LOCAL_TZ
@@ -39,6 +40,7 @@ TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
 TICKETS = (("safe", "Ticket safe", 3, 1.50, 0.50, 0.55),
            ("semi_safe", "Ticket semi safe", 2, 1.90, 0.30, 0.35),
            ("fun", "Ticket fun", 3, 2.50, 0.15, 0.30))
+GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
            "de l'agent : ces propositions sont plus larges. Estimation, jamais une garantie.")
@@ -63,18 +65,25 @@ def legs_from_db(db: DB, day) -> list[dict]:
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
+        # Goal markets enter the tickets at the owner's request (2026-10-11), flagged "non validé" until their
+        # backtest validates them; their odds exist only after a pass run with --goals (45 min before kick-off).
+        goals = cfg.get("info_markets", ("totals", "btts"))
         home, _, away = f["match"].partition(" - ")
         ko = datetime.fromisoformat(f["kickoff"])
         for c in db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id, CandidateRow.match_id == match_id)):
-            if c.market not in enabled:
+            if c.market in enabled:
+                pari, marche = bet_label(c.market, c.selection, home, away), MARKET_NAMES.get(c.market, c.market)
+            elif c.market in goals and c.market in GOAL_MARKETS:
+                pari, marche = goal_label(c.market, c.selection, c.line), GOAL_MARKETS[c.market]
+            else:
                 continue
             legs.append({
                 "match_id": doc_id(ko, home, away), "match": f["match"],
                 "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
-                "pari": bet_label(c.market, c.selection, home, away), "marche": MARKET_NAMES.get(c.market, c.market),
+                "pari": pari, "marche": marche,
                 "cote": c.odds, "bookmaker": c.bookmaker, "proba": round(c.p_win, 4),
                 "proba_marche": None if c.market_fair_prob is None else round(c.market_fair_prob, 4),
-                "valeur": round(c.ev, 4), "valide": True,
+                "valeur": round(c.ev, 4), "valide": c.market in enabled,
                 "_divergence_max": cfg.get("max_market_divergence", 0.10),
             })
     return legs

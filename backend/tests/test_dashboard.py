@@ -99,3 +99,10 @@ def test_morning_pass_and_scenario():
     assert "Lecce 1,1" in text and "Bologna 1,7" in text
     assert "Lecce, moins fort sur le papier, garde une bonne chance de marquer (à domicile)" in text
     assert scenario({"expected_goals": None}, "A", "B") is None
+
+
+def test_settle_goal_bets():
+    assert settle("Les deux équipes marquent : oui", "A", "B", 1, 1) == "gagne"
+    assert settle("Les deux équipes marquent : non", "A", "B", 1, 1) == "perdu"
+    assert settle("Plus de 2,5 buts", "A", "B", 2, 1) == "gagne"
+    assert settle("Moins de 1,5 buts", "A", "B", 1, 1) == "perdu"

@@ -266,6 +266,14 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
 
 
 def settle(bet: str, home: str, away: str, hg: int, ag: int) -> str:
+    if bet.startswith("Les deux équipes marquent : "):
+        return "gagne" if (hg > 0 and ag > 0) == bet.endswith("oui") else "perdu"
+    m = re.fullmatch(r"(Plus|Moins) de ([0-9]+(?:,5)?) buts", bet)
+    if m:
+        line = float(m.group(2).replace(",", "."))
+        if hg + ag == line:
+            return "rembourse"
+        return "gagne" if (hg + ag > line) == (m.group(1) == "Plus") else "perdu"
     if bet == f"Victoire {home}":
         return "gagne" if hg > ag else "perdu"
     if bet == f"Victoire {away}":
