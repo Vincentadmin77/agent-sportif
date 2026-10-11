@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session as DB
 
 from sportai.connectors.teams import normalise, same_team
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Selection
+from sportai.services.position import position
 from sportai.services.prematch import LOCAL_TZ
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
@@ -312,6 +313,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
             if not doc.get("selections"):
                 doc["verdict"] = "non_analyse"
                 doc["rejets"] = [SKIP_REASONS.get(reason, reason)]
+            pos = position(doc)
+            if pos:
+                doc["position"] = pos
             out[key] = doc
             continue
         mine = [c for c in cands if c.match_id == f["match_id"]]
@@ -360,6 +364,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if text:
             doc["scenario"] = text
         doc["verdict"] = "selection" if selections else "aucune"
+        pos = position(doc)
+        if pos:
+            doc["position"] = pos
         out[key] = doc
     return out
 

@@ -297,6 +297,11 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         ident = fixture_identity(fx)
         if key and any(current[key].get(k) != v for k, v in ident.items()):  # crests for the page, once
             current[key] = docs[key] = {**current[key], **ident}
+        if key and short in ("NS", "TBD"):  # a clear position on every match, even without a value bet
+            from sportai.services.position import position
+            pos = position(current[key])
+            if pos and pos != current[key].get("position"):
+                current[key] = docs[key] = {**current[key], "position": pos}
         if key and short in ("NS", "TBD") and "forme" not in current[key]:  # form and meetings, once a day
             try:
                 h, a = fx["teams"]["home"]["id"], fx["teams"]["away"]["id"]
