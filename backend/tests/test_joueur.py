@@ -21,6 +21,12 @@ def ticket(title, legs):
 
 A, C, E, G = (leg("a-b", "Victoire a", 1.80, 0.62), leg("c-d", "Victoire c", 1.60, 0.64),
               leg("e-f", "Victoire f", 2.80, 0.37), leg("g-h", "Victoire g", 2.0, 0.60, valide=False))
+def fake_simulation(*a, **k):
+    sc = {s: {"mediane_echeance": 1, "mediane_1an": 1, "chance_objectif": 0, "risque_ruine": 0} for s in joueur.SCENARIOS}
+    return {"depart": None, "objectif": None, "profils": {p: {"scenarios": sc} for p in joueur.PROFILS},
+            "comparaison": {"scenarios": sc}}
+
+
 PRONO = {"jour": "2026-10-11", "top3": [E, A],
          "tickets": {"safe": ticket("Ticket safe", [A]), "semi_safe": ticket("Ticket semi safe", [A, C]),
                      "fun": ticket("Ticket fun", [G, E])}}
@@ -57,9 +63,7 @@ def test_nothing_worth_it_passes():
 
 
 def test_frozen_then_settled_and_bankroll(monkeypatch):
-    monkeypatch.setattr(joueur, "simulation", lambda d, o: {"depart": d, "objectif": o, "profils": {
-        k: {"scenarios": {s: {"mediane_1an": 1, "chance_objectif": 0, "risque_ruine": 0} for s in joueur.SCENARIOS}}
-        for k in joueur.PROFILS}})
+    monkeypatch.setattr(joueur, "simulation", fake_simulation)
     settings = {"depart": 100.0, "objectif": 100000.0}
     day, etat = run(PRONO, None, {}, {}, settings, {"profil": "equilibre"}, None, NOW)
     played = [d for d in day["decisions"] if d["joue"]]
@@ -75,7 +79,8 @@ def test_frozen_then_settled_and_bankroll(monkeypatch):
     assert all(d["fige"] and d["gain"] is not None for d in day2["decisions"] if d["joue"])
     assert etat2["bankroll"]["actuelle"] == round(100 + sum(d["gain"] for d in day2["decisions"] if d["joue"]), 2)
     assert any("gagné" in e["texte"] or "perdu" in e["texte"] for e in day2["journal"])
-    assert etat2["plan"]["phrases"][0].startswith("Il faut multiplier")
+    assert etat2["plan"]["phrases"][0].startswith("Échéance : 31 mai 2027")
+    assert etat2["echeance"]["jours_restants"] == 232
 
 
 def test_brake_after_a_big_drop():
@@ -88,16 +93,14 @@ def test_brake_after_a_big_drop():
 
 
 def test_simulation_bigger_stakes_more_ruin():
-    out = {k: joueur.simulate(100, 100000, p, "aucun", paths=300, years=1) for k, p in joueur.PROFILS.items()}
+    out = {k: joueur.simulate(100, 100000, p, "aucun", paths=300, days=365) for k, p in joueur.PROFILS.items()}
     assert out["prudent"]["risque_ruine"] <= out["agressif"]["risque_ruine"]
     assert out["agressif"]["mediane_fin"] < out["prudent"]["mediane_fin"]
 
 
 def test_write_reads_the_page_copy(tmp_path, monkeypatch):
     import json
-    monkeypatch.setattr(joueur, "simulation", lambda d, o: {"depart": d, "objectif": o, "profils": {
-        k: {"scenarios": {s: {"mediane_1an": 1, "chance_objectif": 0, "risque_ruine": 0} for s in joueur.SCENARIOS}}
-        for k in joueur.PROFILS}})
+    monkeypatch.setattr(joueur, "simulation", fake_simulation)
     (tmp_path / "page" / "reglages").mkdir(parents=True)
     (tmp_path / "page" / "reglages" / "joueur.json").write_text(json.dumps({"profil": "agressif"}))
     doc = joueur.write(str(tmp_path / "page"), str(tmp_path / "out"), PRONO, {}, {"depart": 100.0, "objectif": 1e5}, NOW)
@@ -109,9 +112,7 @@ def test_write_reads_the_page_copy(tmp_path, monkeypatch):
 
 def test_live_follow_up_and_live_odds_seen():
     day, _ = run(PRONO, None, {}, {}, {"depart": 100.0, "objectif": 1e5}, {"profil": "equilibre"},
-                 {"simulation": {"depart": 100.0, "objectif": 1e5, "profils": {k: {"scenarios": {s: {
-                     "mediane_1an": 1, "chance_objectif": 0, "risque_ruine": 0} for s in joueur.SCENARIOS}}
-                     for k in joueur.PROFILS}}}, NOW)
+                 {"simulation": fake_simulation()}, NOW)
     page = {"2026-10-11-a-b": {"jour": "2026-10-11", "statut": "en_direct", "score": "1 - 0", "minute": 52,
                                "domicile": "a", "exterieur": "b",
                                "direct": {"proba": {"domicile": 0.85, "nul": 0.11, "exterieur": 0.04},
@@ -137,3 +138,18 @@ def test_leg_live_chance_goals_and_finished():
     assert joueur.leg_live_chance({"pari": "Les deux équipes marquent : non"}, m) == 0.0
     assert joueur.leg_live_chance({"pari": "Victoire a"}, m) is None
     assert joueur.leg_live_chance({"pari": "Victoire a"}, {**m, "statut": "termine"}) == 1.0
+
+
+def test_deadline_pace_raises_stakes_up_to_the_profile_ceiling():
+    from datetime import date
+    on_track = joueur.pace(100.0, 100.0, 1e5, date(2026, 10, 11))
+    assert on_track["ecart"] == 0 and on_track["jours_restants"] == 232 and on_track["statut"] == "dans_les_temps"
+    assert 0.029 < on_track["rythme_jour_necessaire"] < 0.031
+    late = joueur.pace(100.0, 100.0, 1e5, date(2026, 11, 11))
+    assert late["statut"] == "en_retard" and late["ecart"] < -0.5
+    p = joueur.PROFILS["equilibre"]
+    assert joueur.kelly_fraction(p, 0.0, False) == 0.25
+    assert joueur.kelly_fraction(p, late["ecart"], False) == 0.5  # never above the profile's ceiling
+    assert joueur.kelly_fraction(p, late["ecart"], True) == 0.25  # the safety brake wins
+    ds = {d["id"]: d for d in decide(PRONO, None, {}, 100.0, "equilibre", NOW, 0.5)}
+    assert "relevées pour l'échéance" in ds["ticket:safe"]["raison"] and ds["ticket:safe"]["mise"] <= 5.0

@@ -15,7 +15,7 @@ Documents written for the page:
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import date, datetime
 
 import numpy as np
 
@@ -23,15 +23,23 @@ from sportai.services.prematch import LOCAL_TZ
 from sportai.services.dashboard import settle
 from sportai.services.pronostic import _settle_ticket
 
-# Fraction of the Kelly stake, most of the bankroll on one bet and on one day, least value and chance to play.
+# Fraction of the Kelly stake (on schedule, and at most when far behind the deadline), most of the bankroll on one
+# bet and on one day, least value and chance to play. Never above the full Kelly stake: beyond it the bankroll
+# grows more slowly on average and the risk of ruin soars.
 PROFILS = {
-    "prudent": {"titre": "Prudent", "kelly": 0.125, "max_pari": 0.02, "max_jour": 0.05, "valeur_min": 0.03,
-                "proba_min": 0.40},
-    "equilibre": {"titre": "Équilibré", "kelly": 0.25, "max_pari": 0.05, "max_jour": 0.10, "valeur_min": 0.02,
-                  "proba_min": 0.30},
-    "agressif": {"titre": "Agressif", "kelly": 0.5, "max_pari": 0.10, "max_jour": 0.20, "valeur_min": 0.01,
-                 "proba_min": 0.20},
+    "prudent": {"titre": "Prudent", "kelly": 0.125, "kelly_max": 0.25, "max_pari": 0.02, "max_jour": 0.05,
+                "valeur_min": 0.03, "proba_min": 0.40},
+    "equilibre": {"titre": "Équilibré", "kelly": 0.25, "kelly_max": 0.5, "max_pari": 0.05, "max_jour": 0.10,
+                  "valeur_min": 0.02, "proba_min": 0.30},
+    "agressif": {"titre": "Agressif", "kelly": 0.5, "kelly_max": 1.0, "max_pari": 0.10, "max_jour": 0.20,
+                 "valeur_min": 0.01, "proba_min": 0.20},
 }
+# The owner's deadline (2026-10-11): this season only, 100 000 by the end of May 2027.
+DEBUT, ECHEANCE = date(2026, 10, 11), date(2027, 5, 31)
+RETARD_PLEIN = 0.5  # half the target path behind: stakes at the profile's most
+# For comparison only, never played: twice the Kelly stake.
+DOUBLE_KELLY = {"titre": "Deux fois Kelly (comparaison, jamais joué)", "kelly": 2.0, "kelly_max": 2.0, "max_pari": 0.5,
+                "max_jour": 0.8, "valeur_min": 0.01, "proba_min": 0.20}
 DEFAUT, RECOMMANDE = "prudent", "prudent"
 FREIN = 0.6  # below 60 % of its best level the player drops to the profile below until it recovers
 MISE_MIN = 0.10
@@ -103,10 +111,35 @@ def effective_profile(choisi: str, bank: float, pic: float) -> tuple[str, str | 
     return choisi, None
 
 
+def pace(bank: float, depart: float, objectif: float, today: date, debut: date = DEBUT,
+         echeance: date = ECHEANCE) -> dict:
+    """Where the bankroll stands against a steady path from the start to the target on the deadline."""
+    total, done = max((echeance - debut).days, 1), min(max((today - debut).days, 0), (echeance - debut).days)
+    left = max((echeance - today).days, 0)
+    cible = depart * (objectif / depart) ** (done / total)
+    ecart = bank / cible - 1
+    need = (objectif / bank) ** (1 / left) - 1 if left and bank > 0 else None
+    return {"debut": f"{debut}", "echeance": f"{echeance}", "jours_restants": left, "cible_aujourdhui": round(cible, 2),
+            "ecart": round(ecart, 4), "rythme_jour_necessaire": None if need is None else round(need, 5),
+            "statut": "en_avance" if ecart > 0.05 else "en_retard" if ecart < -0.05 else "dans_les_temps"}
+
+
+def kelly_fraction(p: dict, ecart: float, frein: bool) -> float:
+    """The profile's Kelly fraction, raised towards its ceiling as the bankroll falls behind the deadline path.
+    Never raised while the safety brake is on."""
+    if frein:
+        return p["kelly"]
+    behind = min(max(-ecart, 0.0) / RETARD_PLEIN, 1.0)
+    return round(p["kelly"] + (p["kelly_max"] - p["kelly"]) * behind, 4)
+
+
 def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_start: float, profil: str,
-           now: datetime) -> list[dict]:
+           now: datetime, kelly: float | None = None) -> list[dict]:
     """The day's decisions: those already under way kept as they were, the others (re)made now."""
-    p = PROFILS[profil]
+    p = dict(PROFILS[profil])
+    accel = kelly is not None and kelly > p["kelly"]
+    if kelly is not None:
+        p["kelly"] = kelly
     old = {d["id"]: d for d in (previous or {}).get("decisions") or []}
     frozen = [d for d in old.values() if any(_started(l, page, now) for l in d["jambes"])]
     decisions = [_result({**d, "fige": True}, page) for d in frozen]
@@ -144,7 +177,8 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
         decisions.append({**d, "joue": True, "mise": stake, "mise_pct": round(stake / bank_start, 4),
                           "raison": (f"Chance {_pct(c['proba'], 0)} pour une cote de {_fr(c['cote'])} : valeur "
                                      f"{_pct(c['valeur'])}. Kelly conseille {_pct(c['kelly'])} de la bankroll, "
-                                     f"j'en mise {_pct(stake / bank_start)} (profil {p['titre'].lower()}).")})
+                                     f"j'en mise {_pct(stake / bank_start)} (profil {p['titre'].lower()}"
+                                     + (", mises relevées pour l'échéance" if accel else "") + ").")})
     for gone in set(old) - {d["id"] for d in decisions}:
         if old[gone].get("joue"):
             decisions.append({**old[gone], "joue": False, "mise": 0.0, "mise_pct": 0.0,
@@ -162,8 +196,9 @@ def _summary(decisions: list[dict]) -> str:
 
 
 def simulate(depart: float, objectif: float, profil: dict, scenario: str, paths: int = 2000,
-             years: int = 3, seed: int = 7) -> dict:
-    """Monte Carlo of the player's rule over `years`, for a market like the one it sees.
+             days: int = 365 * 3, seed: int = 7) -> dict:
+    """Monte Carlo of the player's rule over `days`, stakes at the profile's ceiling (the player is behind the
+    deadline path almost at once), for a market like the one it sees.
 
     Each day about two proposals arrive, at odds of 1.6 to 3.2, with an estimated value of 0 to 12 %.
     Scenario "raison": the model is right; "moitie": the real value is half the estimate; "aucun": no real
@@ -171,8 +206,7 @@ def simulate(depart: float, objectif: float, profil: dict, scenario: str, paths:
     """
     rng = np.random.default_rng(seed)
     bank = np.full(paths, float(depart))
-    days = 365 * years
-    reached, ruined, after_1y = np.zeros(paths, bool), np.zeros(paths, bool), None
+    reached, ruined = np.zeros(paths, bool), np.zeros(paths, bool)
     for day in range(days):
         n = rng.poisson(2.0, paths)
         spent = np.zeros(paths)
@@ -183,7 +217,7 @@ def simulate(depart: float, objectif: float, profil: dict, scenario: str, paths:
             proba = (1 + est) / odds
             true = {"raison": est, "moitie": est / 2, "aucun": np.full(paths, -0.04)}[scenario]
             kelly = est / (odds - 1)
-            frac = np.minimum(profil["kelly"] * kelly, profil["max_pari"])
+            frac = np.minimum(profil["kelly_max"] * kelly, profil["max_pari"])
             frac = np.minimum(frac, profil["max_jour"] - spent)
             play = ((n > j) & (est >= profil["valeur_min"]) & (proba >= profil["proba_min"]) & (frac > 0)
                     & ~ruined & ~reached)
@@ -193,9 +227,9 @@ def simulate(depart: float, objectif: float, profil: dict, scenario: str, paths:
             bank = bank + np.where(win, stake * (odds - 1), -stake)
         ruined |= bank < 0.1 * depart
         reached |= bank >= objectif
-        if day == 364:
-            after_1y = np.median(bank)
-    return {"mediane_1an": round(float(after_1y), 2), "mediane_fin": round(float(np.median(bank)), 2),
+    med = round(float(np.median(bank)), 2)
+    # mediane_1an kept for the page until it reads mediane_echeance: both are the median on the deadline.
+    return {"mediane_echeance": med, "mediane_1an": med, "mediane_fin": med,
             "chance_objectif": round(float(reached.mean()), 4), "risque_ruine": round(float(ruined.mean()), 4)}
 
 
@@ -203,37 +237,62 @@ SCENARIOS = {"raison": "Le modèle a raison", "moitie": "Le modèle surestime de
              "aucun": "Aucun avantage réel"}
 
 
-def simulation(depart: float, objectif: float) -> dict:
+def simulation(depart: float, objectif: float, jours: int, echeance: str = f"{ECHEANCE}") -> dict:
+    """From the bankroll as it is now to the deadline. `depart` here is the current bankroll."""
+    jours = max(jours, 1)
     profils = {}
     for key, p in PROFILS.items():
         profils[key] = {"titre": p["titre"], "regles": {k: p[k] for k in p if k != "titre"},
-                        "scenarios": {s: simulate(depart, objectif, p, s) for s in SCENARIOS}}
+                        "scenarios": {s: simulate(depart, objectif, p, s, days=jours) for s in SCENARIOS}}
     return {
-        "depart": depart, "objectif": objectif, "annees": 3, "scenarios": SCENARIOS,
-        "hypotheses": ("2 000 parcours de 3 ans. Environ deux propositions par jour, cotes de 1,6 à 3,2, valeur estimée "
-                       "de 0 à 12 %. « Ruine » : passer sous 10 % du départ. Chance de l'objectif : l'atteindre en 3 ans."),
+        "depart": depart, "objectif": objectif, "jours": jours, "echeance": echeance, "scenarios": SCENARIOS,
+        "hypotheses": (f"2 000 parcours de la bankroll actuelle jusqu'au {_date_fr(echeance)} ({jours} jours). Environ "
+                       "deux propositions par jour, cotes de 1,6 à 3,2, valeur estimée de 0 à 12 %. Mises au plus haut "
+                       "du profil, puisque le joueur est en retard sur l'échéance. « Ruine » : passer sous 10 % de la "
+                       "bankroll actuelle. Chance de l'objectif : l'atteindre avant l'échéance."),
         "profils": profils, "recommande": RECOMMANDE,
+        "comparaison": {"titre": DOUBLE_KELLY["titre"],
+                        "scenarios": {s: simulate(depart, objectif, DOUBLE_KELLY, s, days=jours) for s in SCENARIOS}},
         "lecon": ("Miser plus n'accélère pas : au-delà de la mise de Kelly, la bankroll grossit moins vite en moyenne et le "
                   "risque de tout perdre explose. Ce qui rapproche vraiment de l'objectif, c'est un avantage réel prouvé "
                   "et un montant de départ plus élevé, pas un pourcentage de mise plus fort."),
     }
 
 
-def plan(bank: float, objectif: float, sim: dict, profil: str) -> dict:
+MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre",
+        "décembre")
+
+
+def _date_fr(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{d.day} {MOIS[d.month - 1]} {d.year}"
+
+
+def plan(bank: float, objectif: float, sim: dict, profil: str, rythme: dict, kelly: float) -> dict:
     mult = objectif / bank if bank > 0 else float("inf")
-    rythme = {f"{y}_an{'s' if y > 1 else ''}": round(mult ** (1 / (365 * y)) - 1, 5) for y in (1, 3, 5)}
-    s = sim["profils"][profil]["scenarios"]
+    s, c = sim["profils"][profil]["scenarios"], sim["comparaison"]["scenarios"]
+    when = _date_fr(rythme["echeance"])
+    ecart = rythme["ecart"]
+    where = (f"J'ai {_pct(ecart, 0)} d'avance" if rythme["statut"] == "en_avance" else
+             f"J'ai {_pct(-ecart, 0)} de retard" if rythme["statut"] == "en_retard" else "Je suis dans les temps")
+    need = rythme["rythme_jour_necessaire"]
     phrases = [
-        f"Il faut multiplier la bankroll par {_fr(mult, 0)} pour atteindre {_fr(objectif, 0)} €.",
-        f"Soit +{_pct(rythme['1_an'], 2)} par jour, tous les jours, pendant 1 an ; +{_pct(rythme['3_ans'], 2)} par "
-        f"jour pendant 3 ans. Un très bon parieur professionnel vise plutôt quelques % par mois.",
-        f"Mon profil {PROFILS[profil]['titre'].lower()}, si le modèle a raison : bankroll médiane "
-        f"{_fr(s['raison']['mediane_1an'], 0)} € dans 1 an, {_pct(s['raison']['chance_objectif'])} de chances "
-        f"d'atteindre l'objectif en 3 ans, {_pct(s['raison']['risque_ruine'])} de risque de ruine.",
-        f"Sans avantage réel : médiane {_fr(s['aucun']['mediane_1an'], 0)} € dans 1 an. C'est pourquoi je "
-        "recommande le profil prudent tant que le modèle n'a pas prouvé qu'il bat les bookmakers.",
+        f"Échéance : {when}, fin de la saison. Il reste {rythme['jours_restants']} jours pour multiplier la bankroll "
+        f"par {_fr(mult, 0)} et atteindre {_fr(objectif, 0)} €.",
+        (f"Il faudrait gagner +{_pct(need, 2)} par jour, tous les jours. Un très bon parieur professionnel fait "
+         "quelques % par mois." if need is not None else "L'échéance est passée."),
+        f"{where} sur la trajectoire régulière (objectif du jour : {_fr(rythme['cible_aujourdhui'])} €). En retard, "
+        f"je relève mes mises jusqu'au plafond de mon profil, jamais au-delà de la mise de Kelly. Aujourd'hui : "
+        f"{_pct(kelly, 1)} de Kelly.",
+        f"Profil {PROFILS[profil]['titre'].lower()}, si le modèle a raison : {_pct(s['raison']['chance_objectif'])} de "
+        f"chances d'y être le {when} (bankroll médiane {_fr(s['raison']['mediane_echeance'], 0)} €), "
+        f"{_pct(s['raison']['risque_ruine'])} de risque de ruine. Sans avantage réel : "
+        f"{_pct(s['aucun']['risque_ruine'])} de risque de ruine.",
+        f"Pour comparer, miser deux fois Kelly : {_pct(c['raison']['chance_objectif'])} de chances si le modèle a raison, "
+        f"mais {_pct(c['raison']['risque_ruine'], 0)} de ruine même dans ce cas et {_pct(c['aucun']['risque_ruine'], 0)} "
+        "sans avantage réel. Je ne le fais pas.",
     ]
-    return {"multiplicateur": round(mult, 1), "rythme_par_jour": rythme, "phrases": phrases}
+    return {"multiplicateur": round(mult, 1), "echeance": rythme, "kelly_du_jour": kelly, "phrases": phrases}
 
 
 def write(page_folder: str | None, out: str, pronostic: dict, page: dict[str, dict], settings: dict,
@@ -383,7 +442,10 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
     bank_start, pic, _ = replay(earlier, depart)
     choisi = (choix or {}).get("profil", DEFAUT)
     profil, frein = effective_profile(choisi, bank_start, pic)
-    decisions = decide(pronostic, previous_day, page, bank_start, profil, now)
+    echeance = date.fromisoformat((choix or {}).get("echeance") or f"{ECHEANCE}")
+    rythme = pace(bank_start, depart, objectif, date.fromisoformat(day), echeance=echeance)
+    kelly = kelly_fraction(PROFILS[profil], rythme["ecart"], bool(frein))
+    decisions = decide(pronostic, previous_day, page, bank_start, profil, now, kelly)
 
     journal = list((previous_day or {}).get("journal") or [])
     resume = _summary(decisions)
@@ -400,23 +462,26 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
                                                      f"{_fr(d['gain'])} €."})
 
     doc = {"jour": day, "maj": now.isoformat(), "profil": profil, "profil_choisi": choisi,
-           "bankroll_du_jour": round(bank_start, 2), "budget_max": round(PROFILS[profil]["max_jour"] * bank_start, 2),
+           "bankroll_du_jour": round(bank_start, 2), "kelly_du_jour": kelly, "budget_max": round(PROFILS[profil]["max_jour"] * bank_start, 2),
            "decisions": decisions, "resume": resume, "journal": journal[-60:]}
     for key in ("direct_vus", "en_direct"):  # written by the live loop, kept across the pre-match passes
         if (previous_day or {}).get(key):
             doc[key] = previous_day[key]
 
     bank, pic, history = replay({**earlier, day: doc}, depart)
+    rythme = {**pace(bank, depart, objectif, date.fromisoformat(day), echeance=echeance), "statut_matin": rythme["statut"]}
     prev_sim = (previous_etat or {}).get("simulation") or {}
-    sim = (prev_sim if (prev_sim.get("depart"), prev_sim.get("objectif")) == (depart, objectif)
-           and set(prev_sim.get("profils") or {}) == set(PROFILS) else simulation(depart, objectif))
+    key = (round(bank, 2), objectif, rythme["jours_restants"], f"{echeance}")
+    sim = (prev_sim if (prev_sim.get("depart"), prev_sim.get("objectif"), prev_sim.get("jours"),
+                        prev_sim.get("echeance")) == key and set(prev_sim.get("profils") or {}) == set(PROFILS)
+           else simulation(bank, objectif, rythme["jours_restants"], f"{echeance}"))
     all_days = {**earlier, day: doc}
     etat = {
         "maj": now.isoformat(), "profil": profil, "profil_choisi": choisi, "recommande": RECOMMANDE,
         "profils_dispo": {k: {"titre": v["titre"], **{x: v[x] for x in v if x != "titre"}} for k, v in PROFILS.items()},
         "bankroll": {"depart": depart, "objectif": objectif, "actuelle": bank, "pic": pic,
                      "progression": round(bank / objectif, 6), "historique": history},
-        "plan": plan(bank, objectif, sim, profil), "simulation": sim,
+        "plan": plan(bank, objectif, sim, profil, rythme, kelly), "echeance": rythme, "simulation": sim,
         "derniers_jours": [{"jour": d, "resume": all_days[d].get("resume"),
                             "mises": round(sum(x["mise"] for x in all_days[d]["decisions"] if x["joue"]), 2),
                             "gain": round(sum(x.get("gain") or 0 for x in all_days[d]["decisions"] if x["joue"]), 2)}
