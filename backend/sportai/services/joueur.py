@@ -72,7 +72,7 @@ def candidates(pronostic: dict) -> list[dict]:
 
 def _result(decision: dict, page: dict[str, dict]) -> dict:
     settled = _settle_ticket({"jambes": decision["jambes"]}, page)
-    d = {**decision, "jambes": settled["jambes"], "resultat": settled.get("resultat")}
+    d = {**decision, "jambes": settled["jambes"], "resultat": None if settled.get("resultat") == "en_cours" else settled.get("resultat")}
     if d["joue"] and d["resultat"] in ("gagne", "perdu", "rembourse"):
         won = math.prod(l["cote"] for l in d["jambes"] if l.get("resultat") == "gagne")
         d["gain"] = round(-d["mise"] if d["resultat"] == "perdu" else d["mise"] * (won - 1), 2)
