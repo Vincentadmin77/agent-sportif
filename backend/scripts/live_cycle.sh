@@ -12,7 +12,9 @@ python3 scripts/agent_pass.py live --page $M --out $O ${COMPS:-FR1 ES1 IT1 BR1} 
 # A match just ended: settle tickets, bilan and bankroll right away, nobody needs to ask (owner, 2026-10-11).
 if grep -qs '"statut": "termine"' $O/matchs/*.json; then
   cp $O/matchs/*.json $M/matchs/; [ -d $O/joueur ] && cp $O/joueur/*.json $M/joueur/
-  rm -rf $O.fin && python3 scripts/agent_pass.py pronostic --page $M --out $O.fin 2>&1 | tail -1
+  # the day of the match that ended, not the clock's: a late Brazilian match ends after midnight in Paris
+  DAY=$(basename "$(grep -ls '"statut": "termine"' $O/matchs/*.json | head -1)" | cut -c1-10)
+  rm -rf $O.fin && python3 scripts/agent_pass.py pronostic --page $M --out $O.fin --day $DAY 2>&1 | tail -1
   for sub in pronostic stats joueur; do [ -d $O.fin/$sub ] && mkdir -p $O/$sub && cp $O.fin/$sub/*.json $O/$sub/; done
 fi
 python3 - <<'PY'

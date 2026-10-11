@@ -99,9 +99,9 @@ def _state_session():
     return sessionmaker(bind=create_engine(f"sqlite:///file:{STATE_DB}?mode=ro&uri=true"))()
 
 
-def pronostic(page: str | None, out: str, now: datetime) -> None:
+def pronostic(page: str | None, out: str, now: datetime, day: str | None = None) -> None:
     db = _state_session()
-    print(json.dumps({"pronostic": _pronostic(db, page, {}, out, now, "maj")}, ensure_ascii=False))
+    print(json.dumps({"pronostic": _pronostic(db, page, {}, out, now, "maj", day)}, ensure_ascii=False))
     db.close()
 
 
@@ -380,6 +380,7 @@ def main() -> None:
     pr = sub.add_parser("pronostic")
     pr.add_argument("--page")
     pr.add_argument("--out", required=True)
+    pr.add_argument("--day", help="YYYY-MM-DD, default today (Paris); a late match ending after midnight settles its own day")
     gr = sub.add_parser("goals-refresh")
     gr.add_argument("--max-requests", type=int, default=60)
     gr.add_argument("--no-download", action="store_true", help="refit from the cache only, no API request")
@@ -407,7 +408,7 @@ def main() -> None:
     elif a.cmd == "goals-refresh":
         goals_refresh(now, a.max_requests, not a.no_download)
     elif a.cmd == "pronostic":
-        pronostic(a.page, a.out, now)
+        pronostic(a.page, a.out, now, a.day)
     elif a.cmd == "live":
         live(a.competitions, a.page, a.out, now)
     else:
