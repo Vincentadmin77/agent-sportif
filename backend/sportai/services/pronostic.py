@@ -62,12 +62,17 @@ def legs_from_db(db: DB, day) -> list[dict]:
     runs = db.scalars(select(AnalysisRun).where(AnalysisRun.status == "completed", AnalysisRun.kind == "prematch")
                       .order_by(AnalysisRun.started_at))
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
+    goals_run: dict[str, int] = {}  # goal odds are only fetched 45 min before: keep the last run that has them
     for run in runs:
         if run.competition == "UCL" or _aware(run.started_at).astimezone(LOCAL_TZ).date() != day:
             continue
+        priced = set(db.scalars(select(CandidateRow.match_id).where(
+            CandidateRow.run_id == run.id, CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
         for f in run.fixtures or []:
             if not f.get("skipped_reason"):
                 latest[f["match_id"]] = (run, f)
+                if f["match_id"] in priced:
+                    goals_run[f["match_id"]] = run.id
     legs = []
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
@@ -78,7 +83,13 @@ def legs_from_db(db: DB, day) -> list[dict]:
         goals = cfg.get("info_markets", ("totals", "btts"))
         home, _, away = f["match"].partition(" - ")
         ko = datetime.fromisoformat(f["kickoff"])
-        for c in db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id, CandidateRow.match_id == match_id)):
+        rows = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id,
+                                                          CandidateRow.match_id == match_id)))
+        if goals_run.get(match_id, run.id) != run.id:
+            rows = [c for c in rows if c.market not in GOAL_MARKETS] + list(db.scalars(select(CandidateRow).where(
+                CandidateRow.run_id == goals_run[match_id], CandidateRow.match_id == match_id,
+                CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
+        for c in rows:
             if c.market in enabled:
                 pari, marche = bet_label(c.market, c.selection, home, away), MARKET_NAMES.get(c.market, c.market)
             elif c.market in goals and c.market in GOAL_MARKETS:
@@ -216,7 +227,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     # already fixed stay, plus the best new one, until the next pass 45 min before its first match fixes it.
     bonus: dict[str, list[dict]] = {}
     for key, title, *rest in TICKETS:
-        if not tickets[key].get("fige"):
+        # only from the pass after the official ticket was fixed: a bonus is a later find, not a near copy
+        if not (tickets[key].get("fige") and ((previous.get("tickets") or {}).get(key) or {}).get("fige")):
             continue
         rules = (key, title.replace("Ticket", "Ticket bonus"), *rest)
         kept = [build(rules, b, [], False) for b in (previous.get("bonus") or {}).get(key) or []
