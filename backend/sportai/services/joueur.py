@@ -134,12 +134,18 @@ def kelly_fraction(p: dict, ecart: float, frein: bool) -> float:
 
 
 def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_start: float, profil: str,
-           now: datetime, kelly: float | None = None) -> list[dict]:
-    """The day's decisions: those already under way kept as they were, the others (re)made now."""
+           now: datetime, kelly: float | None = None, ajust: dict | None = None) -> list[dict]:
+    """The day's decisions: those already under way kept as they were, the others (re)made now.
+
+    ajust (from `learn`): the correction of the model's chances by kind of bet ("ratio") and the least value to
+    play ("valeur_min"), both learnt from the player's own results."""
     p = dict(PROFILS[profil])
     accel = kelly is not None and kelly > p["kelly"]
     if kelly is not None:
         p["kelly"] = kelly
+    ajust = ajust or {}
+    if ajust.get("valeur_min") is not None:
+        p["valeur_min"] = ajust["valeur_min"]
     old = {d["id"]: d for d in (previous or {}).get("decisions") or []}
     frozen = [d for d in old.values() if any(_started(l, page, now) for l in d["jambes"])]
     decisions = [_result({**d, "fige": True}, page) for d in frozen]
@@ -148,29 +154,39 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
 
     fresh = [c for c in candidates(pronostic) if c["id"] not in {d["id"] for d in frozen}
              and not any(_started(l, page, now) for l in c["jambes"])]
+    for c in fresh:  # the model's chance corrected by what the player has seen so far
+        r = (ajust.get("ratio") or {}).get(c["type"], 1.0)
+        c["proba_modele"], c["valeur_modele"] = c["proba"], c["valeur"]
+        c["proba"] = round(min(c["proba"] * r, 0.99), 4)
+        c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
+        c["kelly"] = round(max(c["valeur"], 0) / (c["cote"] - 1), 4) if c["cote"] > 1 else 0.0
+        c["correction"] = r
     fresh.sort(key=lambda c: -min(p["kelly"] * c["kelly"], p["max_pari"]) * c["valeur"])
     for c in fresh:
         stake = round(min(p["kelly"] * c["kelly"], p["max_pari"]) * bank_start, 2)
         matches = {l["match_id"] for l in c["jambes"]}
-        why = None
+        why, motif = None, None
         if not all(l.get("valide", True) for l in c["jambes"]):
-            why = "Contient un pari « non validé » par le backtest : je ne mise pas dessus."
+            why, motif = "Contient un pari « non validé » par le backtest : je ne mise pas dessus.", "non_valide"
         elif c["valeur"] < p["valeur_min"]:
-            why = (f"Valeur {_pct(c['valeur'])} sous mon minimum de {_pct(p['valeur_min'], 0)} : "
-                   "l'avantage est trop mince pour couvrir l'erreur du modèle.")
+            why, motif = (f"Valeur {_pct(c['valeur'])} sous mon minimum de {_pct(p['valeur_min'], 1)} : "
+                          "l'avantage est trop mince pour couvrir l'erreur du modèle."), "valeur"
         elif c["proba"] < p["proba_min"]:
-            why = f"Chance de {_pct(c['proba'])} sous mon minimum de {_pct(p['proba_min'], 0)}."
+            why, motif = f"Chance de {_pct(c['proba'])} sous mon minimum de {_pct(p['proba_min'], 0)}.", "proba"
         elif matches & exposed:
-            why = "Je suis déjà engagé sur ce match : je ne double pas le risque."
+            why, motif = "Je suis déjà engagé sur ce match : je ne double pas le risque.", "expose"
         elif budget < MISE_MIN:
-            why = f"Budget du jour atteint ({_pct(p['max_jour'], 0)} de la bankroll au plus)."
+            why, motif = f"Budget du jour atteint ({_pct(p['max_jour'], 0)} de la bankroll au plus).", "budget"
         else:
             stake = round(min(stake, budget), 2)
             if stake < MISE_MIN:
-                why = "La mise utile serait inférieure à 10 centimes."
-        d = {k: c[k] for k in ("id", "type", "quoi", "jambes", "cote", "proba", "valeur", "kelly")}
+                why, motif = "La mise utile serait inférieure à 10 centimes.", "mise_min"
+        if why and c["correction"] != 1.0 and motif in ("valeur", "proba"):
+            why += f" (chance du modèle {_pct(c['proba_modele'])}, corrigée d'après mes résultats passés)"
+        d = {k: c[k] for k in ("id", "type", "quoi", "jambes", "cote", "proba", "valeur", "kelly", "proba_modele",
+                               "valeur_modele", "correction")}
         if why:
-            decisions.append({**d, "joue": False, "mise": 0.0, "mise_pct": 0.0, "raison": why})
+            decisions.append({**d, "joue": False, "mise": 0.0, "mise_pct": 0.0, "raison": why, "motif": motif})
             continue
         budget -= stake
         exposed |= matches
@@ -181,9 +197,114 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
                                      + (", mises relevées pour l'échéance" if accel else "") + ").")})
     for gone in set(old) - {d["id"] for d in decisions}:
         if old[gone].get("joue"):
-            decisions.append({**old[gone], "joue": False, "mise": 0.0, "mise_pct": 0.0,
+            decisions.append({**old[gone], "joue": False, "mise": 0.0, "mise_pct": 0.0, "motif": "retire",
                               "raison": "Proposition retirée par l'analyse (cotes ou compositions) avant le match."})
     return decisions
+
+
+# What the player learns from its own record (owner's request 2026-10-12: fully autonomous, finds and corrects its
+# own mistakes). Every figure is recomputed from the settled decisions of the earlier days, nothing else is stored.
+PRIOR_GAINS = 10.0  # the model is trusted as if it had already been right on 10 expected wins
+SEUIL_PREUVES = {"equilibre": 30, "agressif": 100}  # settled bets needed before the player raises its own profile
+VALEUR_MIN_BORNES = (0.01, 0.06)
+
+
+MOTIFS = {"valeur": "valeur trop faible", "proba": "chance trop faible", "non_valide": "pari non validé",
+          "expose": "déjà engagé sur ce match", "budget": "budget du jour atteint", "mise_min": "mise trop petite",
+          "retire": "retiré avant le match"}
+
+
+def _motif(d: dict) -> str | None:
+    """Why a decision was passed (inferred from its text for the decisions written before the code existed)."""
+    if d.get("joue"):
+        return None
+    if d.get("motif"):
+        return d["motif"]
+    r = d.get("raison") or ""
+    for key, start in (("non_valide", "Contient un pari"), ("valeur", "Valeur "), ("proba", "Chance de "),
+                       ("expose", "Je suis déjà"), ("budget", "Budget"), ("mise_min", "La mise utile"),
+                       ("retire", "Proposition retirée")):
+        if r.startswith(start):
+            return key
+    return None
+
+
+def _unit_return(d: dict) -> float | None:
+    """Gain for 1 € staked on a settled decision (played or not)."""
+    if d.get("resultat") not in ("gagne", "perdu", "rembourse"):
+        return None
+    if d["resultat"] == "perdu":
+        return -1.0
+    return math.prod(l["cote"] for l in d["jambes"] if l.get("resultat") == "gagne") - 1
+
+
+def _stats(items: list[dict]) -> dict:
+    rets = [_unit_return(d) for d in items]
+    n = len(rets)
+    wins = sum(d["resultat"] == "gagne" for d in items)
+    expected = sum(d.get("proba_modele", d["proba"]) for d in items)
+    roi = sum(rets) / n if n else None
+    sd = (sum((r - roi) ** 2 for r in rets) / (n - 1)) ** 0.5 if n > 1 else None
+    return {"n": n, "gagnes": wins, "attendus": round(expected, 2), "roi": None if roi is None else round(roi, 4),
+            "roi_bas": None if sd is None else round(roi - 1.28 * sd / n ** 0.5, 4)}
+
+
+def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
+    """The player's review of its own record: hit rate against what the model announced, return per 1 € staked,
+    what the bets it passed would have given, and the corrections and profile it draws from them."""
+    settled = [(day, d) for day in sorted(past_days) for d in past_days[day].get("decisions") or []
+               if _unit_return(d) is not None]
+    played = [d for _, d in settled if d["joue"]]
+    g = _stats(played)
+    # Correction of the model's chances: wins seen against wins announced, pulled towards 1 while evidence is thin.
+    ratio = {}
+    for kind in ("ticket", "top3"):
+        items = [d for _, d in settled if d["type"] == kind and _motif(d) != "non_valide"]
+        st = _stats(items)
+        ratio[kind] = round(min(max((PRIOR_GAINS + st["gagnes"]) / (PRIOR_GAINS + st["attendus"]), 0.6), 1.3), 3)
+    # Least value: lowered if the bets passed for too thin a value would have paid, raised if those played lose.
+    passed = _stats([d for _, d in settled if not d["joue"] and _motif(d) == "valeur"])
+    base = PROFILS["prudent"]["valeur_min"]
+    valeur_min, why_min = None, None
+    if passed["n"] >= 20 and passed["roi"] > 0:
+        valeur_min, why_min = base - 0.01, (f"Les {passed['n']} paris passés pour valeur trop faible auraient rapporté "
+                                            f"{_pct(passed['roi'])} par euro : je baisse mon minimum de valeur.")
+    elif g["n"] >= 20 and g["roi"] < -0.10:
+        valeur_min, why_min = base + 0.01, (f"Mes {g['n']} paris joués perdent {_pct(-g['roi'])} par euro : je "
+                                            "deviens plus exigeant sur la valeur.")
+    if valeur_min is not None:
+        valeur_min = round(min(max(valeur_min, VALEUR_MIN_BORNES[0]), VALEUR_MIN_BORNES[1]), 4)
+    # Profile chosen by the player from its evidence, never above the owner's ceiling.
+    order = list(PROFILS)
+    if g["n"] >= SEUIL_PREUVES["agressif"] and g["roi_bas"] is not None and g["roi_bas"] > 0:
+        auto, why = "agressif", f"{g['n']} paris réglés et un gain par euro sûrement positif ({_pct(g['roi'])})."
+    elif g["n"] >= SEUIL_PREUVES["equilibre"] and g["roi"] > 0:
+        auto, why = "equilibre", f"{g['n']} paris réglés, gain par euro positif ({_pct(g['roi'])}), pas encore prouvé."
+    elif g["n"] < SEUIL_PREUVES["equilibre"]:
+        auto, why = "prudent", (f"Seulement {g['n']} pari(s) réglé(s) : il en faut {SEUIL_PREUVES['equilibre']} avant "
+                                "que je prenne plus de risque.")
+    else:
+        auto, why = "prudent", f"{g['n']} paris réglés mais je perds {_pct(-g['roi'])} par euro : je reste prudent."
+    if plafond in order and order.index(auto) > order.index(plafond):
+        auto, why = plafond, why + f" Plafond fixé par Vincent : {PROFILS[plafond]['titre'].lower()}."
+    exams = []
+    for day in sorted(past_days)[-14:]:
+        ds = [d for d in past_days[day].get("decisions") or [] if _unit_return(d) is not None]
+        if not ds:
+            continue
+        j = [d for d in ds if d["joue"]]
+        missed = [d for d in ds if not d["joue"] and d["resultat"] == "gagne"]
+        dodged = [d for d in ds if not d["joue"] and d["resultat"] == "perdu"]
+        text = (f"{len(j)} pari(s) joué(s), {sum(d['resultat'] == 'gagne' for d in j)} gagné(s), "
+                f"{'+' if sum(d.get('gain') or 0 for d in j) >= 0 else ''}{_fr(sum(d.get('gain') or 0 for d in j))} €. ")
+        if missed:
+            text += "Passés mais gagnés : " + ", ".join(f"{d['quoi']} ({MOTIFS.get(_motif(d), 'passé')})" for d in missed) + ". "
+        if dodged:
+            text += f"{len(dodged)} pari(s) évité(s) à raison. "
+        exams.append({"jour": day, "texte": text.strip()})
+    return {"joues": g, "passes_valeur": passed, "correction": ratio, "valeur_min": valeur_min,
+            "valeur_min_raison": why_min, "profil_auto": auto, "profil_raison": why, "plafond": plafond,
+            "examens": exams[::-1]}
 
 
 def _summary(decisions: list[dict]) -> str:
@@ -402,10 +523,7 @@ def live(day: dict, page: dict[str, dict], now: datetime) -> dict:
             entry = {"match_id": key, "match": f"{m['domicile']} - {m['exterieur']}", "minute": m.get("minute"),
                      "score": m.get("score"), "pari": r["pari"], "cote": r["cote"], "proba": r["proba"],
                      "valeur": r["valeur"], "joue": False, "raison": LIVE_ODDS_RULE}
-            vus.append(entry)
-            day["journal"].append({"heure": heure, "texte": f"Vu en direct ({entry['match']}, {entry['minute']}e) : "
-                                   f"{r['pari']} à {_fr(r['cote'])}, valeur {_pct(r['valeur'])}. Je ne joue pas : "
-                                   "modèle du direct non validé."})
+            vus.append(entry)  # listed apart (direct_vus), not in the journal: dozens a day would drown the decisions
     day["direct_vus"] = vus[-30:]
     day["journal"] = day["journal"][-60:]
     if lines:
@@ -440,16 +558,29 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
     depart, objectif = float(settings["depart"]), float(settings["objectif"])
     earlier = {d: v for d, v in past_days.items() if d < day}
     bank_start, pic, _ = replay(earlier, depart)
-    choisi = (choix or {}).get("profil", DEFAUT)
+    # Autonomous (owner 2026-10-12): the player picks its own profile from its record; the profile set on the page
+    # is only the most risk the owner accepts.
+    plafond = (choix or {}).get("profil") or "agressif"
+    lrn = learn(earlier, plafond if plafond in PROFILS else "agressif")
+    choisi = lrn["profil_auto"]
     profil, frein = effective_profile(choisi, bank_start, pic)
     echeance = date.fromisoformat((choix or {}).get("echeance") or f"{ECHEANCE}")
     rythme = pace(bank_start, depart, objectif, date.fromisoformat(day), echeance=echeance)
     kelly = kelly_fraction(PROFILS[profil], rythme["ecart"], bool(frein))
-    decisions = decide(pronostic, previous_day, page, bank_start, profil, now, kelly)
+    ajust = {"ratio": lrn["correction"], "valeur_min": lrn["valeur_min"]}
+    decisions = decide(pronostic, previous_day, page, bank_start, profil, now, kelly, ajust)
 
     journal = list((previous_day or {}).get("journal") or [])
     resume = _summary(decisions)
     heure = f"{now.astimezone(LOCAL_TZ):%H:%M}"
+    if not journal and lrn["examens"]:
+        e = lrn["examens"][0]
+        journal.append({"heure": heure, "texte": f"Examen du {e['jour']} : {e['texte']}"})
+    if not journal or not any(x["texte"].startswith("Mon profil") for x in journal):
+        journal.append({"heure": heure, "texte": f"Mon profil aujourd'hui : {PROFILS[choisi]['titre'].lower()}. "
+                                                 f"{lrn['profil_raison']}"})
+        if lrn["valeur_min_raison"]:
+            journal.append({"heure": heure, "texte": lrn["valeur_min_raison"]})
     if frein and not any(e["texte"] == frein for e in journal):
         journal.append({"heure": heure, "texte": frein})
     if not journal or (previous_day or {}).get("resume") != resume:
@@ -482,6 +613,7 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
         "bankroll": {"depart": depart, "objectif": objectif, "actuelle": bank, "pic": pic,
                      "progression": round(bank / objectif, 6), "historique": history},
         "plan": plan(bank, objectif, sim, profil, rythme, kelly), "echeance": rythme, "simulation": sim,
+        "apprentissage": lrn, "autonome": True,
         "derniers_jours": [{"jour": d, "resume": all_days[d].get("resume"),
                             "mises": round(sum(x["mise"] for x in all_days[d]["decisions"] if x["joue"]), 2),
                             "gain": round(sum(x.get("gain") or 0 for x in all_days[d]["decisions"] if x["joue"]), 2)}

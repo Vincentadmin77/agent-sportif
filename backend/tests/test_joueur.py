@@ -67,7 +67,8 @@ def test_frozen_then_settled_and_bankroll(monkeypatch):
     settings = {"depart": 100.0, "objectif": 100000.0}
     day, etat = run(PRONO, None, {}, {}, settings, {"profil": "equilibre"}, None, NOW)
     played = [d for d in day["decisions"] if d["joue"]]
-    assert day["journal"] and day["journal"][0]["texte"].startswith("Je joue")
+    assert day["journal"][0]["texte"].startswith("Mon profil aujourd'hui : prudent")
+    assert day["journal"][-1]["texte"].startswith("Je joue")
     # After the matches: the analysis no longer proposes them, the decisions stay and are settled.
     later = NOW + timedelta(hours=8)
     page = {"2026-10-11-a-b": {"statut": "termine", "score": "2 - 0", "domicile": "a", "exterieur": "b"},
@@ -104,8 +105,10 @@ def test_write_reads_the_page_copy(tmp_path, monkeypatch):
     (tmp_path / "page" / "reglages").mkdir(parents=True)
     (tmp_path / "page" / "reglages" / "joueur.json").write_text(json.dumps({"profil": "agressif"}))
     doc = joueur.write(str(tmp_path / "page"), str(tmp_path / "out"), PRONO, {}, {"depart": 100.0, "objectif": 1e5}, NOW)
-    assert doc["profil"] == "agressif"
-    assert json.loads((tmp_path / "out" / "joueur" / "etat.json").read_text())["profil"] == "agressif"
+    # Autonomous: the page's profile is only a ceiling; with no record the player starts prudent.
+    assert doc["profil"] == "prudent"
+    etat = json.loads((tmp_path / "out" / "joueur" / "etat.json").read_text())
+    assert etat["apprentissage"]["plafond"] == "agressif" and etat["autonome"]
     prono = joueur.ticket_stakes(json.loads(json.dumps(PRONO)), doc)
     assert prono["tickets"]["fun"]["mise"] == 0.0 and prono["tickets"]["fun"]["joue"] is False
 
@@ -122,7 +125,8 @@ def test_live_follow_up_and_live_odds_seen():
     live = joueur.live(day, page, later)
     safe = next(d for d in live["decisions"] if d["id"] == "ticket:safe")
     assert safe["joue"] and safe["direct"]["chance"] == 0.85 and safe["direct"]["chance_avant"] == 0.62
-    assert "en bonne voie" in live["journal"][-2]["texte"]
+    assert "en bonne voie" in live["journal"][-1]["texte"]
+    assert not any("Vu en direct" in e["texte"] for e in live["journal"])
     assert live["direct_vus"][0]["pari"] == "Plus de 2,5 buts" and not live["direct_vus"][0]["joue"]
     # Same minute again: nothing new in the journal.
     again = joueur.live(live, page, later)
@@ -153,3 +157,36 @@ def test_deadline_pace_raises_stakes_up_to_the_profile_ceiling():
     assert joueur.kelly_fraction(p, late["ecart"], True) == 0.25  # the safety brake wins
     ds = {d["id"]: d for d in decide(PRONO, None, {}, 100.0, "equilibre", NOW, 0.5)}
     assert "relevées pour l'échéance" in ds["ticket:safe"]["raison"] and ds["ticket:safe"]["mise"] <= 5.0
+
+
+
+def _settled(i, kind, proba, cote, won, joue=True, motif=None):
+    leg = {"match_id": f"m{i}", "pari": "x", "cote": cote, "resultat": "gagne" if won else "perdu"}
+    return {"id": f"{kind}:{i}", "type": kind, "quoi": f"p{i}", "jambes": [leg], "cote": cote, "proba": proba,
+            "valeur": round(proba * cote - 1, 4), "joue": joue, "mise": 1.0 if joue else 0.0, "motif": motif,
+            "resultat": "gagne" if won else "perdu", "gain": (cote - 1 if won else -1.0) if joue else None}
+
+
+def test_learning_profile_needs_evidence_and_respects_the_ceiling():
+    assert joueur.learn({})["profil_auto"] == "prudent"
+    # 40 winning-ish bets: wins 24 of 40 at 2.0 (model said 50 %): positive return, not yet proven.
+    days = {f"2026-10-{i:02d}": {"decisions": [_settled(i, "top3", 0.5, 2.0, i % 5 < 3)]} for i in range(1, 41)}
+    lrn = joueur.learn(days)
+    assert lrn["joues"]["n"] == 40 and lrn["profil_auto"] == "equilibre"
+    assert lrn["correction"]["top3"] > 1.0  # it wins more often than the model said
+    assert joueur.learn(days, plafond="prudent")["profil_auto"] == "prudent"
+
+
+def test_learning_corrects_an_overconfident_model_and_thin_value_threshold():
+    # Model said 60 % but only 1 in 4 won: chances corrected down, value threshold raised.
+    days = {f"2026-09-{i:02d}": {"decisions": [_settled(i, "ticket", 0.6, 1.8, i % 4 == 0)]} for i in range(1, 25)}
+    lrn = joueur.learn(days)
+    assert lrn["correction"]["ticket"] < 0.8 and lrn["valeur_min"] == 0.04 and lrn["profil_auto"] == "prudent"
+    ds = {d["id"]: d for d in decide(PRONO, None, {}, 100.0, "prudent", NOW, None,
+                                     {"ratio": lrn["correction"], "valeur_min": lrn["valeur_min"]})}
+    assert not ds["ticket:safe"]["joue"] and ds["ticket:safe"]["proba"] < ds["ticket:safe"]["proba_modele"]
+    # Passed for thin value but they would have paid: threshold lowered.
+    passed = {f"2026-08-{i:02d}": {"decisions": [_settled(i, "ticket", 0.55, 1.85, i % 3 != 0, joue=False,
+                                                         motif="valeur")]} for i in range(1, 25)}
+    assert joueur.learn(passed)["valeur_min"] == 0.02
+    assert joueur.learn(passed)["examens"][0]["texte"].startswith("0 pari(s) joué(s)")
