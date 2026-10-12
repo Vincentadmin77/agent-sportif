@@ -25,9 +25,12 @@ for p in sorted(glob.glob('/tmp/claude-0/liveout/matchs/*.json')):
     k=os.path.basename(p)[:-5]; d=json.load(open(p))
     print(k[11:], d['statut'], d.get('score'), d.get('minute'), (d.get('direct') or {}).get('periode'))
     w.append({"op":"set","collection":"matchs","doc_id":k,"file_path":p,"if_version":v.get(k)})
+days={os.path.basename(p)[:10] for p in glob.glob('/tmp/claude-0/liveout/matchs/*.json')}
 for sub in ("joueur", "pronostic", "stats"):  # the player's day followed live; tickets and bilan when a match ended
     for p in sorted(glob.glob(f'/tmp/claude-0/liveout/{sub}/*.json')):
         k=os.path.basename(p)[:-5]
+        if sub != "stats" and k[:4].isdigit() and k not in days:
+            continue  # an earlier day's finished matches still sit in the page copy: leave that day alone
         w.append({"op":"set","collection":sub,"doc_id":k,"file_path":p,"if_version":v.get(f"{sub}/{k}")})
 print(json.dumps(w))
 for x in w:  # the batch printed above is expected to succeed
