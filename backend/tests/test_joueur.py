@@ -110,7 +110,8 @@ def test_write_reads_the_page_copy(tmp_path, monkeypatch):
     etat = json.loads((tmp_path / "out" / "joueur" / "etat.json").read_text())
     assert etat["apprentissage"]["plafond"] == "agressif" and etat["autonome"]
     prono = joueur.ticket_stakes(json.loads(json.dumps(PRONO)), doc)
-    assert prono["tickets"]["fun"]["mise"] == 0.0 and prono["tickets"]["fun"]["joue"] is False
+    assert prono["tickets"]["fun"]["mise_joueur"] == 0.0 and prono["tickets"]["fun"]["joue_joueur"] is False
+    assert "mise" not in prono["tickets"]["fun"]  # the tickets' own stake is left to bilan.apply_stakes
 
 
 def test_live_follow_up_and_live_odds_seen():

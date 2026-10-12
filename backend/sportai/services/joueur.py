@@ -442,13 +442,17 @@ def write(page_folder: str | None, out: str, pronostic: dict, page: dict[str, di
 
 
 def ticket_stakes(pronostic: dict, day: dict) -> dict:
-    """Ticket stakes of "Mon pronostic" as the player decided them (0 when it passes)."""
+    """The player's decision on each ticket of "Mon pronostic", kept apart from the ticket's own stake.
+
+    Since 2026-10-12 (owner) the tickets have their own bankroll (the gauge on the right of the page) with their own
+    stakes (`mise`, `mise_pct`, `bankroll_du_jour`, set by bilan.apply_stakes); the player's are `mise_joueur`,
+    `joue_joueur` and `bankroll_joueur`."""
     by_id = {d["id"]: d for d in day["decisions"]}
     for key, t in (pronostic.get("tickets") or {}).items():
         d = by_id.get(f"ticket:{key}")
         if t.get("jambes") and d:
-            t["mise"], t["mise_pct"], t["joue"] = d["mise"], d["mise_pct"], d["joue"]
-    pronostic["bankroll_du_jour"] = day["bankroll_du_jour"]
+            t["mise_joueur"], t["joue_joueur"] = d["mise"], d["joue"]
+    pronostic["bankroll_joueur"] = day["bankroll_du_jour"]
     return pronostic
 
 
