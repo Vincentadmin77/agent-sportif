@@ -172,7 +172,7 @@ def test_learning_profile_needs_evidence_and_respects_the_ceiling():
     # 40 winning-ish bets: wins 24 of 40 at 2.0 (model said 50 %): positive return, not yet proven.
     days = {f"2026-10-{i:02d}": {"decisions": [_settled(i, "top3", 0.5, 2.0, i % 5 < 3)]} for i in range(1, 41)}
     lrn = joueur.learn(days)
-    assert lrn["joues"]["n"] == 40 and lrn["profil_auto"] == "equilibre"
+    assert lrn["propositions"]["n"] == 40 and lrn["profil_auto"] == "equilibre"
     assert lrn["correction"]["top3"] > 1.0  # it wins more often than the model said
     assert joueur.learn(days, plafond="prudent")["profil_auto"] == "prudent"
 

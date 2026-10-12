@@ -255,7 +255,10 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
     settled = [(day, d) for day in sorted(past_days) for d in past_days[day].get("decisions") or []
                if _unit_return(d) is not None]
     played = [d for _, d in settled if d["joue"]]
-    g = _stats(played)
+    joues = _stats(played)
+    # The model's record is judged on every validated proposal it priced, played or not: a bet passed is evidence
+    # too, and the player learns three times faster than from its own stakes alone.
+    g = _stats([d for _, d in settled if _motif(d) != "non_valide"])
     # Correction of the model's chances: wins seen against wins announced, pulled towards 1 while evidence is thin.
     ratio = {}
     for kind in ("ticket", "top3"):
@@ -269,22 +272,24 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
     if passed["n"] >= 20 and passed["roi"] > 0:
         valeur_min, why_min = base - 0.01, (f"Les {passed['n']} paris passés pour valeur trop faible auraient rapporté "
                                             f"{_pct(passed['roi'])} par euro : je baisse mon minimum de valeur.")
-    elif g["n"] >= 20 and g["roi"] < -0.10:
-        valeur_min, why_min = base + 0.01, (f"Mes {g['n']} paris joués perdent {_pct(-g['roi'])} par euro : je "
+    elif joues["n"] >= 20 and joues["roi"] < -0.10:
+        valeur_min, why_min = base + 0.01, (f"Mes {joues['n']} paris joués perdent {_pct(-joues['roi'])} par euro : je "
                                             "deviens plus exigeant sur la valeur.")
     if valeur_min is not None:
         valeur_min = round(min(max(valeur_min, VALEUR_MIN_BORNES[0]), VALEUR_MIN_BORNES[1]), 4)
     # Profile chosen by the player from its evidence, never above the owner's ceiling.
     order = list(PROFILS)
     if g["n"] >= SEUIL_PREUVES["agressif"] and g["roi_bas"] is not None and g["roi_bas"] > 0:
-        auto, why = "agressif", f"{g['n']} paris réglés et un gain par euro sûrement positif ({_pct(g['roi'])})."
+        auto, why = "agressif", f"{g['n']} propositions réglées et un gain par euro sûrement positif ({_pct(g['roi'])})."
     elif g["n"] >= SEUIL_PREUVES["equilibre"] and g["roi"] > 0:
-        auto, why = "equilibre", f"{g['n']} paris réglés, gain par euro positif ({_pct(g['roi'])}), pas encore prouvé."
+        auto, why = "equilibre", (f"{g['n']} propositions réglées, gain par euro positif ({_pct(g['roi'])}), pas encore "
+                                  "prouvé.")
     elif g["n"] < SEUIL_PREUVES["equilibre"]:
-        auto, why = "prudent", (f"Seulement {g['n']} pari(s) réglé(s) : il en faut {SEUIL_PREUVES['equilibre']} avant "
-                                "que je prenne plus de risque.")
+        auto, why = "prudent", (f"Seulement {g['n']} proposition(s) réglée(s), jouées ou passées : il en faut "
+                                f"{SEUIL_PREUVES['equilibre']} avant que je prenne plus de risque.")
     else:
-        auto, why = "prudent", f"{g['n']} paris réglés mais je perds {_pct(-g['roi'])} par euro : je reste prudent."
+        auto, why = "prudent", (f"{g['n']} propositions réglées mais elles perdent {_pct(-g['roi'])} par euro : je reste "
+                                "prudent.")
     if plafond in order and order.index(auto) > order.index(plafond):
         auto, why = plafond, why + f" Plafond fixé par Vincent : {PROFILS[plafond]['titre'].lower()}."
     exams = []
@@ -302,7 +307,7 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
         if dodged:
             text += f"{len(dodged)} pari(s) évité(s) à raison. "
         exams.append({"jour": day, "texte": text.strip()})
-    return {"joues": g, "passes_valeur": passed, "correction": ratio, "valeur_min": valeur_min,
+    return {"joues": joues, "propositions": g, "passes_valeur": passed, "correction": ratio, "valeur_min": valeur_min,
             "valeur_min_raison": why_min, "profil_auto": auto, "profil_raison": why, "plafond": plafond,
             "examens": exams[::-1]}
 
