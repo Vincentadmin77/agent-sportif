@@ -61,10 +61,10 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     from datetime import date
 
     from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay
-    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.prematch import journee
     from sportai.services.pronostic import build_pronostic, legs_from_db
 
-    day = day or f"{now.astimezone(LOCAL_TZ):%Y-%m-%d}"
+    day = day or f"{journee(now):%Y-%m-%d}"
     folder = Path(page or "/nonexistent")
     days = {p.stem: json.loads(p.read_text()) for p in (folder / "pronostic").glob("*.json")}
     raw = folder / "reglages" / "bankroll.json"
@@ -105,13 +105,13 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     from sportai.config import get_settings
     from sportai.connectors.http import CachedClient
     from sportai.connectors.the_odds_api import BASE_URL, SPORT_KEYS
-    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.prematch import journee
 
     from sportai.connectors.api_football import ApiFootballProvider
     from sportai.services import calendrier
 
     comps = comps or COMPETITIONS
-    today = now.astimezone(LOCAL_TZ).date()
+    today = journee(now)
     by_time: dict[str, set] = defaultdict(set)
     source = "calendrier API-Football"
     try:  # the season calendar of each competition says which matches are played today, and when
@@ -126,7 +126,7 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
         for comp in comps:
             for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
                 ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
-                if ko > now and ko.astimezone(LOCAL_TZ).date() == today:
+                if ko > now and journee(ko) == today:
                     by_time[ko.isoformat()].add(comp)
     steps = []
     for ko_s, comps in sorted(by_time.items()):
@@ -206,14 +206,14 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
     from sportai.connectors.api_football import ApiFootballProvider
     from sportai.services.lineups import scenario_with_squads
     from sportai.services.live_page import find_doc
-    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.prematch import journee
 
     soon = {k: d for k, d in docs.items()
             if d.get("coup_envoi") and now < datetime.fromisoformat(d["coup_envoi"]) <= now + window}
     if not soon:
         return {}
     api = ApiFootballProvider(get_settings().api_football_key)
-    day = now.astimezone(LOCAL_TZ).date()
+    day = journee(now)
     out = {}
     for fx in api.fixtures_on([c for c in comps if c != "UCL"], day):
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
@@ -241,10 +241,10 @@ def _squad_news(api, fx: dict, doc: dict, fixtures: list[dict], now: datetime) -
     """Before kick-off: the day's absentees (once a day) and the official line-ups (polled from 75 min before
     kick-off until both are out), then the scenario rebuilt with them. Returns True when the document changed."""
     from sportai.services.lineups import absentees, lineup_published, regular_starters, scenario_with_squads
-    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.prematch import journee
 
     changed = False
-    today = f"{now.astimezone(LOCAL_TZ).date():%Y-%m-%d}"
+    today = f"{journee(now):%Y-%m-%d}"
     ko = fx["fixture"].get("timestamp")
     ko = datetime.fromtimestamp(ko, timezone.utc) if ko else None
     if ko and now < ko <= now + timedelta(minutes=75) and not lineup_published(doc):
@@ -299,7 +299,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     from sportai.connectors.api_football import ApiFootballProvider
     from sportai.services.live_page import (FINISHED, find_doc, fixture_identity, head_to_head_rows, live_doc,
                                              pre_match_rates, recent_form, stats_by_side)
-    from sportai.services.prematch import LOCAL_TZ
+    from sportai.services.prematch import journee
 
     api = ApiFootballProvider(get_settings().api_football_key)
     current, docs = _load_page(page), {}
@@ -312,7 +312,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         con.close()
     from datetime import date as _date
     # Today, plus the day of any page match still open (a late match runs past midnight in Paris).
-    days = {now.astimezone(LOCAL_TZ).date()} | {_date.fromisoformat(d["jour"]) for d in current.values()
+    days = {journee(now)} | {_date.fromisoformat(d["jour"]) for d in current.values()
                                                  if d.get("jour") and d.get("statut") != "termine"}
     raw = [(day, fx) for day in sorted(days) for fx in api.fixtures_on(comps, day)]
     for day, fx in raw:

@@ -28,7 +28,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -40,7 +39,12 @@ BASE_URL = "https://v3.football.api-sports.io"
 LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71}
 CALENDAR_YEAR = {"BR1"}
 FINISHED = ("FT", "AET", "PEN")
-LOCAL_TZ = ZoneInfo("Europe/Paris")
+
+
+def _journee(now: datetime):
+    from sportai.services.prematch import journee  # late import: prematch loads this module
+
+    return journee(now)
 DEFAULT_CACHE = "/mnt/project-files/agent-sportif/data/api-football"
 DEFAULT_MODEL_PATH = "/mnt/project-files/agent-sportif/state/goals_model.json"
 MAX_REQUESTS_PER_RUN = 60
@@ -263,7 +267,7 @@ def build_book(history: dict[str, list[gm.Match]], teams: dict[str, list[str]], 
                                    {kk: round(vv, 5) for kk, vv in v.items()} for k, v in p.items()}
                       for (h, a), p in pairs.items()},
         }
-    return {"model": MODEL_LABEL, "fitted_at": now.isoformat(), "day": f"{now.astimezone(LOCAL_TZ):%Y-%m-%d}",
+    return {"model": MODEL_LABEL, "fitted_at": now.isoformat(), "day": f"{_journee(now):%Y-%m-%d}",
             "validated_markets": list(gm.VALIDATED_MARKETS), "n_train": model.n_train,
             "coefficients": model.to_dict(), "leagues": leagues}
 
@@ -295,13 +299,13 @@ class GoalsBook:
 
     @classmethod
     def load(cls, now: datetime, path: Path | None = None) -> GoalsBook | None:
-        """The saved book if it was built today (Europe/Paris), else None (passes then use plain DC)."""
+        """The saved book if it was built this betting day (08:00-02:00 Paris), else None (passes then use plain DC)."""
         path = path or model_path()
         try:
             data = json.loads(path.read_text())
         except (OSError, ValueError):
             return None
-        if data.get("day") != f"{now.astimezone(LOCAL_TZ):%Y-%m-%d}" or data.get("model") != MODEL_LABEL:
+        if data.get("day") != f"{_journee(now):%Y-%m-%d}" or data.get("model") != MODEL_LABEL:
             return None
         return cls(data)
 

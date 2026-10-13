@@ -26,3 +26,17 @@ def test_calendar_gives_today_kickoffs_and_is_cached(tmp_path):
     calendrier.refresh(FakeApi(), ["FR1", "BR1"], now, tmp_path)
     assert FakeApi.calls == 2  # still fresh: read from the folder
     assert calendrier.next_days(cals, date(2026, 10, 11), 2)[1] == {"jour": "2026-10-12", "FR1": 1, "BR1": 1}
+
+
+def test_betting_day_runs_from_8am_to_2am_paris():
+    from sportai.services.prematch import journee
+
+    # 00:30 Paris on the 14th (22:30 UTC on the 13th) is still the 13th's day; 02:00 Paris starts the 14th.
+    assert journee(datetime(2026, 10, 13, 22, 30, tzinfo=timezone.utc)) == date(2026, 10, 13)
+    assert journee(datetime(2026, 10, 13, 23, 59, tzinfo=timezone.utc)) == date(2026, 10, 13)
+    assert journee(datetime(2026, 10, 14, 0, 0, tzinfo=timezone.utc)) == date(2026, 10, 14)
+    assert journee(datetime(2026, 11, 14, 0, 30, tzinfo=timezone.utc)) == date(2026, 11, 13)  # winter: 01:30 Paris
+    cals = {"BR1": {"matchs": [{"coup_envoi": "2026-10-13T22:30:00+00:00", "statut": "a_venir"}]}}
+    now = datetime(2026, 10, 13, 6, 0, tzinfo=timezone.utc)
+    assert set(calendrier.kickoffs_on(cals, date(2026, 10, 13), now)) == {"2026-10-13T22:30:00+00:00"}
+    assert not calendrier.kickoffs_on(cals, date(2026, 10, 14), now)

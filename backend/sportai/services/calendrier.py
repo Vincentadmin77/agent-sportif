@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from sportai.services.prematch import LOCAL_TZ
+from sportai.services.prematch import LOCAL_TZ, journee
 
 FOLDER = Path("/mnt/project-files/agent-sportif/data/calendrier")
 MAX_AGE = timedelta(hours=6)
@@ -61,12 +61,12 @@ def refresh(api, competitions: list[str], now: datetime, folder: Path = FOLDER, 
 
 
 def kickoffs_on(calendars: dict[str, dict], day: date, after: datetime) -> dict[str, set]:
-    """Kick-off times (ISO, UTC) of the matches still to be played on a Paris day, with their competitions."""
+    """Kick-off times (ISO, UTC) of the matches still to be played on a betting day (08:00-02:00 Paris), with their competitions."""
     by_time: dict[str, set] = defaultdict(set)
     for comp, cal in calendars.items():
         for m in cal.get("matchs") or []:
             ko = datetime.fromisoformat(m["coup_envoi"])
-            if m["statut"] in DROPPED or ko <= after or ko.astimezone(LOCAL_TZ).date() != day:
+            if m["statut"] in DROPPED or ko <= after or journee(ko) != day:
                 continue
             by_time[ko.astimezone(after.tzinfo).isoformat()].add(comp)
     return by_time
@@ -78,7 +78,7 @@ def next_days(calendars: dict[str, dict], start: date, days: int = 7) -> list[di
     for i in range(days):
         d = start + timedelta(days=i)
         count = {comp: sum(1 for m in cal.get("matchs") or []
-                           if datetime.fromisoformat(m["coup_envoi"]).astimezone(LOCAL_TZ).date() == d
+                           if journee(datetime.fromisoformat(m["coup_envoi"])) == d
                            and m["statut"] not in DROPPED)
                  for comp, cal in calendars.items()}
         out.append({"jour": f"{d}", **{c: n for c, n in count.items() if n}})

@@ -25,7 +25,7 @@ from sportai.connectors.teams import normalise, same_team
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Selection
 from sportai.services.lineups import scenario_with_squads
 from sportai.services.position import position
-from sportai.services.prematch import LOCAL_TZ
+from sportai.services.prematch import LOCAL_TZ, journee
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
                      "IT1": "Serie A", "UCL": "Ligue des champions", "BR1": "Brasileirão"}
@@ -82,7 +82,7 @@ def _whole(x: float | None) -> str:
 
 def doc_id(kickoff: datetime, home: str, away: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", f"{normalise(home)} {normalise(away)}").strip("-")
-    return f"{kickoff.astimezone(LOCAL_TZ):%Y-%m-%d}-{slug}"
+    return f"{journee(kickoff):%Y-%m-%d}-{slug}"
 
 
 def pass_name(started_at: datetime, kickoff: datetime) -> str:
@@ -278,14 +278,14 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
     """Documents to write for one completed pre-match run, merged into the page's current documents."""
     out: dict[str, dict] = {}
     started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
-    today = started.astimezone(LOCAL_TZ).date()
+    today = journee(started)
     cands = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id)))
     sels = {s.candidate_id: s for s in db.scalars(select(Selection).where(Selection.run_id == run.id))}
     odds_1x2 = match_odds_1x2(db.scalars(select(OddsObservation).where(OddsObservation.run_id == run.id,
                                                                        OddsObservation.market == "1x2")))
     for f in run.fixtures or []:
         ko = datetime.fromisoformat(f["kickoff"])
-        if ko.astimezone(LOCAL_TZ).date() != today:
+        if journee(ko) != today:
             continue
         home, _, away = f["match"].partition(" - ")
         key = doc_id(ko, home, away)

@@ -35,7 +35,7 @@ from sportai.services.dashboard import (
     goal_market_validated,
     settle,
 )
-from sportai.services.prematch import LOCAL_TZ
+from sportai.services.prematch import LOCAL_TZ, journee
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
 # key, title, fewest bets, most bets, total odds above, combined probability at least, each bet at least.
@@ -64,7 +64,7 @@ def legs_from_db(db: DB, day) -> list[dict]:
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
     goals_run: dict[str, int] = {}  # goal odds are only fetched 45 min before: keep the last run that has them
     for run in runs:
-        if run.competition == "UCL" or _aware(run.started_at).astimezone(LOCAL_TZ).date() != day:
+        if run.competition == "UCL" or journee(_aware(run.started_at)) != day:
             continue
         priced = set(db.scalars(select(CandidateRow.match_id).where(
             CandidateRow.run_id == run.id, CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
@@ -154,7 +154,7 @@ def _settle_ticket(ticket: dict, page: dict[str, dict]) -> dict:
 def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime,
                     passage: str, day=None) -> dict:
     """The day's "pronostic" document; legs already played stay as published earlier."""
-    day = day or now.astimezone(LOCAL_TZ).date()
+    day = day or journee(now)
     previous = previous or {}
 
     def started(leg: dict) -> bool:

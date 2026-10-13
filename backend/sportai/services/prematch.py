@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import zlib
 from zoneinfo import ZoneInfo
@@ -26,6 +26,14 @@ from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult
 
 
 LOCAL_TZ = ZoneInfo("Europe/Paris")
+# The betting day runs from 08:00 to 02:00 Paris time: a Brazilian match kicking off at 00:30 belongs to the
+# evening before, so it shows on that day's page and can go on that day's tickets.
+DAY_ROLLOVER = timedelta(hours=2)
+
+
+def journee(moment: datetime) -> date:
+    """The betting day of a moment (a kick-off or "now"): its Paris date, with 00:00-02:00 counted as the evening before."""
+    return (moment.astimezone(LOCAL_TZ) - DAY_ROLLOVER).date()
 
 
 # Goal markets always computed from the model, with or without odds.
@@ -104,7 +112,7 @@ def run_prematch(
         if fx.kickoff <= now:
             analyses.append(FixtureAnalysis(fx, None, skipped_reason="already kicked off"))
             continue
-        if fx.kickoff.astimezone(LOCAL_TZ).date() != now.astimezone(LOCAL_TZ).date():
+        if journee(fx.kickoff) != journee(now):
             analyses.append(FixtureAnalysis(fx, None, skipped_reason="not played today"))
             continue
         if fx.kickoff > now + timedelta(hours=cfg.max_hours_ahead):

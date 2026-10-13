@@ -69,14 +69,20 @@ class ApiFootballProvider:
         return self._get("/fixtures", {"live": ids}, ttl=10).get("response", []) if ids else []
 
     def fixtures_on(self, competitions: list[str], day: date) -> list[dict]:
-        """Every match of the day in these competitions (raw), finished ones included."""
+        """Every match of the betting day (08:00-02:00 Paris) in these competitions (raw), finished ones included."""
+        from sportai.services.prematch import DAY_ROLLOVER, LOCAL_TZ, journee
+
         season = day.year if day.month >= 7 else day.year - 1
+        start = datetime.combine(day, datetime.min.time(), LOCAL_TZ) + DAY_ROLLOVER
+        first, last = start.astimezone(timezone.utc).date(), (start + timedelta(days=1)).astimezone(timezone.utc).date()
+        span = {"date": first.isoformat()} if first == last else {"from": first.isoformat(), "to": last.isoformat()}
         out = []
         for c in competitions:
             if c in LEAGUE_IDS:
                 s = day.year if c == "BR1" else season  # Brazil plays calendar-year seasons
-                out += self._get("/fixtures", {"league": LEAGUE_IDS[c], "season": s, "date": day.isoformat()},
-                                 ttl=10).get("response", [])
+                out += [f for f in self._get("/fixtures", {"league": LEAGUE_IDS[c], "season": s, **span},
+                                             ttl=10).get("response", [])
+                        if journee(_ts(f["fixture"]["date"])) == day]
         return out
 
     def season_fixtures(self, competition: str, season: int) -> list[dict]:
