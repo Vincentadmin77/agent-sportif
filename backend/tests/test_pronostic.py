@@ -112,3 +112,15 @@ def test_match_odds_1x2_prefers_winamax():
              ("pmu_fr", "home", 2.2)]]
     assert match_odds_1x2(rows) == {"m": {"domicile": 2.2, "nul": 3.6, "exterieur": 2.8, "bookmaker": "Winamax"}}
     assert match_odds_1x2(rows[:3])["m"]["bookmaker"] == "Betclic"
+
+
+def test_empty_safe_filled_by_the_15_min_pass_when_odds_rise():
+    # 45 min before: Atalanta at 1.49, no safe ticket; 15 min before: 1.52, the safe ticket is made and fixed.
+    low = [leg("x-y", "Victoire x", 1.49, 0.74, 0.66, hours=1)]
+    m45 = build_pronostic(low, {}, None, NOW + timedelta(minutes=15), "m45")
+    assert m45["tickets"]["safe"]["jambes"] == []
+    high = [leg("x-y", "Victoire x", 1.52, 0.74, 0.66, hours=1)]
+    m15 = build_pronostic(high, {}, m45, NOW + timedelta(minutes=45), "m15")
+    safe = m15["tickets"]["safe"]
+    assert [l["cote"] for l in safe["jambes"]] == [1.52] and safe["fige"]
+    assert safe["message"].startswith("Ticket ajouté au dernier passage")

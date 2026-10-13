@@ -131,7 +131,10 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     steps = []
     for ko_s, comps in sorted(by_time.items()):
         ko = datetime.fromisoformat(ko_s)
-        for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45))):
+        # m15: last look at the odds 15 min before kick-off, so an official ticket still empty at the 45-min pass
+        # is filled when its odds cross the threshold late (owner, 2026-10-13: Atalanta went from 1.49 to 1.52).
+        for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45)),
+                         ("m15", ko - timedelta(minutes=15))):
             if at > now:
                 steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
         # Live follow-up (API-Football): steps every 15 min restart the 2-minute loop if the session went idle.

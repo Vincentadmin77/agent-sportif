@@ -38,7 +38,7 @@ from sportai.services.runs import execute_prematch
 log = logging.getLogger("sportai.worker")
 LOCK_ID = 727_001
 ALERT_DEDUP = timedelta(minutes=10)
-PASSES = (timedelta(hours=3), timedelta(minutes=45))  # before kick-off
+PASSES = (timedelta(hours=3), timedelta(minutes=45), timedelta(minutes=15))  # before kick-off
 PASS_WINDOW = timedelta(minutes=15)  # a pass is due from its start until this much later
 
 

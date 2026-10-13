@@ -47,6 +47,8 @@ TICKETS = (("safe", "Ticket safe", 2, 3, 1.50, 0.50, 0.55),
 FIX_BEFORE, FIX_SLACK = timedelta(minutes=45), timedelta(minutes=5)
 MAX_BONUS = 3  # bonus tickets of each kind in a day
 FIXED_NOTE = "Ticket figé au passage 45 min avant son premier match (compositions connues)."
+LATE_NOTE = ("Ticket ajouté au dernier passage, 15 min avant son premier match : la cote a passé le seuil après le "
+             "passage de 45 min.")
 GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
@@ -204,8 +206,10 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                 + ("un seul pari" if len(best) == 1 else f"{len(best)} paris") + " atteint la cote visée.")
             ticket = _ticket(best, title, short)
             if fixed(best):
+                # an official ticket still empty at the 45-min pass can be filled by a later one, then fixed at once
+                late = now > min(datetime.fromisoformat(l["coup_envoi"]) for l in best) - FIX_BEFORE + FIX_SLACK
                 ticket["fige"] = True
-                ticket["message"] = " ".join(filter(None, [FIXED_NOTE, short]))
+                ticket["message"] = " ".join(filter(None, [LATE_NOTE if late else FIXED_NOTE, short]))
             else:
                 ticket["fige"] = False
             return ticket
