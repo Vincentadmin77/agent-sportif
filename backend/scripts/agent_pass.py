@@ -197,11 +197,44 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         docs.update(_lineups(comps, docs, fixtures, now))
     except Exception as e:  # line-ups are a bonus: never lose the pass for them
         notes.append(f"line-ups unavailable ({str(e)[:120]})")
+    try:
+        _form(comps, docs, current, now)
+    except Exception as e:  # form is a bonus: never lose the pass for it
+        notes.append(f"forme unavailable ({str(e)[:120]})")
     STATE_DB.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(work, STATE_DB)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
+    """Last 5 results of each side, all competitions (European cups included), and their meetings: from the
+    morning pass on, so every match shows them before kick-off (owner, 2026-10-14). Kept once fetched."""
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.live_page import find_doc, head_to_head_rows, recent_form
+
+    for key, d in docs.items():  # a pass rebuilds the document: keep what an earlier pass fetched
+        for field in ("forme", "face_a_face"):
+            if field not in d and field in (current.get(key) or {}):
+                d[field] = current[key][field]
+    days = {datetime.fromisoformat(d["coup_envoi"]) for d in docs.values()
+            if "forme" not in d and d.get("coup_envoi") and datetime.fromisoformat(d["coup_envoi"]) > now}
+    if not days:
+        return
+    from sportai.services.prematch import journee
+
+    api = ApiFootballProvider(get_settings().api_football_key)
+    for day in sorted({journee(k) for k in days}):
+        for fx in api.fixtures_on(comps, day):
+            key = find_doc(docs, f"{day:%Y-%m-%d}", fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
+            if not key or "forme" in docs[key]:
+                continue
+            h, a = fx["teams"]["home"]["id"], fx["teams"]["away"]["id"]
+            docs[key]["face_a_face"] = head_to_head_rows(api.head_to_head(h, a))
+            docs[key]["forme"] = {"domicile": recent_form(api.team_last(h), h),
+                                  "exterieur": recent_form(api.team_last(a), a)}
 
 
 def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now: datetime,
