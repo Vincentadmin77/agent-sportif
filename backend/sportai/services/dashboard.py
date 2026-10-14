@@ -59,8 +59,9 @@ SKIP_REASONS = {
 
 
 UCL_INFO = ("Ligue des champions : estimation du modèle entraîné ensemble sur 30 championnats européens et "
-            "les trois coupes d'Europe. Comparer des clubs de championnats différents n'est pas encore validé par un test sur "
-            "matchs passés : information seulement, aucune sélection.")
+            "les trois coupes d'Europe, calibré sur cinq saisons de Ligue des champions. Pas encore d'historique face aux "
+            "cotes : il entre dans les tickets avec prudence (victoire seulement, cote de 1,30 à 2,50, un par ticket, "
+            "mise divisée par deux).")
 
 
 def ucl_model_line(f: dict, cands: list[CandidateRow], home: str, away: str) -> str | None:
