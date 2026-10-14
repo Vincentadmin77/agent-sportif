@@ -56,9 +56,13 @@ def apply_stakes(doc: dict, settings: dict, bank_at_start: float) -> dict:
     for key, t in (doc.get("tickets") or {}).items():
         if t.get("jambes") and "mise" not in t:
             pct = settings["mises"].get(key, 0.0)
+            from sportai.services.pronostic import TRIAL_STAKE_FACTOR, UCL_STAKE_FACTOR
+
             if any(l.get("ucl") for l in t["jambes"]):  # Champions League bet inside: half the stake
-                from sportai.services.pronostic import UCL_STAKE_FACTOR
                 pct = round(pct * UCL_STAKE_FACTOR, 4)
+            elif any(not l.get("valide", True) for l in t["jambes"]):  # a "non validé" market inside: half the stake
+                pct = round(pct * TRIAL_STAKE_FACTOR, 4)
+                t["mise_reduite"] = "pari non validé dans le ticket : mise divisée par deux"
             t["mise_pct"] = pct
             t["mise"] = round(bank_at_start * pct, 2)
     doc["bankroll_du_jour"] = round(bank_at_start, 2)

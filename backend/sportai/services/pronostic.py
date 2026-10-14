@@ -1,7 +1,8 @@
 """The "Mon pronostic" tab of the results page: the day's three best odds and three tickets.
 
-Built at every pass from the bets the model priced today (validated markets only, Champions League
-excluded), with the page's documents for the match status and the final scores. Nothing is filled in
+Built at every pass from the bets the model priced today: every market of the odds feed that follows from the
+final score, those the backtest has not validated marked "non validé" and taken with care (TRIAL_* below), and the
+Champions League under its own rules; with the page's documents for the match status and the final scores. Nothing is filled in
 for the sake of it: a ticket with no correct bets stays empty and says why.
 
 - Top 3: the bets where the model sees the most value over the bookmaker, for reasonable odds.
@@ -26,6 +27,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from sportai.db.models import AnalysisRun, CandidateRow
+from sportai.engine.football.markets import VALIDATED_MARKETS, is_quarter
+from sportai.selection.engine import TRIAL_MARKETS as TRIAL_MARKETS_DEFAULT
 from sportai.services.dashboard import (
     COMPETITION_NAMES,
     MARKET_NAMES,
@@ -33,6 +36,7 @@ from sportai.services.dashboard import (
     doc_id,
     goal_label,
     goal_market_validated,
+    NON_VALIDE,
     settle,
 )
 from sportai.services.prematch import LOCAL_TZ, journee
@@ -52,7 +56,8 @@ LATE_NOTE = ("Ticket ajouté au dernier passage, 15 min avant son premier match 
 GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
-           "de l'agent : ces propositions sont plus larges. Estimation, jamais une garantie.")
+           "de l'agent : ces propositions sont plus larges. Un pari « non validé » vient d'un marché que le backtest n'a pas "
+           "encore validé : un seul par ticket, mise divisée par deux. Estimation, jamais une garantie.")
 
 
 def _aware(d: datetime) -> datetime:
@@ -64,6 +69,15 @@ def _aware(d: datetime) -> datetime:
 # odds between 1.30 and 2.50, one Champions League bet per ticket at most, and the ticket's stake halved.
 UCL_ODDS = (1.30, 2.50)
 UCL_STAKE_FACTOR = 0.5
+# Every other market the model prices (owner, 2026-10-14: any odds a bookmaker offers): a bet on a market the backtest
+# has not validated is labelled "non validé" and enters with care: 3 % of value at least, a complete market to compare
+# with (within the usual divergence limit), no quarter line (half won / half lost is not settled by the page), the
+# 5 best of each match only, one such bet per ticket, and the ticket's stake halved (bilan.apply_stakes).
+TRIAL_MIN_VALUE = 0.03
+TRIAL_PER_MATCH = 5
+TRIAL_STAKE_FACTOR = 0.5
+# Bets of one match kept for the combinations: the best trade-offs of chance and odds, at most this many.
+COMBO_PER_MATCH = 6
 
 
 def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
@@ -73,12 +87,14 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
     runs = db.scalars(select(AnalysisRun).where(AnalysisRun.status == "completed", AnalysisRun.kind == "prematch")
                       .order_by(AnalysisRun.started_at))
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
-    goals_run: dict[str, int] = {}  # goal odds are only fetched 45 min before: keep the last run that has them
+    # Markets beyond 1X2 / double chance / draw no bet: with The Odds API their odds were only fetched 45 min before,
+    # so the last run that has them is kept for them.
+    goals_run: dict[str, int] = {}
     for run in runs:
         if (run.competition == "UCL" and not ucl) or journee(_aware(run.started_at)) != day:
             continue
         priced = set(db.scalars(select(CandidateRow.match_id).where(
-            CandidateRow.run_id == run.id, CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
+            CandidateRow.run_id == run.id, CandidateRow.market.not_in(VALIDATED_MARKETS))))
         for f in run.fixtures or []:
             if not f.get("skipped_reason"):
                 latest[f["match_id"]] = (run, f)
@@ -100,17 +116,30 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
         rows = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id,
                                                           CandidateRow.match_id == match_id)))
         if goals_run.get(match_id, run.id) != run.id:
-            rows = [c for c in rows if c.market not in GOAL_MARKETS] + list(db.scalars(select(CandidateRow).where(
+            rows = [c for c in rows if c.market in VALIDATED_MARKETS] + list(db.scalars(select(CandidateRow).where(
                 CandidateRow.run_id == goals_run[match_id], CandidateRow.match_id == match_id,
-                CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
+                CandidateRow.market.not_in(VALIDATED_MARKETS))))
+        div = cfg.get("max_market_divergence", 0.10)
+        trial_ok = () if paper else cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
+        trials = []
         for c in rows:
             if c.market in enabled:
                 pari, marche = bet_label(c.market, c.selection, home, away), MARKET_NAMES.get(c.market, c.market)
             elif c.market in goals and c.market in GOAL_MARKETS:
                 pari, marche = goal_label(c.market, c.selection, c.line), GOAL_MARKETS[c.market]
+            elif c.market in trial_ok:
+                pari, marche = bet_label(c.market, c.selection, home, away, c.line), MARKET_NAMES.get(c.market, c.market)
             else:
                 continue
-            legs.append({
+            valide = (c.market in enabled if c.market not in GOAL_MARKETS
+                      else goal_market_validated(c.market, c.line, f.get("goals_model")))
+            # A de-vigged two-way price estimates the chance of winning when the bet is not refunded.
+            p_cmp = c.p_win / (1 - c.p_push) if c.p_push and c.p_push < 1 else c.p_win
+            if not paper and not valide:
+                if (is_quarter(c.line) or c.ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
+                        or abs(p_cmp - c.market_fair_prob) > div):
+                    continue
+            leg = {
                 "match_id": doc_id(ko, home, away), "match": f["match"],
                 "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
                 "pari": pari, "marche": marche,
@@ -118,20 +147,31 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 "proba_marche": None if c.market_fair_prob is None else round(c.market_fair_prob, 4),
                 "valeur": round(c.ev, 4),
                 # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
-                "valide": c.market in enabled if c.market not in GOAL_MARKETS
-                else goal_market_validated(c.market, c.line, f.get("goals_model")),
-                "_divergence_max": cfg.get("max_market_divergence", 0.10),
+                "valide": valide,
+                "_divergence_max": div, "_p_cmp": round(p_cmp, 4),
                 **({"valide": c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1], "ucl": True}
                    if paper else {}),
-            })
+            }
+            if not leg["valide"] and not paper:
+                leg["validation"] = NON_VALIDE
+                trials.append(leg)
+            else:
+                legs.append(leg)
+        # the best few unvalidated bets of the match, by value
+        legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
     return legs
+
+
+def _trial(leg: dict) -> bool:
+    """A bet on a market the backtest has not validated (outside the Champions League's own rules)."""
+    return not leg.get("ucl") and not leg.get("valide", True)
 
 
 def _correct(leg: dict) -> bool:
     if leg.get("ucl") and not leg["valide"]:  # Champions League: only within the limits above
         return False
-    return (leg["valeur"] >= 0 and leg["proba_marche"] is not None
-            and abs(leg["proba"] - leg["proba_marche"]) <= leg["_divergence_max"])
+    return (leg["valeur"] >= (TRIAL_MIN_VALUE if _trial(leg) else 0) and leg["proba_marche"] is not None
+            and abs(leg.get("_p_cmp", leg["proba"]) - leg["proba_marche"]) <= leg["_divergence_max"])
 
 
 def _ticket(legs: list[dict], title: str, message: str | None = None) -> dict:
@@ -141,11 +181,33 @@ def _ticket(legs: list[dict], title: str, message: str | None = None) -> dict:
             "proba_totale": round(math.prod(l["proba"] for l in legs), 4), "message": message}
 
 
+def _front(legs: list[dict], keep: int = COMBO_PER_MATCH) -> list[dict]:
+    """The bets of each match that no other bet of the same match beats on both chance and odds (a ticket never
+    wants a dominated bet), at most `keep` per match spread along that front."""
+    by_match: dict[str, list[dict]] = {}
+    for l in legs:
+        by_match.setdefault(l["match_id"], []).append(l)
+    out = []
+    for group in by_match.values():
+        group = sorted(group, key=lambda l: (-l["proba"], -l["cote"]))
+        front, best_odds = [], 0.0
+        for l in group:
+            if l["cote"] > best_odds:
+                front.append(l)
+                best_odds = l["cote"]
+        if len(front) > keep:
+            step = (len(front) - 1) / (keep - 1)
+            front = [front[round(k * step)] for k in range(keep)]
+        out += front
+    return out
+
+
 def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min_total: float, min_leg: float):
-    pool = [l for l in legs if l["proba"] >= min_leg]
+    pool = _front([l for l in legs if l["proba"] >= min_leg])
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
             if (len({l["match_id"] for l in combo}) == n and sum(bool(l.get("ucl")) for l in combo) <= 1
+                    and sum(_trial(l) for l in combo) <= 1
                     and math.prod(l["cote"] for l in combo) > min_odds
                     and math.prod(l["proba"] for l in combo) >= min_total):
                 yield list(combo)

@@ -29,7 +29,27 @@ from sportai.services.prematch import LOCAL_TZ, journee
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
                      "IT1": "Serie A", "UCL": "Ligue des champions", "BR1": "Brasileirão"}
-MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul"}
+MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul",
+                "totals": "Nombre de buts", "btts": "Les deux équipes marquent",
+                "team_total_home": "Buts de l'équipe à domicile", "team_total_away": "Buts de l'équipe à l'extérieur",
+                "asian_handicap": "Handicap asiatique", "euro_handicap": "Handicap européen",
+                "result_total": "Résultat et nombre de buts", "result_btts": "Résultat et les deux équipes marquent",
+                "total_btts": "Nombre de buts et les deux équipes marquent",
+                "clean_sheet_home": "Domicile sans but encaissé", "clean_sheet_away": "Extérieur sans but encaissé",
+                "win_to_nil_home": "Domicile gagne sans encaisser", "win_to_nil_away": "Extérieur gagne sans encaisser",
+                "odd_even": "Buts pair ou impair", "odd_even_home": "Buts du domicile pair ou impair",
+                "odd_even_away": "Buts de l'extérieur pair ou impair", "exact_score": "Score exact",
+                "exact_goals": "Nombre exact de buts", "exact_goals_home": "Nombre exact de buts du domicile",
+                "exact_goals_away": "Nombre exact de buts de l'extérieur", "goal_range": "Tranche de buts",
+                "scoring_draw": "Match nul avec buts"}
+NON_VALIDE = "non validé"
+ALL_MARKETS_NOTE = ("Toutes les cotes du fournisseur (API-Football, tous ses bookmakers, meilleure cote retenue) : "
+                    "chaque pari qui se décide sur le score final est chiffré par le modèle. Seuls résultat du match, "
+                    "double chance et remboursé si nul sont validés par le backtest ; les autres sont « non validés » : "
+                    "estimation à manier avec prudence, retenue seulement avec des seuils relevés et des mises réduites. "
+                    "Les paris de mi-temps, corners, cartons, buteurs, minutes... ne se déduisent pas du score final : "
+                    "listés avec leurs cotes, « non analysés ».")
+MAX_MARKET_ROWS = 150
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
 GOAL_WARNING = ("Marchés non validés pour ce match : probabilités du modèle Dixon-Coles seul, qui ne fait pas mieux "
                 "qu'une fréquence moyenne sur ces marchés. Chiffres donnés pour information, jamais proposés comme "
@@ -185,7 +205,64 @@ def settle_score(doc: dict, hg: int, ag: int) -> None:
                                "score_exact": (est["domicile"], est["exterieur"]) == (hg, ag)}
 
 
-def bet_label(market: str, selection: str, home: str, away: str) -> str:
+def _n(x: float) -> str:
+    return f"{x:g}".replace(".", ",")
+
+
+def _signed(x: float) -> str:
+    return ("+" if x > 0 else "") + _n(x)
+
+
+def _goals(n: int) -> str:
+    return f"{n} but" + ("s" if n > 1 else "")
+
+
+def bet_label(market: str, selection: str, home: str, away: str, line: float | None = None) -> str:
+    """The bet in plain French, as shown on the page and settled from it (settle)."""
+    side = {"home": home, "away": away}
+    if market in ("totals", "btts"):
+        return goal_label(market, selection, line)
+    if market in ("team_total_home", "team_total_away"):
+        team = home if market.endswith("home") else away
+        return f"{team} : {'plus' if selection == 'over' else 'moins'} de {_n(line)} buts"
+    if market == "asian_handicap":
+        return f"{side[selection]} handicap asiatique {_signed(line if selection == 'home' else -line)}"
+    if market == "euro_handicap":
+        what = {"home": f"victoire {home}", "draw": "nul", "away": f"victoire {away}"}[selection]
+        return f"Handicap {home} {_signed(line)} : {what}"
+    if market in ("result_total", "result_btts"):
+        res, rest = selection.split("_")
+        first = {"home": f"Victoire {home}", "draw": "Match nul", "away": f"Victoire {away}"}[res]
+        if market == "result_total":
+            return f"{first} et {'plus' if rest == 'over' else 'moins'} de {_n(line)} buts"
+        return f"{first} et les deux équipes marquent : {'oui' if rest == 'yes' else 'non'}"
+    if market == "total_btts":
+        tot, yn = selection.split("_")
+        return (f"{'Plus' if tot == 'over' else 'Moins'} de {_n(line)} buts et les deux équipes marquent : "
+                f"{'oui' if yn == 'yes' else 'non'}")
+    if market in ("clean_sheet_home", "clean_sheet_away"):
+        team = home if market.endswith("home") else away
+        return f"{team} ne prend pas de but : {'oui' if selection == 'yes' else 'non'}"
+    if market in ("win_to_nil_home", "win_to_nil_away"):
+        team = home if market.endswith("home") else away
+        return f"{team} gagne sans prendre de but : {'oui' if selection == 'yes' else 'non'}"
+    if market in ("odd_even", "odd_even_home", "odd_even_away"):
+        whose = {"odd_even": "", "odd_even_home": f" de {home}", "odd_even_away": f" de {away}"}[market]
+        return f"Nombre de buts{whose} {'impair' if selection == 'odd' else 'pair'}"
+    if market == "exact_score":
+        hg, ag = selection.split(":")
+        return f"Score exact {hg} - {ag}"
+    if market in ("exact_goals", "exact_goals_home", "exact_goals_away"):
+        n = int(selection.rstrip("+"))
+        what = f"{_goals(n)} ou plus" if selection.endswith("+") else f"exactement {_goals(n)}"
+        if market == "exact_goals":
+            return f"{what[0].upper()}{what[1:]} dans le match"
+        return f"{home if market.endswith('home') else away} marque {what}"
+    if market == "goal_range":
+        return {"0-1": "0 ou 1 but dans le match", "2-3": "2 ou 3 buts dans le match",
+                "4+": "4 buts ou plus dans le match"}[selection]
+    if market == "scoring_draw":
+        return f"Match nul avec buts : {'oui' if selection == 'yes' else 'non'}"
     return {
         ("1x2", "home"): f"Victoire {home}", ("1x2", "away"): f"Victoire {away}", ("1x2", "draw"): "Match nul",
         ("double_chance", "1X"): f"{home} ou nul", ("double_chance", "X2"): f"{away} ou nul",
@@ -203,6 +280,41 @@ def goal_label(market: str, selection: str, line: float | None) -> str:
         return "Les deux équipes marquent : " + ("oui" if selection == "yes" else "non")
     side = "Plus de" if selection == "over" else "Moins de"
     return f"{side} {line:g} buts".replace(".", ",")
+
+
+def _label_keys(home: str, away: str) -> dict:
+    """Every bet label the page can show for this match, with its market key: settles the markets beyond 1X2."""
+    from sportai.engine.football.markets import MarketKey
+
+    cached = _LABELS.get((home, away))
+    if cached is not None:
+        return cached
+    lines = [x / 4 for x in range(-40, 41)]
+    half = [x + 0.5 for x in range(0, 10)]
+    keys = []
+    for m in ("totals", "team_total_home", "team_total_away"):
+        keys += [MarketKey(m, s, ln) for ln in lines if ln > 0 for s in ("over", "under")]
+    keys += [MarketKey("asian_handicap", s, ln) for ln in lines for s in ("home", "away")]
+    keys += [MarketKey("euro_handicap", s, float(ln)) for ln in range(-6, 7) for s in ("home", "draw", "away")]
+    keys += [MarketKey("result_total", f"{r}_{t}", ln) for ln in half for r in ("home", "draw", "away")
+             for t in ("over", "under")]
+    keys += [MarketKey("total_btts", f"{t}_{y}", ln) for ln in half for t in ("over", "under") for y in ("yes", "no")]
+    keys += [MarketKey("result_btts", f"{r}_{y}") for r in ("home", "draw", "away") for y in ("yes", "no")]
+    keys += [MarketKey(m, s) for m in ("btts", "clean_sheet_home", "clean_sheet_away", "win_to_nil_home",
+                                         "win_to_nil_away", "scoring_draw") for s in ("yes", "no")]
+    keys += [MarketKey(m, s) for m in ("odd_even", "odd_even_home", "odd_even_away") for s in ("odd", "even")]
+    keys += [MarketKey("exact_score", f"{h}:{a}") for h in range(11) for a in range(11)]
+    keys += [MarketKey(m, f"{n}{p}") for m in ("exact_goals", "exact_goals_home", "exact_goals_away")
+             for n in range(11) for p in ("", "+")]
+    keys += [MarketKey("goal_range", s) for s in ("0-1", "2-3", "4+")]
+    out = {bet_label(k.market, k.selection, home, away, k.line): k for k in keys}
+    if len(_LABELS) > 512:
+        _LABELS.clear()
+    _LABELS[(home, away)] = out
+    return out
+
+
+_LABELS: dict[tuple[str, str], dict] = {}
 
 
 def goals_block(f: dict, cands: list[CandidateRow], info_markets, odds_asked: bool = True) -> dict | None:
@@ -234,6 +346,31 @@ def goals_block(f: dict, cands: list[CandidateRow], info_markets, odds_asked: bo
     if not any("cote" in r for r in rows):  # say why the odds columns are empty instead of dashes only
         block["cotes_info"] = GOAL_ODDS_NONE if odds_asked else GOAL_ODDS_LATER
     return block
+
+
+def all_markets_block(f: dict, cands: list[CandidateRow], home: str, away: str, cfg: dict) -> dict | None:
+    """Every market of the odds feed for one match: those the model priced (with the best odds, its bookmaker, the
+    model's chance and value, and "validé" / "non validé"), the best value first, and the bets it cannot price
+    ("non analysé"), with their best odds."""
+    others = f.get("non_analyses") or []
+    if not cands and not others:
+        return None
+    enabled = cfg.get("enabled_markets", ())
+    rows = []
+    for c in sorted(cands, key=lambda c: -c.ev):
+        ok = c.market in enabled
+        row = {"pari": bet_label(c.market, c.selection, home, away, c.line),
+               "marche": MARKET_NAMES.get(c.market, c.market), "cote": c.odds, "bookmaker": c.bookmaker,
+               "proba": round(c.p_win, 4), "valeur": round(c.ev, 4), "valide": ok,
+               "validation": "validé" if ok else NON_VALIDE, "retenu": bool(c.accepted)}
+        if c.p_push:
+            row["rembourse"] = round(c.p_push, 4)
+        if c.market_fair_prob is not None:
+            row["proba_marche"] = round(c.market_fair_prob, 4)
+        rows.append(row)
+    return {"analyses": rows[:MAX_MARKET_ROWS], "n_analyses": len(rows),
+            "n_marches": len({c.market for c in cands}), "non_analyses": others,
+            "note": ALL_MARKETS_NOTE}
 
 
 def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | None:
@@ -324,12 +461,16 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         moves = f.get("market_moves") or {}
         previous = {s.get("pari"): s for s in doc.get("selections") or []}
         selections, rejets = [], []
+        enabled = (run.config or {}).get("enabled_markets", ())
         for c in sorted(mine, key=lambda c: -c.score):
-            label = bet_label(c.market, c.selection, home, away)
+            label = bet_label(c.market, c.selection, home, away, c.line)
             if c.id in sels:
                 s = dict(previous.get(label) or {})
                 s.update(pari=label, marche=MARKET_NAMES.get(c.market, c.market), proba=round(c.p_win, 4),
-                         valeur=round(c.ev, 4), bookmaker=c.bookmaker, raison=sels[c.id].rationale)
+                         valeur=round(c.ev, 4), bookmaker=c.bookmaker, raison=sels[c.id].rationale,
+                         valide=c.market in enabled)
+                if not s["valide"]:
+                    s["validation"] = NON_VALIDE
                 s[ODDS_FIELD[which]] = c.odds
                 mv = moves.get(f"{c.market}:{c.selection}" + (f"@{c.line:g}" if c.line is not None else ""))
                 if mv:
@@ -351,6 +492,9 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         goals = goals_block(f, mine, info, odds_asked=any(c.market in info for c in cands))
         if goals:
             doc["buts"] = goals
+        every = all_markets_block(f, mine, home, away, run.config or {})
+        if every:
+            doc["tous_marches"] = every
         if not (doc.get("buteurs") or {}).get("joueurs"):  # keep the line-up estimates once published
             doc["buteurs"] = {"raison": SCORER_NOTE}
         shots = shots_block(run.competition, doc["domicile"], doc["exterieur"])
@@ -398,6 +542,11 @@ def settle(bet: str, home: str, away: str, hg: int, ag: int) -> str:
         if hg == ag:
             return "rembourse"
         return "gagne" if (hg > ag) == bet.startswith(home) else "perdu"
+    key = _label_keys(home, away).get(bet)
+    if key is not None:  # every other market priced from the score (handicaps, team totals, exact score...)
+        from sportai.engine.football.markets import settle_score
+
+        return settle_score(key, hg, ag)
     raise ValueError(f"cannot settle {bet!r}")
 
 
