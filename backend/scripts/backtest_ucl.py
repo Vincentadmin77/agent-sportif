@@ -16,6 +16,12 @@ walk-forward: for test season S it is fitted by maximum 1X2 likelihood on the pr
 before S only (2019-20 and 2020-21 are predicted for that purpose and never scored), then applied to S.
 Raw and calibrated forecasts are both scored; the variants with an extra UCL home advantage are reported too.
 
+Extra history (UCL_EXTRA in services/runs.py, default on, --no-extra for the five-league set-up): the other
+leagues whose clubs play the Champions League and the Europa / Conference League, from API-Football (one
+/fixtures call per competition and season, cached in XL_CACHE). The report then splits the matches whose
+clubs only the extra history makes known ("newly_covered") and measures, on big-five vs other-league matches,
+whether the other-league club is over-rated (predicted vs observed win rate).
+
 Usage: python scripts/backtest_ucl.py --out ../docs/backtest-ucl.json
 """
 
@@ -42,7 +48,8 @@ from sportai.engine.football import dixon_coles as dc  # noqa: E402
 from sportai.engine.football.markets import MarketKey, outcome  # noqa: E402
 from scipy.optimize import minimize  # noqa: E402
 
-from sportai.services.runs import UCL_CALIBRATION, UCL_DOMESTIC, UCL_MIN_MATCHES  # noqa: E402
+from sportai.services.runs import UCL_CALIBRATION, UCL_DOMESTIC, UCL_EXTRA, UCL_MIN_MATCHES  # noqa: E402
+from sportai.connectors.api_football import CALENDAR_YEAR  # noqa: E402
 
 DOMESTIC_SEASONS = ["2018-19", "2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26"]
 UCL_SEASONS = list(range(2018, 2026))  # API-Football season = first year
@@ -50,6 +57,8 @@ TEST_SEASONS = [2021, 2022, 2023, 2024, 2025]  # 2021-22 .. 2025-26; earlier sea
 CALIB_SEASONS = [2019, 2020]  # predicted only to fit the first calibration, never scored
 CALIB_PARAMS = ("stretch",)  # adding "home_shift" did worse out of sample (2020-21 behind closed doors)
 CACHE = Path("/tmp/claude-0/ucl_cache")
+XL_CACHE = Path("/tmp/claude-0/xl_cache")
+EXTRA_SEASONS = list(range(2018, 2027))
 FAV_EDGES = [0.70, 0.75, 0.80, 0.85, 0.90, 1.0001]
 
 
@@ -84,6 +93,42 @@ def ucl_matches(provider: ApiFootballProvider | None) -> list[dict]:
                         "hg": int(ft["home"]), "ag": int(ft["away"])})
     out.sort(key=lambda m: m["date"])
     return out
+
+
+def extra_raw(comp: str, season: int, provider: ApiFootballProvider | None) -> dict:
+    path = XL_CACHE / f"fixtures_league-{LEAGUE_IDS[comp]}_season-{season}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    if provider is None:
+        raise RuntimeError(f"{comp} {season}: not cached and no API-Football key")
+    data = provider._get("/fixtures", {"league": LEAGUE_IDS[comp], "season": season}, ttl=1)
+    XL_CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    return data
+
+
+def extra_matches(provider: ApiFootballProvider | None) -> tuple[list[dc.MatchResult], dict[str, str]]:
+    """Other leagues and European cups (90-minute scores); league of each club (its domestic league)."""
+    out, league_of = [], {}
+    for comp in UCL_EXTRA:
+        for s in EXTRA_SEASONS:
+            if s == EXTRA_SEASONS[-1] and comp not in CALENDAR_YEAR:
+                continue  # autumn-spring 2026-27 starts after the last test season
+            try:
+                raw = extra_raw(comp, s, provider)
+            except Exception as e:  # noqa: BLE001 - reported, not invented
+                print(f"  {comp} {s}: unavailable ({e})", file=sys.stderr)
+                continue
+            for f in raw.get("response", []):
+                ft = (f.get("score") or {}).get("fulltime") or {}
+                if f["fixture"]["status"]["short"] not in ("FT", "AET", "PEN") or ft.get("home") is None:
+                    continue
+                h, a = normalise(f["teams"]["home"]["name"]), normalise(f["teams"]["away"]["name"])
+                out.append(dc.MatchResult(date.fromisoformat(f["fixture"]["date"][:10]), h, a,
+                                          int(ft["home"]), int(ft["away"])))
+                if comp not in ("UEL", "UECL"):
+                    league_of[h] = league_of[a] = comp
+    return out, league_of
 
 
 def domestic_matches() -> tuple[list[dc.MatchResult], dict]:
@@ -152,6 +197,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test-seasons", nargs="+", type=int, default=TEST_SEASONS)
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--no-extra", action="store_true", help="five leagues + UCL only (set-up before UCL_EXTRA)")
     a = ap.parse_args()
 
     try:
@@ -163,8 +209,10 @@ def main() -> None:
     ucl = ucl_matches(provider)
     dom, dom_info = domestic_matches()
     ucl_dc = [dc.MatchResult(m["date"], m["home"], m["away"], m["hg"], m["ag"]) for m in ucl]
-    allm = sorted(dom + ucl_dc, key=lambda m: m.played_on)
-    print(f"data: {len(dom)} domestic, {len(ucl)} UCL matches ({time.time() - t0:.0f}s)")
+    extra, league_of = ([], {}) if a.no_extra else extra_matches(provider)
+    allm = sorted(dom + ucl_dc + extra, key=lambda m: m.played_on)
+    base_m = sorted(dom + ucl_dc, key=lambda m: m.played_on)  # what the five-league set-up saw
+    print(f"data: {len(dom)} domestic, {len(ucl)} UCL, {len(extra)} extra matches ({time.time() - t0:.0f}s)")
 
     test = [m for m in ucl if m["season"] in CALIB_SEASONS + a.test_seasons]
     weeks: dict[date, list[dict]] = {}
@@ -178,6 +226,11 @@ def main() -> None:
         hist = [res(m.home_goals, m.away_goals) for m in ucl_dc if m.played_on < monday and (monday - m.played_on).days <= 3 * 365]
         base = np.bincount(hist, minlength=3) / len(hist)
         model = dc.fit(train, reference_date=monday - timedelta(days=1), config=cfg, with_uncertainty=False)
+        base_seen = Counter()
+        for m in base_m:
+            if m.played_on < monday and (monday - m.played_on).days <= 3 * 365:
+                base_seen[m.home] += 1
+                base_seen[m.away] += 1
         for m in week:
             unknown = [s for s in ("home", "away") if not model.knows(m[s])]
             if unknown:
@@ -188,7 +241,8 @@ def main() -> None:
             p = [outcome(sm, MarketKey("1x2", s)).win for s in ("home", "draw", "away")]
             lam, mu = model.expected_goals(m["home"], m["away"])
             rows.append({**m, "p": p, "base": base.tolist(), "out": res(m["hg"], m["ag"]),
-                         "lam": lam, "mu": mu, "rho": model.rho})
+                         "lam": lam, "mu": mu, "rho": model.rho,
+                         "new": any(base_seen[m[s]] < UCL_MIN_MATCHES for s in ("home", "away"))})
         if k % 10 == 0:
             print(f"  week {monday}: train {len(train)}, predicted {len(rows)}, skipped {len(skipped)} "
                   f"({time.time() - t0:.0f}s)")
@@ -245,6 +299,22 @@ def main() -> None:
     dom_set = {m.home for m in dom} | {m.away for m in dom}
     both_big5 = np.array([r["home"] in dom_set and r["away"] in dom_set for r in rows])
     kinds = np.array([r["kind"] for r in rows])
+    new = np.array([r["new"] for r in rows], bool)
+
+    def other_vs_big5(X: np.ndarray, mask: np.ndarray) -> dict:
+        """Big-five club vs other-league club: is the other-league club over-rated?"""
+        idx = [i for i in np.flatnonzero(mask) if (rows[i]["home"] in dom_set) != (rows[i]["away"] in dom_set)]
+        if not idx:
+            return {"n": 0}
+        side = np.array([2 if rows[i]["home"] in dom_set else 0 for i in idx])
+        pw = X[idx, side]
+        ow = (O[idx] == side).astype(float)
+        n = len(idx)
+        return {"n": n, "other_club_win_predicted": round(float(pw.mean()), 4),
+                "other_club_win_observed": round(float(ow.mean()), 4),
+                "observed_95ci_halfwidth": round(1.96 * float((ow.mean() * (1 - ow.mean()) / n) ** 0.5), 4),
+                "brier_model": round(brier_multiclass(X[idx], O[idx]), 4),
+                "brier_baseline": round(brier_multiclass(B[idx], O[idx]), 4)}
     # Clubs never known by the model in any test week, with the closest domestic spelling as a hint.
     dom_names = sorted({m.home for m in dom} | {m.away for m in dom})
     known_ever = {r["home"] for r in rows} | {r["away"] for r in rows}
@@ -261,6 +331,7 @@ def main() -> None:
 
     report = {
         "model": f"{dc.MODEL_NAME} {dc.MODEL_VERSION}", "fit_config": cfg.__dict__,
+        "extra_history": [] if a.no_extra else list(UCL_EXTRA), "n_extra": len(extra),
         "data": {"domestic": f"openfootball {', '.join(UCL_DOMESTIC)} {DOMESTIC_SEASONS[0]}..{DOMESTIC_SEASONS[-1]}",
                  "ucl": f"API-Football league {LEAGUE_IDS['UCL']}, seasons {UCL_SEASONS[0]}..{UCL_SEASONS[-1]}, "
                         "qualifiers included, 90-minute score (score.fulltime)",
@@ -286,7 +357,12 @@ def main() -> None:
         "overall": scores(np.ones(len(rows), bool)),
         "by_season": {f"{s}-{str(s + 1)[-2:]}": scores(seasons == s) for s in a.test_seasons},
         "by_kind": {k: scores(kinds == k) for k in sorted(set(kinds))},
-        "by_clubs": {"both_from_big5": scores(both_big5), "at_least_one_outside_big5": scores(~both_big5)},
+        "by_clubs": {"both_from_big5": scores(both_big5), "at_least_one_outside_big5": scores(~both_big5),
+                     "newly_covered": scores(new), "known_before": scores(~new)},
+        "other_league_vs_big5": {"all": other_vs_big5(P, np.ones(len(rows), bool)),
+                                 "all_calibrated": other_vs_big5(PC, np.ones(len(rows), bool)),
+                                 "newly_covered": other_vs_big5(P, new),
+                                 "newly_covered_calibrated": other_vs_big5(PC, new)},
         "draw_rate_actual": round(float(np.mean(O == 1)), 4),
         "draw_rate_predicted": round(float(P[:, 1].mean()), 4),
         "draw_rate_predicted_calibrated": round(float(PC[:, 1].mean()), 4),
@@ -315,7 +391,7 @@ def main() -> None:
         "runtime_s": round(time.time() - t0),
     }
     print(json.dumps({k: report[k] for k in ("n_predicted", "n_skipped", "skipped_by_kind", "calibration", "overall",
-                                              "by_season", "by_kind", "by_clubs", "calibration_1x2_all_outcomes",
+                                              "by_season", "by_kind", "by_clubs", "other_league_vs_big5", "calibration_1x2_all_outcomes",
                                               "calibration_1x2_all_outcomes_calibrated", "calibration_favourite_70plus",
                                               "calibration_favourite_70plus_calibrated", "runtime_s")}, indent=1, default=str))
     if a.out:

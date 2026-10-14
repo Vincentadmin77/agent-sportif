@@ -20,7 +20,16 @@ from sportai.connectors.http import CachedClient
 
 BASE_URL = "https://v3.football.api-sports.io"
 
-LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2, "BR1": 71}
+LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2, "BR1": 71,
+              # Only used as training history of the Champions League model (services/runs.py UCL_EXTRA):
+              # the other European cups and the leagues their clubs come from.
+              "UEL": 3, "UECL": 848,
+              "PT1": 94, "NL1": 88, "TR1": 203, "BE1": 144, "AT1": 218, "SC1": 179, "GR1": 197, "UA1": 333,
+              "CH1": 207, "CZ1": 345, "DK1": 119, "HR1": 210, "RS1": 286, "NO1": 103, "SK1": 332, "CY1": 318,
+              "PL1": 106, "IL1": 383, "SE1": 113, "KZ1": 389, "AZ1": 419, "BG1": 172, "HU1": 271, "RO1": 283,
+              "SI1": 373}
+# Leagues playing calendar-year seasons (season "2026" = the 2026 championship), the others run autumn-spring.
+CALENDAR_YEAR = {"BR1", "NO1", "SE1", "KZ1"}
 
 _STATUS = {
     "NS": "scheduled", "TBD": "scheduled", "1H": "live", "HT": "live", "2H": "live", "ET": "live",
@@ -56,7 +65,10 @@ class ApiFootballProvider:
         data = self._get("/fixtures", {"league": LEAGUE_IDS[competition], "season": int(season[:4]), "status": "FT-AET-PEN"}, ttl=3600)
         out = []
         for f in data.get("response", []):
-            g = f["goals"]
+            # 90-minute score: a cup tie decided in extra time is a draw over the 90 minutes the model prices.
+            g = (f.get("score") or {}).get("fulltime") or {}
+            if g.get("home") is None:
+                g = f["goals"]
             if g["home"] is None:
                 continue
             out.append(HistoricalResult(self.name, competition, _ts(f["fixture"]["date"]).date(),
@@ -79,7 +91,7 @@ class ApiFootballProvider:
         out = []
         for c in competitions:
             if c in LEAGUE_IDS:
-                s = day.year if c == "BR1" else season  # Brazil plays calendar-year seasons
+                s = day.year if c in CALENDAR_YEAR else season  # Brazil plays calendar-year seasons
                 out += [f for f in self._get("/fixtures", {"league": LEAGUE_IDS[c], "season": s, **span},
                                              ttl=10).get("response", [])
                         if journee(_ts(f["fixture"]["date"])) == day]

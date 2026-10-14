@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session as DB
 
 from sportai.config import Settings
+from sportai.connectors.api_football import CALENDAR_YEAR as API_CALENDAR_YEAR
 from sportai.connectors.api_football import ApiFootballProvider
 from sportai.connectors.base import ProviderUnavailable
 from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL_FILES
@@ -58,13 +59,20 @@ def save_selection_config(db: DB, values: dict, user_id: str) -> SelectionConfig
 
 
 def _history_seasons(now: datetime, competition: str = "") -> list[str]:
-    if competition in CALENDAR_YEAR:
+    if competition in CALENDAR_YEAR or competition in API_CALENDAR_YEAR:
         return [str(now.year - k) for k in (2, 1, 0)]
     y = now.year if now.month >= 7 else now.year - 1
     return [f"{y - k}-{str(y - k + 1)[-2:]}" for k in (2, 1, 0)]
 
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
+# Clubs of the other leagues (Porto, Feyenoord, Bodø/Glimt, Shakhtar...) need their own league's results to be
+# known, and the Europa League / Conference League to tie those leagues to the big five: a club dominating a
+# weak league is placed through its league's European results, not ranked with the big clubs.
+UCL_EXTRA_CUPS = ("UEL", "UECL")
+UCL_EXTRA_LEAGUES = ("PT1", "NL1", "TR1", "BE1", "AT1", "SC1", "GR1", "UA1", "CH1", "CZ1", "DK1", "HR1", "RS1",
+                     "NO1", "SK1", "CY1", "PL1", "IL1", "SE1", "KZ1", "AZ1", "BG1", "HU1", "RO1", "SI1")
+UCL_EXTRA = UCL_EXTRA_CUPS + UCL_EXTRA_LEAGUES
 UCL_MIN_MATCHES = 20
 # The cross-league model under-rates favourites in the Champions League (backtest docs/04-backtest.md):
 # the strength gap log(lambda / mu) of a UCL match is stretched by 1.2 (fitted on the 579 UCL predictions
@@ -150,6 +158,12 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                                                    OpenFootballProvider() if dom in OPENFOOTBALL_FILES else None)
                     history += more
                     used |= more_used
+                for extra in UCL_EXTRA:  # API-Football only; a missing one costs coverage, never the run
+                    for season in _history_seasons(now, extra):
+                        try:
+                            history += fixtures_p.results(extra, season)
+                        except ProviderUnavailable as e:
+                            _mark(db, fixtures_p.name, f"{extra} {season}: {e}")
             fixtures_source = fixtures_p.name
             try:
                 fixtures = fixtures_p.upcoming_fixtures(competition)
