@@ -22,6 +22,9 @@ Légende : ✅ fait et testé · 🟡 fait, testé partiellement (sans le vrai s
 |---|---|
 | Adaptateur The Odds API (Winamax et 4 autres bookmakers FR) | 🟡 testé sur réponses au format documenté ; jamais appelé en réel |
 | Adaptateur API-Football (matchs, résultats, live, cartons, xG) | 🟡 écrit ; aucun appel réel ni test de format enregistré |
+| Cotes API-Football, tous bookmakers et tous types de paris (14/10/2026) | ✅ appelé en réel : 9 matchs de C1 en 1 requête, 10 bookmakers, ~1 250 cotes et 25 marchés chiffrés par match, 153 types de paris « non analysés » |
+| Marchés hors 1X2 / double chance / remboursé si nul (handicaps, totaux d'équipe, score exact...) | 🟡 chiffrés, sélectionnables « non validés » à l'essai (seuils relevés, un par ticket, mise divisée par deux) ; non validés contre les cotes |
+| Paris de mi-temps | ⬜ non chiffrés : le modèle prévoit le score final seulement et la page ne règle que sur le score final |
 | openfootball (historique) | ✅ appelé en réel pour le backtest |
 | Mode simulation séparé (noms « SIM », non publiable, refus du mélange réel/simulé) | ✅ |
 | Indisponibilité d'un fournisseur → analyse désactivée, pas de fausses données | ✅ |

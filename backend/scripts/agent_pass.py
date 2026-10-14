@@ -16,6 +16,11 @@ incremental, at most --max-requests requests), refits the enriched goals model a
 GOALS_MODEL_PATH (default state/goals_model.json). Prematch passes of the same day (Paris) then price
 btts and over/under 1.5 / 2.5 / 3.5 with it; without it, or for a team it does not know, Dixon-Coles.
 
+Odds come from API-Football (every bookmaker and bet type of its feed, 1 to 2 requests per competition and pass);
+every bet decided by the final score is priced, those the backtest has not validated marked "non validé" on the
+page, in the tickets and for the player. The Odds API is only the fallback when API-Football has no odds; --goals
+then fetches its btts / totals odds match by match.
+
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
 database lives in STATE_DB so the 45 min pass can compare with the 3 h pass;
@@ -431,7 +436,8 @@ def main() -> None:
             p.add_argument("--final", action="store_true")
         else:
             p.add_argument("--goals", action="store_true",
-                           help="also price both-teams-to-score and totals, match by match (2 credits per match)")
+                           help="The Odds API fallback only: also fetch both-teams-to-score and totals, match by match "
+                                "(2 credits per match); API-Football odds already hold every market")
             p.add_argument("--matin", action="store_true", help="8 am pass: every match of the day, not only the next 3 h")
     a = ap.parse_args()
     now = datetime.now(timezone.utc)

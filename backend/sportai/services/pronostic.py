@@ -72,8 +72,10 @@ UCL_STAKE_FACTOR = 0.5
 # Every other market the model prices (owner, 2026-10-14: any odds a bookmaker offers): a bet on a market the backtest
 # has not validated is labelled "non validé" and enters with care: 3 % of value at least, a complete market to compare
 # with (within the usual divergence limit), no quarter line (half won / half lost is not settled by the page), the
-# 5 best of each match only, one such bet per ticket, and the ticket's stake halved (bilan.apply_stakes).
+# 5 best of each match only (25 % of chance and odds of 4.00 at most), one such bet per ticket, and the ticket's
+# stake halved (bilan.apply_stakes).
 TRIAL_MIN_VALUE = 0.03
+TRIAL_MIN_PROBA, TRIAL_MAX_ODDS = 0.25, 4.0  # no long shot (exact scores at 50.00 and the like)
 TRIAL_PER_MATCH = 5
 TRIAL_STAKE_FACTOR = 0.5
 # Bets of one match kept for the combinations: the best trade-offs of chance and odds, at most this many.
@@ -137,6 +139,7 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
             p_cmp = c.p_win / (1 - c.p_push) if c.p_push and c.p_push < 1 else c.p_win
             if not paper and not valide:
                 if (is_quarter(c.line) or c.ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
+                        or c.p_win < TRIAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
                         or abs(p_cmp - c.market_fair_prob) > div):
                     continue
             leg = {

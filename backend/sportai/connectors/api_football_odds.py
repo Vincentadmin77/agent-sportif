@@ -152,7 +152,7 @@ def map_value(bet: str, value) -> tuple[str, str, float | None] | None:
 
 
 def parse_odds(items: list[dict], teams: dict[str, tuple[str, str, datetime]], validity: timedelta,
-               max_examples: int = 5) -> tuple[list[OddsQuote], dict[str, list[dict]]]:
+               max_examples: int = 3) -> tuple[list[OddsQuote], dict[str, list[dict]]]:
     """Quotes of the priced markets, and per fixture the bets the model does not price ("non analysé").
 
     teams: fixture id -> (home, away, kick-off), from the fixtures feed (the odds feed has no team names).

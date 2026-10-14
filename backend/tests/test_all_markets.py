@@ -250,7 +250,8 @@ def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
             ("m2", "team_total_home", "over", 1.5, 1.70, 0.60, 0.0, 0.58),  # +2 %: under the 3 % on trial
             ("m2", "exact_score", "1:0", None, 9.0, 0.12, 0.0, None),  # no market probability: never a leg
             ("m3", "result_btts", "home_yes", None, 3.0, 0.36, 0.0, 0.33)]
-    rows += [("m4", "exact_goals", str(n), None, 5.0, 0.22, 0.0, 0.21) for n in range(8)]  # 8 on trial, 5 kept
+    rows += [("m5", "exact_score", "4:0", None, 48.0, 0.027, 0.0, 0.016)]
+    rows += [("m4", "exact_goals", str(n), None, 4.0, 0.26, 0.0, 0.25) for n in range(8)]  # 8 on trial, 5 kept
     _run_with_rows(db, rows)
     legs = legs_from_db(db, NOW.date())
     by = {(l["match"], l["pari"]): l for l in legs}
@@ -260,6 +261,7 @@ def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
     assert not any("+0,75" in p or "-0,75" in p for _, p in by)
     assert not any(m == "m2h - m2a" and ("plus de" in p or "Score exact" in p) for m, p in by)
     assert sum(m == "m4h - m4a" for m, _ in by) == TRIAL_PER_MATCH
+    assert not any(m == "m5h - m5a" for m, _ in by)  # long shot
     assert all("marche" in l and "valide" in l for l in legs)
     later = NOW.replace(hour=9)  # the 8 am pass: nothing fixed yet
     doc = build_pronostic(legs, {}, None, later, "matin")
