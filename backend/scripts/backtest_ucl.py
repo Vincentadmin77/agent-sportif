@@ -10,6 +10,12 @@ Data: domestic results from openfootball (CC0); UCL results from API-Football (o
 season, raw replies cached on disk). Knockout ties extending past 90 minutes are scored at full time
 (score.fulltime), never after extra time or penalties. The key is never printed.
 
+Calibration (UCL_CALIBRATION in services/runs.py): the raw model under-rates favourites in the UCL. A
+correction of the expected goals (dc.RateCalibration: strength-gap stretch, CALIB_PARAMS) is fitted
+walk-forward: for test season S it is fitted by maximum 1X2 likelihood on the predictions of the seasons
+before S only (2019-20 and 2020-21 are predicted for that purpose and never scored), then applied to S.
+Raw and calibrated forecasts are both scored; the variants with an extra UCL home advantage are reported too.
+
 Usage: python scripts/backtest_ucl.py --out ../docs/backtest-ucl.json
 """
 
@@ -34,11 +40,15 @@ from sportai.connectors.teams import normalise  # noqa: E402
 from sportai.engine.evaluation import brier_multiclass, calibration, log_loss  # noqa: E402
 from sportai.engine.football import dixon_coles as dc  # noqa: E402
 from sportai.engine.football.markets import MarketKey, outcome  # noqa: E402
-from sportai.services.runs import UCL_DOMESTIC, UCL_MIN_MATCHES  # noqa: E402
+from scipy.optimize import minimize  # noqa: E402
+
+from sportai.services.runs import UCL_CALIBRATION, UCL_DOMESTIC, UCL_MIN_MATCHES  # noqa: E402
 
 DOMESTIC_SEASONS = ["2018-19", "2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26"]
 UCL_SEASONS = list(range(2018, 2026))  # API-Football season = first year
 TEST_SEASONS = [2021, 2022, 2023, 2024, 2025]  # 2021-22 .. 2025-26; earlier seasons are warm-up only
+CALIB_SEASONS = [2019, 2020]  # predicted only to fit the first calibration, never scored
+CALIB_PARAMS = ("stretch",)  # adding "home_shift" did worse out of sample (2020-21 behind closed doors)
 CACHE = Path("/tmp/claude-0/ucl_cache")
 FAV_EDGES = [0.70, 0.75, 0.80, 0.85, 0.90, 1.0001]
 
@@ -108,6 +118,36 @@ def fav_calibration(p: np.ndarray, hit: np.ndarray) -> list[dict]:
     return rows
 
 
+def probs_1x2(lam: float, mu: float, rho: float, cal: dc.RateCalibration | None = None) -> list[float]:
+    if cal is not None:
+        lam, mu = cal.apply(lam, mu)
+    sm = dc.score_matrix(lam, mu, rho)
+    return [float(np.tril(sm, -1).sum()), float(np.trace(sm)), float(np.triu(sm, 1).sum())]
+
+
+def fit_calibration(rows: list[dict], params: tuple[str, ...] = CALIB_PARAMS) -> dc.RateCalibration:
+    """Maximum 1X2 likelihood of the correction on already-played predictions (rows: lam, mu, rho, out)."""
+    def nll(x: np.ndarray) -> float:
+        cal = dc.RateCalibration(**dict(zip(params, x)))
+        return -sum(np.log(max(probs_1x2(r["lam"], r["mu"], r["rho"], cal)[r["out"]], 1e-12)) for r in rows)
+    x0 = np.array([1.0 if p == "stretch" else 0.0 for p in params])
+    res = minimize(nll, x0, method="Nelder-Mead", options={"xatol": 1e-4, "fatol": 1e-6})
+    return dc.RateCalibration(**{p: round(float(v), 4) for p, v in zip(params, res.x)})
+
+
+def bucket_table(P: np.ndarray, O: np.ndarray, edges=(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0001)) -> list[dict]:
+    """All three 1X2 outcomes pooled: predicted probability bucket vs observed frequency."""
+    p, hit = P.ravel(), (np.eye(3)[O]).ravel()
+    rows = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (p >= lo) & (p < hi)
+        if m.sum():
+            obs, n = float(hit[m].mean()), int(m.sum())
+            rows.append({"lower": lo, "upper": min(hi, 1.0), "count": n, "mean_predicted": round(float(p[m].mean()), 4),
+                         "observed_rate": round(obs, 4), "observed_95ci_halfwidth": round(1.96 * (obs * (1 - obs) / n) ** 0.5, 4)})
+    return rows
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test-seasons", nargs="+", type=int, default=TEST_SEASONS)
@@ -126,7 +166,7 @@ def main() -> None:
     allm = sorted(dom + ucl_dc, key=lambda m: m.played_on)
     print(f"data: {len(dom)} domestic, {len(ucl)} UCL matches ({time.time() - t0:.0f}s)")
 
-    test = [m for m in ucl if m["season"] in a.test_seasons]
+    test = [m for m in ucl if m["season"] in CALIB_SEASONS + a.test_seasons]
     weeks: dict[date, list[dict]] = {}
     for m in test:
         weeks.setdefault(m["date"] - timedelta(days=m["date"].weekday()), []).append(m)
@@ -146,26 +186,60 @@ def main() -> None:
                 continue
             sm = model.score_matrix(m["home"], m["away"])
             p = [outcome(sm, MarketKey("1x2", s)).win for s in ("home", "draw", "away")]
-            rows.append({**m, "p": p, "base": base.tolist(), "out": res(m["hg"], m["ag"])})
+            lam, mu = model.expected_goals(m["home"], m["away"])
+            rows.append({**m, "p": p, "base": base.tolist(), "out": res(m["hg"], m["ag"]),
+                         "lam": lam, "mu": mu, "rho": model.rho})
         if k % 10 == 0:
             print(f"  week {monday}: train {len(train)}, predicted {len(rows)}, skipped {len(skipped)} "
                   f"({time.time() - t0:.0f}s)")
 
+    # Walk-forward calibration: season S corrected with parameters fitted on the seasons before S only.
+    all_rows, rows = rows, [r for r in rows if r["season"] in a.test_seasons]
+    skipped = [s for s in skipped if s["season"] in a.test_seasons]
+    test = [m for m in test if m["season"] in a.test_seasons]
+    calib_by_season, variants = {}, {"stretch_and_home_shift": ("stretch", "home_shift"),
+                                    "home_shift_only": ("home_shift",)}
+    for s in a.test_seasons:
+        past = [r for r in all_rows if r["season"] < s]
+        cal = fit_calibration(past)
+        calib_by_season[f"{s}-{str(s + 1)[-2:]}"] = {"fitted_on_matches": len(past), **cal.__dict__}
+        vcal = {v: fit_calibration(past, ps) for v, ps in variants.items()}
+        for r in rows:
+            if r["season"] == s:
+                r["pc"] = probs_1x2(r["lam"], r["mu"], r["rho"], cal)
+                r["pv"] = {v: probs_1x2(r["lam"], r["mu"], r["rho"], vcal[v]) for v in variants}
+    final_cal = fit_calibration(all_rows)
+    print(f"walk-forward calibration: {calib_by_season}; on all {len(all_rows)} predictions: {final_cal}; "
+          f"production constant: {UCL_CALIBRATION}")
+
     P = np.array([r["p"] for r in rows])
+    PC = np.array([r["pc"] for r in rows])
     B = np.array([r["base"] for r in rows])
     O = np.array([r["out"] for r in rows])
-    fav_side = np.where(P[:, 0] >= P[:, 2], 0, 2)
-    fav_p = P[np.arange(len(P)), fav_side]
-    fav_hit = (O == fav_side).astype(float)
+
+    # Paired bootstrap of the per-match Brier difference (positive = calibration helps).
+    d = np.sum((P - np.eye(3)[O]) ** 2, axis=1) - np.sum((PC - np.eye(3)[O]) ** 2, axis=1)
+    boot = np.random.default_rng(0).choice(d, size=(5000, len(d))).mean(axis=1)
+    brier_diff_ci = [round(float(d.mean()), 4), round(float(np.quantile(boot, 0.025)), 4),
+                     round(float(np.quantile(boot, 0.975)), 4)]
+
+    def fav(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        side = np.where(X[:, 0] >= X[:, 2], 0, 2)
+        return X[np.arange(len(X)), side], (O == side).astype(float), side
+
+    fav_p, fav_hit, fav_side = fav(P)
+    favc_p, favc_hit, _ = fav(PC)
 
     def scores(mask: np.ndarray) -> dict:
         if not mask.any():
             return {"n": 0}
-        bm, bb = brier_multiclass(P[mask], O[mask]), brier_multiclass(B[mask], O[mask])
+        bm, bb, bc = (brier_multiclass(X[mask], O[mask]) for X in (P, B, PC))
         return {"n": int(mask.sum()), "brier_model": round(bm, 4), "brier_baseline": round(bb, 4),
                 "brier_gain_pct": round(100 * (bb - bm) / bb, 1),
                 "logloss_model": round(log_loss(P[mask], O[mask]), 4),
-                "logloss_baseline": round(log_loss(B[mask], O[mask]), 4)}
+                "logloss_baseline": round(log_loss(B[mask], O[mask]), 4),
+                "brier_calibrated": round(bc, 4), "brier_gain_calibrated_pct": round(100 * (bb - bc) / bb, 1),
+                "logloss_calibrated": round(log_loss(PC[mask], O[mask]), 4)}
 
     seasons = np.array([r["season"] for r in rows])
     dom_set = {m.home for m in dom} | {m.away for m in dom}
@@ -196,29 +270,54 @@ def main() -> None:
         "test_seasons": [f"{s}-{str(s + 1)[-2:]}" for s in a.test_seasons],
         "n_test_matches": len(test), "n_predicted": len(rows), "n_skipped": len(skipped),
         "skipped_by_kind": dict(Counter(s["kind"] for s in skipped)),
+        "calibration": {
+            "method": "dc.RateCalibration on expected goals: gap log(lam/mu) -> stretch * gap, goal level kept; "
+                      "fitted by maximum 1X2 likelihood on earlier seasons' predictions only (expanding window "
+                      "from 2019-20), applied to the next season",
+            "params": list(CALIB_PARAMS),
+            "brier_difference_raw_minus_calibrated_95ci": brier_diff_ci,
+            "by_test_season": calib_by_season,
+            "fitted_on_all_predictions_2019_26": {"n": len(all_rows), **final_cal.__dict__},
+            "production_constant": UCL_CALIBRATION.__dict__ if UCL_CALIBRATION else None,
+            "variants_overall": {v: {"brier": round(brier_multiclass(np.array([r["pv"][v] for r in rows]), O), 4),
+                                     "logloss": round(log_loss(np.array([r["pv"][v] for r in rows]), O), 4)}
+                                 for v in variants},
+        },
         "overall": scores(np.ones(len(rows), bool)),
         "by_season": {f"{s}-{str(s + 1)[-2:]}": scores(seasons == s) for s in a.test_seasons},
         "by_kind": {k: scores(kinds == k) for k in sorted(set(kinds))},
         "by_clubs": {"both_from_big5": scores(both_big5), "at_least_one_outside_big5": scores(~both_big5)},
         "draw_rate_actual": round(float(np.mean(O == 1)), 4),
         "draw_rate_predicted": round(float(P[:, 1].mean()), 4),
+        "draw_rate_predicted_calibrated": round(float(PC[:, 1].mean()), 4),
+        "away_rate_actual": round(float(np.mean(O == 2)), 4),
+        "away_rate_predicted": round(float(P[:, 2].mean()), 4),
+        "away_rate_predicted_calibrated": round(float(PC[:, 2].mean()), 4),
         "home_rate_actual": round(float(np.mean(O == 0)), 4),
         "home_rate_predicted": round(float(P[:, 0].mean()), 4),
+        "home_rate_predicted_calibrated": round(float(PC[:, 0].mean()), 4),
+        "calibration_1x2_all_outcomes": bucket_table(P, O),
+        "calibration_1x2_all_outcomes_calibrated": bucket_table(PC, O),
         "calibration_home_win": [b.__dict__ for b in calibration(P[:, 0], (O == 0).astype(float))],
+        "calibration_home_win_calibrated": [b.__dict__ for b in calibration(PC[:, 0], (O == 0).astype(float))],
         "calibration_favourite_70plus": fav_calibration(fav_p, fav_hit),
+        "calibration_favourite_70plus_calibrated": fav_calibration(favc_p, favc_hit),
         "favourite_70plus_home_away": {
             side: fav_calibration(fav_p[fav_side == i], fav_hit[fav_side == i])[-1:] for side, i in (("home", 0), ("away", 2))},
         "clubs_never_known": never_rows,
         "historical_odds": "API-Football /odds returned 0 results for past UCL fixtures (fixture=1199389, "
                            "league=2 season=2023): no historical closing odds, so no profitability measure.",
         "predictions": [{"date": r["date"].isoformat(), "round": r["round"], "home": r["home_raw"], "away": r["away_raw"],
-                         "score_90": f"{r['hg']}-{r['ag']}", "p": [round(x, 4) for x in r["p"]]} for r in rows],
+                         "score_90": f"{r['hg']}-{r['ag']}", "p": [round(x, 4) for x in r["p"]],
+                         "p_calibrated": [round(x, 4) for x in r["pc"]]} for r in rows],
         "skipped": [{"date": s["date"].isoformat(), "round": s["round"], "home": s["home_raw"], "away": s["away_raw"],
                      "seen_matches": s["seen"]} for s in skipped],
         "runtime_s": round(time.time() - t0),
     }
-    print(json.dumps({k: report[k] for k in ("n_predicted", "n_skipped", "skipped_by_kind", "overall", "by_season",
-                                              "by_kind", "by_clubs", "calibration_favourite_70plus", "runtime_s")}, indent=1, default=str))
+    print(json.dumps({k: report[k] for k in ("n_predicted", "n_skipped", "skipped_by_kind", "calibration", "overall",
+                                              "by_season", "by_kind", "by_clubs", "calibration_1x2_all_outcomes",
+                                              "calibration_1x2_all_outcomes_calibrated", "calibration_favourite_70plus",
+                                              "calibration_favourite_70plus_calibrated", "runtime_s")}, indent=1, default=str))
     if a.out:
         a.out.write_text(json.dumps(report, indent=2, default=str))
 

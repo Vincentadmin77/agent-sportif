@@ -34,7 +34,7 @@ Nouvelle règle : on choisit d'abord l'issue la plus probable (1, N ou 2), puis 
 **Données :** coupe d'Europe (C1) via API-Football, saisons 2018-19 à 2025-26, tours préliminaires compris, **score à 90 minutes** (prolongations et tirs au but ignorés) ; cinq grands championnats via openfootball (saisons 2018-19 à 2025-26 ; fin de saison 2025-26 partiellement absente du jeu openfootball, 2019-20 de Ligue 1 arrêtée). Saisons testées : 2021-22 à 2025-26, les précédentes servent d'échauffement.
 **Protocole :** celui de la production pour la C1. Chaque semaine de C1, un seul modèle est réajusté sur tous les matchs des cinq championnats et de la C1 joués avant cette semaine (3 ans glissants), clubs vus dans moins de 20 matchs écartés, puis il prédit les matchs de C1 de la semaine dont il connaît les deux clubs.
 **Référence naïve :** fréquences domicile / nul / extérieur des matchs de C1 antérieurs.
-Résultats bruts : [backtest-ucl.json](backtest-ucl.json), script `backend/scripts/backtest_ucl.py`. Exécuté le 13 octobre 2026.
+Résultats bruts : [backtest-ucl.json](backtest-ucl.json), script `backend/scripts/backtest_ucl.py`. Exécuté le 13 octobre 2026, relancé le 14 octobre avec la correction de calibration (mêmes 465 prévisions brutes, chiffres ci-dessous inchangés).
 
 | Périmètre | Matchs prédits | Brier 1X2 modèle | Brier référence | Gain | Log-loss modèle | Log-loss référence |
 |---|---|---|---|---|---|---|
@@ -66,12 +66,54 @@ Plus c'est bas, mieux c'est. (Élimination directe : 139 matchs + 5 finales, val
 
 Victoire à domicile, toutes probabilités : prévu 25 % → observé 23 %, 35 % → 36 %, 45 % → 48 %, 54 % → 60 %, 65 % → 80 % (56 matchs), 75 % → 86 % (28 matchs). Moyennes : domicile prévu 44,5 % / observé 48,4 % ; nul prévu 23,0 % / observé 19,1 %.
 
+### Correction de calibration (14 octobre 2026)
+**Correction retenue : écart de force étiré de 20 %.** Pour un match de C1, l'écart `log(buts attendus domicile / buts attendus extérieur)` (avantage du terrain compris) est multiplié par `stretch` ; le niveau de buts du match (moyenne géométrique des deux) est conservé. Un seul paramètre, appliqué aux buts attendus : les probabilités 1X2, le score estimé et les échantillons d'incertitude restent cohérents entre eux. En production : `UCL_CALIBRATION = RateCalibration(stretch=1.2)` dans `services/runs.py` (`None` la coupe), appliqué uniquement à la C1.
+
+**Protocole sans regard vers l'avenir :** les saisons 2019-20 et 2020-21 sont prédites (même protocole hebdomadaire) uniquement pour ajuster la première correction. Pour chaque saison testée S, `stretch` est ajusté (maximum de vraisemblance 1X2) sur les prévisions des saisons antérieures à S seulement, puis appliqué à S. Valeurs obtenues : 1,09 (2021-22), 1,07 (2022-23), 1,19 (2023-24), 1,19 (2024-25), 1,15 (2025-26) ; sur les 579 prévisions 2019-26 : 1,196 → constante de production 1,2.
+
+**Avantage du terrain propre à la C1 : essayé, rejeté.** Ajusté avec l'étirement, il fait pire hors échantillon (Brier 0,556, log-loss 0,942, moins bien que le modèle brut) : la saison 2020-21 à huis clos (domicile 36 % observé pour 44 % prévu) le tire vers le négatif, et d'une saison à l'autre il varie de −0,06 à +0,12 sans tendance stable. Seul : Brier 0,558. Sur l'ensemble des saisons testées (ajustement a posteriori, donc optimiste) il ne vaudrait que +0,04.
+
+| Périmètre | Matchs | Brier brut | Brier corrigé | Gain brut → corrigé | Log-loss brut | Log-loss corrigé |
+|---|---|---|---|---|---|---|
+| Toutes saisons | 465 | 0,553 | **0,551** | 11,5 → 11,8 % | 0,938 | **0,935** |
+| 2021-22 | 76 | 0,584 | 0,584 | 9,4 → 9,4 % | 0,982 | 0,982 |
+| 2022-23 | 80 | 0,548 | **0,544** | 13,6 → 14,1 % | 0,935 | **0,930** |
+| 2023-24 | 77 | 0,578 | **0,575** | 9,4 → 9,8 % | 0,977 | **0,976** |
+| 2024-25 | 109 | **0,543** | 0,544 | 10,9 → 10,7 % | **0,917** | 0,919 |
+| 2025-26 | 123 | 0,531 | **0,527** | 13,2 → 13,9 % | 0,906 | **0,899** |
+| Poules / phase de ligue | 304 | 0,533 | **0,530** | 14,0 → 14,6 % | 0,911 | **0,907** |
+| Élimination directe (hors finales) | 139 | **0,601** | 0,602 | 5,2 → 5,0 % | **1,002** | 1,003 |
+| Deux clubs des cinq championnats | 311 | 0,565 | **0,562** | 9,5 → 10,0 % | 0,956 | **0,952** |
+| Au moins un club hors cinq championnats | 154 | 0,530 | 0,530 | 15,4 → 15,4 % | 0,903 | 0,903 |
+
+Écart de Brier par match (brut − corrigé) : **+0,0020, intervalle à 95 % [−0,0013 ; +0,0050]** (bootstrap apparié) : l'amélioration est faible et **pas statistiquement établie**. Le plafond est bas : même ajustée a posteriori sur les 465 matchs testés, la meilleure correction n'atteint que 0,550.
+
+**Calibration 1X2, les trois issues ensemble** (1 395 probabilités) :
+
+| Prévu (tranche) | Brut : n | Brut : prévu → observé | Corrigé : n | Corrigé : prévu → observé |
+|---|---|---|---|---|
+| 0-10 % | 37 | 6 % → 5 % | 66 | 6 % → 8 % |
+| 10-20 % | 204 | 16 % → 13 % | 229 | 16 % → 16 % |
+| 20-30 % | 538 | 25 % → 22 % | 499 | 25 % → 22 % |
+| 30-40 % | 204 | 35 % → 35 % | 182 | 35 % → 35 % |
+| 40-50 % | 173 | 45 % → 47 % | 155 | 45 % → 43 % |
+| 50-60 % | 117 | 55 % → 60 % | 113 | 55 % → 64 % |
+| 60-70 % | 75 | 64 % → **73 %** | 88 | 65 % → **66 %** |
+| 70-80 % | 34 | 75 % → **88 %** | 35 | 75 % → **77 %** |
+| 80-90 % | 9 | 84 % → 67 % | 21 | 84 % → 81 % |
+| 90 % et plus | 4 | 93 % → 100 % | 7 | 95 % → 100 % |
+
+**Favoris à 70 %+ :** brut 47 matchs, prévu 78 % → observé 85 % ; **corrigé 63 matchs, prévu 80,0 % → observé 81,0 % (± 10 points)**. La sous-confiance sur les favoris disparaît. Reste : le nul encore surestimé (prévu 22,3 % / observé 19,1 %, brut 23,0 %) et la tranche 50-60 % un peu sous-estimée (victoire à domicile prévue 55 % → observée 64 %, 72 matchs), écart que l'avantage du terrain spécifique n'a pas su corriger hors échantillon.
+
+**Rentabilité : toujours non mesurable.** Pas de cote historique de C1 (API-Football `/odds` vide pour les matchs passés, The Odds API historique payant) : aucun ROI ni CLV possible.
+
 ### Ce que cela montre
 - **Le modèle inter-championnats a un vrai pouvoir prédictif en C1** : Brier inférieur de 11,5 % à la référence, entre 9 et 14 % selon la saison, comparable aux 8 à 11 % des championnats.
 - **Le gain est faible en élimination directe (5 %)** : affiches plus équilibrées entre grands clubs ; le modèle ignore aussi le score du match aller (hypothèse, non testée ici).
-- **Pas de surconfiance sur les favoris à 70 %+**, plutôt l'inverse : 85 % de victoires pour 78 % annoncés, mais sur 47 matchs seulement (marge ± 10 points). L'avantage du terrain en C1 est sous-estimé (le modèle utilise un seul avantage du terrain pour tous les championnats et la C1) et le nul est surestimé.
+- **Modèle brut : pas de surconfiance sur les favoris à 70 %+**, plutôt l'inverse : 85 % de victoires pour 78 % annoncés (47 matchs, ± 10 points). **Corrigé (écart étiré de 20 %) : 81 % pour 80 % annoncés** sur 63 matchs. Le gain global de la correction est faible (Brier 0,553 → 0,551, non significatif) mais elle rend les probabilités hautes exploitables sans biais connu.
+- La sous-estimation apparente de l'avantage du terrain en C1 (domicile 44,5 % prévu / 48,4 % observé) ne se corrige pas de façon stable hors échantillon : non corrigée.
 
 ### Ce que cela ne montre pas
-- **Aucune rentabilité.** API-Football `/odds` ne renvoie rien pour les matchs passés de C1 (0 résultat, testé sur un match et sur la saison 2023) : pas de cote de clôture historique, donc aucune mesure de valeur.
+- **Aucune rentabilité, avant comme après correction.** API-Football `/odds` ne renvoie rien pour les matchs passés de C1 (0 résultat, testé sur un match et sur la saison 2023) : pas de cote de clôture historique, donc aucune mesure de valeur.
 - **Échantillon réduit** : 465 matchs au total, 47 favoris à 70 %+. La calibration haute est indicative, pas établie à quelques points près.
 - Le modèle ne couvre que 39 % des matchs de C1 (ceux entre clubs connus), essentiellement les affiches entre clubs des cinq championnats.

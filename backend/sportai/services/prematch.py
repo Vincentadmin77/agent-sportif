@@ -87,9 +87,11 @@ def run_prematch(
     n_samples: int = 300,
     goals_lookup: GoalsLookup | None = None,
     goals_model_label: str | None = None,
+    calibration: dc.RateCalibration | None = None,
 ) -> PrematchReport:
     """goals_lookup(home, away) -> (enriched probabilities by market label, None) or (None, reason): when
-    given, btts and over/under 1.5 / 2.5 / 3.5 are priced by the enriched goals model (fallback: Dixon-Coles)."""
+    given, btts and over/under 1.5 / 2.5 / 3.5 are priced by the enriched goals model (fallback: Dixon-Coles).
+    calibration: correction of the fitted expected goals (Champions League, see runs.UCL_CALIBRATION)."""
     now = now or datetime.now(timezone.utc)
     cfg = cfg or SelectionConfig()
     modes = {r.mode for r in history} | {f.mode for f in fixtures} | {q.mode for q in quotes}
@@ -101,6 +103,7 @@ def run_prematch(
     canon = [dc.MatchResult(r.played_on, normalise(r.home), normalise(r.away), r.home_goals, r.away_goals)
              for r in history if r.played_on < now.date()]
     model = dc.fit(canon, reference_date=now.date(), config=fit_cfg)
+    model.calibration = calibration
 
     by_event = _quotes_by_fixture(fixtures, quotes)
     analyses, candidates = [], []

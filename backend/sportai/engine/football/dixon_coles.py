@@ -46,6 +46,25 @@ class FitConfig:
     min_matches_per_team: int = 6
 
 
+@dataclass(frozen=True)
+class RateCalibration:
+    """Post-fit correction of the expected goals of a match, for a competition the model is biased on.
+
+    With d = log(lambda / mu) the strength gap of the match (home advantage included) and
+    s = log(lambda * mu) / 2 its goal level, the corrected gap is stretch * d + home_shift, the level is
+    kept. stretch > 1 widens the gap between unequal teams (favourites more likely, fewer draws),
+    home_shift > 0 adds home advantage. RateCalibration() changes nothing.
+    """
+
+    stretch: float = 1.0
+    home_shift: float = 0.0
+
+    def apply(self, lam: float, mu: float) -> tuple[float, float]:
+        level, gap = (np.log(lam) + np.log(mu)) / 2, np.log(lam) - np.log(mu)
+        gap = self.stretch * gap + self.home_shift
+        return float(np.exp(level + gap / 2)), float(np.exp(level - gap / 2))
+
+
 @dataclass
 class DixonColesModel:
     teams: list[str]
@@ -60,6 +79,7 @@ class DixonColesModel:
     reference_date: date
     config: FitConfig = field(default_factory=FitConfig)
     version: str = MODEL_VERSION
+    calibration: RateCalibration | None = None  # applied to every expected-goals pair, central and sampled
 
     @property
     def index(self) -> dict[str, int]:
@@ -69,7 +89,10 @@ class DixonColesModel:
         return self.matches_per_team.get(team, 0) >= self.config.min_matches_per_team
 
     def expected_goals(self, home: str, away: str) -> tuple[float, float]:
-        return _rates(self._params(), self.index[home], self.index[away], len(self.teams))
+        return self._calibrated(*_rates(self._params(), self.index[home], self.index[away], len(self.teams)))
+
+    def _calibrated(self, lam: float, mu: float) -> tuple[float, float]:
+        return self.calibration.apply(lam, mu) if self.calibration is not None else (lam, mu)
 
     def score_matrix(self, home: str, away: str) -> np.ndarray:
         lam, mu = self.expected_goals(home, away)
@@ -87,7 +110,7 @@ class DixonColesModel:
         i, j, k = self.index[home], self.index[away], len(self.teams)
         out = []
         for d in draws:
-            lam, mu = _rates(d, i, j, k)
+            lam, mu = self._calibrated(*_rates(d, i, j, k))
             rho = float(np.clip(d[-1], -0.3, 0.3))
             out.append(score_matrix(lam, mu, rho, self.config.max_goals))
         return out

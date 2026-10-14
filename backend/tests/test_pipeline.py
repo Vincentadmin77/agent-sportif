@@ -120,3 +120,15 @@ def test_history_prefers_api_football_and_falls_back_season_by_season():
     assert hist == ["api-football:2025-26", "api-football:2026-27"]
     with pytest.raises(ProviderUnavailable):
         load_history(db, "FR1", now, _Source("api-football", refuse={"2026-27"}), _Source("openfootball", refuse={"2026-27"}))
+
+
+def test_calibration_is_passed_to_the_model(sim):
+    from sportai.engine.football import dixon_coles as dc
+
+    raw = run_prematch(sim.results(), sim.upcoming_fixtures(), sim.odds(), now=NOW)
+    cal = run_prematch(sim.results(), sim.upcoming_fixtures(), sim.odds(), now=NOW,
+                       calibration=dc.RateCalibration(stretch=1.2))
+    pairs = [(a.expected_goals, b.expected_goals) for a, b in zip(raw.fixtures, cal.fixtures) if a.expected_goals]
+    assert pairs
+    for r, c in pairs:
+        assert c == pytest.approx(dc.RateCalibration(stretch=1.2).apply(*r))

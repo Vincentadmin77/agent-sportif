@@ -80,3 +80,31 @@ def test_likely_score_picks_the_outcome_first():
     # A draw only when it is truly the most likely of the three outcomes.
     hg, ag, _ = likely_score(dc.score_matrix(0.5, 0.5, -0.1))
     assert hg == ag
+
+
+def test_rate_calibration_stretches_the_gap_and_keeps_the_goal_level():
+    assert dc.RateCalibration().apply(1.8, 0.9) == pytest.approx((1.8, 0.9))
+    lam, mu = dc.RateCalibration(stretch=1.2).apply(1.8, 0.9)
+    assert lam * mu == pytest.approx(1.8 * 0.9)  # geometric mean of the two rates unchanged
+    assert np.log(lam / mu) == pytest.approx(1.2 * np.log(2.0))
+    # Equal teams stay equal under a pure stretch; home_shift moves them towards the home side.
+    assert dc.RateCalibration(stretch=1.2).apply(1.3, 1.3) == pytest.approx((1.3, 1.3))
+    lam, mu = dc.RateCalibration(home_shift=0.1).apply(1.3, 1.3)
+    assert np.log(lam / mu) == pytest.approx(0.1)
+    # A stretch makes the favourite more likely and the draw less likely.
+    raw, cal = dc.score_matrix(1.8, 0.9, -0.05), dc.score_matrix(*dc.RateCalibration(1.2).apply(1.8, 0.9), -0.05)
+    assert outcome(cal, MarketKey("1x2", "home")).win > outcome(raw, MarketKey("1x2", "home")).win
+    assert outcome(cal, MarketKey("1x2", "draw")).win < outcome(raw, MarketKey("1x2", "draw")).win
+
+
+def test_model_calibration_applies_to_central_and_sampled_rates():
+    _, _, _, _, matches = synthetic_league(seed=3, seasons=1)
+    model = dc.fit(matches)
+    lam, mu = model.expected_goals("T00", "T01")
+    raw_samples = model.sample_score_matrices("T00", "T01", n=50, seed=1)
+    model.calibration = dc.RateCalibration(stretch=1.5)
+    assert model.expected_goals("T00", "T01") == pytest.approx(dc.RateCalibration(stretch=1.5).apply(lam, mu))
+    assert np.allclose(model.score_matrix("T00", "T01"), dc.score_matrix(*model.expected_goals("T00", "T01"), model.rho))
+    cal_samples = model.sample_score_matrices("T00", "T01", n=50, seed=1)
+    key = MarketKey("1x2", "draw")
+    assert np.mean([outcome(s, key).win for s in cal_samples]) < np.mean([outcome(s, key).win for s in raw_samples])

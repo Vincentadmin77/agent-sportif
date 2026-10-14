@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -80,6 +81,17 @@ def test_champions_league_is_information_only(tmp_path, monkeypatch):
     run = execute_prematch(db, get_settings(), "UCL", "test", now=T0)
     docs = build_match_docs(db, run, {})
     assert docs and run.config["enabled_markets"] == []
+    # The Champions League correction of the cross-league model is on (and only there).
+    from sportai.engine.football import dixon_coles as dc
+    from sportai.services import runs
+
+    assert runs.UCL_CALIBRATION == dc.RateCalibration(stretch=1.2)
+    monkeypatch.setattr(runs, "UCL_CALIBRATION", None)
+    raw = execute_prematch(db, get_settings(), "UCL", "test", now=T0)
+    pairs = [(f["expected_goals"], g["expected_goals"]) for f, g in zip(raw.fixtures, run.fixtures) if f["expected_goals"]]
+    assert pairs
+    for r, c in pairs:
+        assert tuple(c) == pytest.approx(dc.RateCalibration(stretch=1.2).apply(*r))
     for d in docs.values():
         assert d["selections"] == [] and d["verdict"] == "aucune"
         assert d["rejets"][0] == UCL_INFO and d["rejets"][1].startswith("Modèle : ")

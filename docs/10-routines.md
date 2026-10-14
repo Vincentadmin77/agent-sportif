@@ -87,6 +87,6 @@ Le calendrier (`plan`) est gratuit.
 ## Choix des championnats et bouton « Analyser maintenant »
 - La page écrit `reglages/championnats` = `{"actifs": ["FR1", "ES1", ...]}` (codes FR1 EN1 ES1 DE1 IT1 BR1 UCL).
   UCL : modèle entraîné sur les cinq grands championnats et la coupe d'Europe ensemble (API-Football), clubs vus dans moins
-  de 20 matchs écartés ; information seulement, aucune sélection tant qu'un test ne l'a pas validé. Le planning du matin et l'analyse à la
+  de 20 matchs écartés, écart de force étiré de 20 % (calibration C1, voir 04-backtest.md) ; information seulement, aucune sélection tant qu'un test ne l'a pas validé. Le planning du matin et l'analyse à la
   demande ne traitent que ces championnats (`agent_pass.py plan --competitions ...`). Document absent : tous.
 - Le bouton de la page déclenche la routine « analyse à la demande », dont l'id est dans `reglages/routine`.

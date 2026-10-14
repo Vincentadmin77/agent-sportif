@@ -66,6 +66,10 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
 UCL_MIN_MATCHES = 20
+# The cross-league model under-rates favourites in the Champions League (backtest docs/04-backtest.md):
+# the strength gap log(lambda / mu) of a UCL match is stretched by 1.2 (fitted on the 579 UCL predictions
+# 2019-20..2025-26 by scripts/backtest_ucl.py; walk-forward fits 1.07..1.19). None switches it off.
+UCL_CALIBRATION: dc.RateCalibration | None = dc.RateCalibration(stretch=1.2)
 
 
 def load_history(db: DB, competition: str, now: datetime, primary, backup) -> tuple[list, set[str]]:
@@ -178,7 +182,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                 goals_lookup = lambda h, a: book.lookup(competition, h, a)  # noqa: E731
                 goals_label = book.data["model"]
         report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now, goals_lookup=goals_lookup,
-                              goals_model_label=goals_label)
+                              goals_model_label=goals_label,
+                              calibration=UCL_CALIBRATION if competition == "UCL" else None)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()
