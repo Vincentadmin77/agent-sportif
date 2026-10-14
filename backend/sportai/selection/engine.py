@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from sportai.engine.football.markets import SUPPORTED_MARKETS, VALIDATED_MARKETS, is_quarter
 from sportai.engine.value import Outcome, expected_value, fair_odds
+
+# Markets priced by the model but not validated by a backtest (owner, 2026-10-14: every odd is analysed and may be
+# selected): they pass stricter gates and every selection says "non validé".
+TRIAL_MARKETS = tuple(m for m in SUPPORTED_MARKETS if m not in VALIDATED_MARKETS)
 
 
 @dataclass
@@ -31,12 +36,21 @@ class SelectionConfig:
     max_market_divergence: float = 0.10  # |model - de-vigged market| beyond this needs review
     min_data_quality: float = 0.6
     max_odds_age_seconds: float = 900.0  # pre-match; live uses its own limit
+    # API-Football refreshes its pre-match odds about every 3 hours ("update" of each match): a 15-minute limit would
+    # reject all of them. Its prices are judged by their own refresh time, up to 4 hours.
+    max_odds_age_by_provider: dict = field(default_factory=lambda: {"api-football": 4 * 3600.0})
     # Totals and BTTS are off by default: in the 2020-2026 backtest the model's
     # over 2.5 forecasts were no better than the base rate (docs/04-backtest.md).
     enabled_markets: tuple[str, ...] = ("1x2", "double_chance", "dnb")
     one_per_match: bool = True
-    # Priced and shown with a "not validated" warning, never selected, until a backtest shows an edge.
+    # Shown in the goals block of each match with their own "not validated" warning.
     info_markets: tuple[str, ...] = ("totals", "btts")
+    # Every other market the score model prices may be selected "à l'essai", labelled "non validé", with stricter
+    # gates: more value, a pessimistic value clearly positive, a complete market to compare with, no quarter line
+    # (half won / half lost is not followed by the page's settlement).
+    trial_markets: tuple[str, ...] = TRIAL_MARKETS
+    trial_min_ev: float = 0.06
+    trial_min_ev_low: float = 0.03
     # Pre-match analysis only covers matches of the current day (Paris time) whose kick-off is at most this far
     # away: the passes run 3 h and 45 min before kick-off, when line-ups and odds are current (owner's rule).
     max_hours_ahead: float = 3.25
@@ -63,6 +77,7 @@ class Candidate:
     data_quality: float
     data_mode: str  # "real" or "simulation"
     flags: list[str] = field(default_factory=list)
+    max_odds_age: float | None = None  # overrides SelectionConfig.max_odds_age_seconds (slow feeds)
 
 
 @dataclass
@@ -76,6 +91,7 @@ class Evaluated:
     score: float
     accepted: bool
     reasons: list[str]
+    validated: bool = True  # False: market not validated by a backtest, selected "à l'essai"
 
     def summary(self) -> dict:
         c = self.candidate
@@ -101,6 +117,7 @@ class Evaluated:
             "score": round(self.score, 5),
             "accepted": self.accepted,
             "reasons": self.reasons,
+            "valide": self.validated,
         }
 
 
@@ -121,26 +138,38 @@ def evaluate(c: Candidate, cfg: SelectionConfig, now: datetime) -> Evaluated:
     p_stress = max(0.0, c.outcome.win - cfg.stress_delta)
     ev_stress = expected_value(Outcome(win=p_stress, push=c.push_prob), c.odds)
 
-    if c.market not in cfg.enabled_markets:
+    validated = c.market in cfg.enabled_markets
+    trial = not validated and c.market in cfg.trial_markets
+    if not validated and not trial:
         reasons.append(f"market {c.market} disabled")
+    if trial and c.market_fair_prob is None:
+        reasons.append(f"market {c.market} not validated: no complete market to compare the model with")
+    if trial and is_quarter(c.line):
+        reasons.append("quarter line (half won / half lost) not followed by the settlement")
     if not (cfg.min_odds <= c.odds <= cfg.max_odds):
         reasons.append(f"odds {c.odds} outside [{cfg.min_odds}, {cfg.max_odds}]")
     age = (now - c.odds_observed_at).total_seconds()
-    if age > cfg.max_odds_age_seconds:
-        reasons.append(f"odds are {age:.0f}s old (limit {cfg.max_odds_age_seconds:.0f}s)")
+    max_age = c.max_odds_age or cfg.max_odds_age_seconds
+    if age > max_age:
+        reasons.append(f"odds are {age:.0f}s old (limit {max_age:.0f}s)")
     if c.odds_expires_at is not None and c.odds_expires_at <= now:
         reasons.append("odds observation expired")
-    if ev < cfg.min_ev:
-        reasons.append(f"EV {ev:.3f} below {cfg.min_ev}")
+    min_ev = cfg.trial_min_ev if trial else cfg.min_ev
+    if ev < min_ev:
+        reasons.append(f"EV {ev:.3f} below {min_ev}" + (" (market not validated)" if trial else ""))
     in_band = cfg.preferred_min_odds <= c.odds <= cfg.preferred_max_odds
     need_low = cfg.min_ev_low if in_band else cfg.min_ev_low_outside_preferred
+    if trial:
+        need_low = max(need_low, cfg.trial_min_ev_low)
     if ev_low < need_low:
         reasons.append(f"pessimistic EV {ev_low:.3f} below {need_low}")
     if ev_stress < cfg.min_ev_stress:
         reasons.append(f"stress-test EV {ev_stress:.3f} below {cfg.min_ev_stress}")
-    if c.market_fair_prob is not None and abs(c.outcome.win - c.market_fair_prob) > cfg.max_market_divergence:
+    # A de-vigged two-way price estimates the chance of winning when the bet is not refunded.
+    p_cmp = c.outcome.win / (1 - c.push_prob) if c.push_prob > 0 else c.outcome.win
+    if c.market_fair_prob is not None and abs(p_cmp - c.market_fair_prob) > cfg.max_market_divergence:
         reasons.append(
-            f"model {c.outcome.win:.3f} vs market {c.market_fair_prob:.3f}: divergence too large, likely missing information"
+            f"model {p_cmp:.3f} vs market {c.market_fair_prob:.3f}: divergence too large, likely missing information"
         )
     if c.data_quality < cfg.min_data_quality:
         reasons.append(f"data quality {c.data_quality:.2f} below {cfg.min_data_quality}")
@@ -148,7 +177,7 @@ def evaluate(c: Candidate, cfg: SelectionConfig, now: datetime) -> Evaluated:
 
     # Rank on the pessimistic edge, discounted by data quality.
     score = ev_low * c.data_quality
-    return Evaluated(c, fo, ev, p_low, ev_low, ev_stress, score, not reasons, reasons)
+    return Evaluated(c, fo, ev, p_low, ev_low, ev_stress, score, not reasons, reasons, validated)
 
 
 def select(candidates: list[Candidate], cfg: SelectionConfig | None = None, now: datetime | None = None) -> SelectionResult:

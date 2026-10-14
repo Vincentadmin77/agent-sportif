@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session as DB
 from sportai.config import Settings
 from sportai.connectors.api_football import CALENDAR_YEAR as API_CALENDAR_YEAR
 from sportai.connectors.api_football import ApiFootballProvider
+from sportai.connectors.api_football_odds import parse_odds as parse_api_football_odds
 from sportai.connectors.base import ProviderUnavailable
 from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL_FILES
 from sportai.connectors.openfootball import OpenFootballProvider
@@ -26,7 +27,7 @@ from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey
 from sportai.services.goals_refresh import load_book_safely
 from sportai.services.movement import classify, previous_consensus
-from sportai.services.prematch import run_prematch
+from sportai.services.prematch import journee, run_prematch
 
 SELECTION_SETTINGS_KEY = "selection_config"
 
@@ -37,7 +38,7 @@ def selection_config(db: DB) -> SelectionConfig:
     if row:
         for k, v in row.value.items():
             if hasattr(cfg, k):
-                setattr(cfg, k, tuple(v) if k == "enabled_markets" else v)
+                setattr(cfg, k, tuple(v) if isinstance(getattr(cfg, k), tuple) else v)
     return cfg
 
 
@@ -46,7 +47,7 @@ def save_selection_config(db: DB, values: dict, user_id: str) -> SelectionConfig
     for k, v in values.items():
         if not hasattr(cfg, k):
             raise ValueError(f"unknown setting {k}")
-        setattr(cfg, k, tuple(v) if k == "enabled_markets" else type(getattr(cfg, k))(v))
+        setattr(cfg, k, tuple(v) if isinstance(getattr(cfg, k), tuple) else type(getattr(cfg, k))(v))
     if not (0 <= cfg.max_selections <= 4):
         raise ValueError("max_selections must be between 0 and 4")
     if cfg.min_odds <= 1.0 or cfg.max_odds <= cfg.min_odds:
@@ -127,7 +128,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     if max_hours_ahead is not None:
         cfg = replace(cfg, max_hours_ahead=max_hours_ahead)
     if competition == "UCL":
-        cfg = replace(cfg, enabled_markets=())  # cross-league model not validated: information only
+        # cross-league model not validated: information only, no market on trial either (the tickets and the player
+        # take its 1X2 bets under their own Champions League rules)
+        cfg = replace(cfg, enabled_markets=(), trial_markets=())
     run = AnalysisRun(kind="prematch", competition=competition, mode=mode, status="running",
                       config={**cfg.to_dict(), "enabled_markets": list(cfg.enabled_markets)}, triggered_by=triggered_by,
                       started_at=now)
@@ -135,6 +138,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     db.flush()
 
     current = "configuration"
+    unpriced: dict[str, list[dict]] = {}
     try:
         if mode == "simulation":
             sim = SimulationProvider(now=now)
@@ -143,11 +147,6 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
         else:
             current = ApiFootballProvider.name
             fixtures_p = ApiFootballProvider(settings.api_football_key)
-            current = TheOddsApiProvider.name
-            # Each market requested costs one credit: totals only when that market is enabled.
-            odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
-                                        bookmakers=settings.odds_bookmakers,
-                                        markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
             backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
             current = fixtures_p.name
             history, used = load_history(db, competition, now, fixtures_p, backup)
@@ -171,15 +170,31 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             except ProviderUnavailable as e:
                 # Pre-match only needs who plays whom and when; the odds feed lists that too.
                 _mark(db, fixtures_p.name, str(e))
-                fixtures, fixtures_source = None, odds_p.name
-            current = odds_p.name
-            quotes = odds_p.odds(competition)
-            _mark(db, odds_p.name, quota=odds_p.last_quota)
-            if fixtures is None:
-                fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
-            if goal_markets:
-                quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
-            run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_p.name}
+                fixtures, fixtures_source = None, TheOddsApiProvider.name
+            # Odds: API-Football first (every bookmaker and bet type of its feed, 7 500 requests a day), The Odds API
+            # (500 credits a month) only when API-Football has no odds for the window.
+            quotes, odds_source = [], None
+            window = [f for f in fixtures or [] if _in_window(f, now, cfg)]
+            if window:
+                try:
+                    quotes, unpriced = api_football_quotes(fixtures_p, competition, window)
+                    odds_source = fixtures_p.name
+                except ProviderUnavailable as e:
+                    _mark(db, fixtures_p.name, f"odds: {e}")
+            if not quotes and (fixtures is None or window):
+                current = TheOddsApiProvider.name
+                # Each market requested costs one credit: totals only when that market is enabled.
+                odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
+                                            bookmakers=settings.odds_bookmakers,
+                                            markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
+                quotes = odds_p.odds(competition)
+                _mark(db, odds_p.name, quota=odds_p.last_quota)
+                if fixtures is None:
+                    fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
+                if goal_markets:
+                    quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
+                odds_source = odds_p.name
+            run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
         run.status, run.status_detail, run.finished_at = "provider_unavailable", str(e), datetime.now(timezone.utc)
@@ -213,7 +228,10 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      "kickoff": f.fixture.kickoff.isoformat(), "expected_goals": f.expected_goals,
                      "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes,
                      "likely_score": f.likely_score, "goals_model": f.goals_model,
-                     "goals_model_note": f.goals_model_note}
+                     "goals_model_note": f.goals_model_note,
+                     # bets of the odds feed the score model cannot price: listed with their odds, "non analysé"
+                     **({"non_analyses": unpriced[f.fixture.provider_event_id]}
+                        if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}
                     for f in report.fixtures]
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)
@@ -261,6 +279,27 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     return run
 
 
+API_FOOTBALL_ODDS_VALIDITY = timedelta(hours=4)  # the feed refreshes pre-match odds about every 3 hours
+
+
+def _in_window(f, now: datetime, cfg: SelectionConfig) -> bool:
+    return (f.status == "scheduled" and now < f.kickoff <= now + timedelta(hours=cfg.max_hours_ahead)
+            and journee(f.kickoff) == journee(now))
+
+
+def api_football_quotes(api: ApiFootballProvider, competition: str, fixtures) -> tuple[list, dict[str, list[dict]]]:
+    """Odds of these fixtures from API-Football: one request per page of 10 fixtures per UTC date (usually one
+    per competition and pass), plus one per fixture the date listing missed. Every bookmaker, every bet type."""
+    teams = {f.provider_event_id: (f.home, f.away, f.kickoff) for f in fixtures}
+    raw = []
+    for day in sorted({f.kickoff.date() for f in fixtures}):
+        raw += api.odds_on(competition, day)
+    seen = {str((r.get("fixture") or {}).get("id")) for r in raw}
+    for fid in sorted(set(teams) - seen):
+        raw += api.fixture_odds(fid)
+    return parse_api_football_odds(raw, teams, API_FOOTBALL_ODDS_VALIDITY)
+
+
 def _goal_quotes(odds_p: TheOddsApiProvider, competition: str, fixtures, now: datetime, cfg: SelectionConfig):
     events = {(normalise(e["home_team"]), normalise(e["away_team"])): e["id"] for e in odds_p.last_events}
     out = []
@@ -281,6 +320,9 @@ def _rationale(e, cfg: SelectionConfig, kickoff, movement=None) -> str:
         f"Espérance {e.ev:+.1%} ; prudente {e.ev_low:+.1%} ; après retrait de {cfg.stress_delta:.0%} "
         f"de probabilité {e.ev_stress:+.1%}.",
     ]
+    if not e.validated:
+        parts.insert(0, f"Marché non validé par le backtest, retenu à l'essai avec des seuils relevés (espérance "
+                        f"{cfg.trial_min_ev:.0%} au moins, prudente {cfg.trial_min_ev_low:.0%}) : prudence.")
     if c.market_fair_prob is not None:
         parts.append(f"Probabilité de marché sans marge {c.market_fair_prob:.1%}.")
     if movement is not None:

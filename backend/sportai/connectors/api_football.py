@@ -127,6 +127,24 @@ class ApiFootballProvider:
             return []
         return (resp[0].get("odds") or []) if resp else []
 
+    def odds_on(self, competition: str, day: date, max_pages: int = 5, ttl: float = 600) -> list[dict]:
+        """Pre-match odds of every fixture of a competition on one UTC date (raw: fixture, update, bookmakers with
+        all their bets), all pages: one request per page of 10 fixtures, so one or two per competition and day."""
+        season = day.year if competition in CALENDAR_YEAR else (day.year if day.month >= 7 else day.year - 1)
+        out, page = [], 1
+        while page <= max_pages:
+            data = self._get("/odds", {"league": LEAGUE_IDS[competition], "season": season,
+                                       "date": day.isoformat(), "page": page}, ttl=ttl)
+            out += data.get("response", [])
+            if page >= (data.get("paging") or {}).get("total", 1):
+                break
+            page += 1
+        return out
+
+    def fixture_odds(self, fixture_id: int | str, ttl: float = 600) -> list[dict]:
+        """Pre-match odds of one fixture (raw, as odds_on), one request."""
+        return self._get("/odds", {"fixture": fixture_id}, ttl=ttl).get("response", [])
+
     def team_players(self, team_id: int, season: int) -> list[dict]:
         """Every player of a team in a season with their statistics, all pages."""
         out, page = [], 1

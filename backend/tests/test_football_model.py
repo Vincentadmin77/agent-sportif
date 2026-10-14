@@ -50,8 +50,12 @@ def test_whole_line_total_has_push():
     m = dc.score_matrix(1.4, 1.2, 0.0)
     o = outcome(m, MarketKey("totals", "over", 2.0))
     assert o.push > 0.15
+    # A quarter line is the split bet: half on 2.0, half on 2.5 (EV-equivalent single outcome).
+    q = outcome(m, MarketKey("totals", "over", 2.25))
+    half = outcome(m, MarketKey("totals", "over", 2.5))
+    assert q.win == pytest.approx((o.win + half.win) / 2) and q.push == pytest.approx(o.push / 2)
     with pytest.raises(ValueError):
-        outcome(m, MarketKey("totals", "over", 2.25))
+        outcome(m, MarketKey("totals", "over", None))
 
 
 def test_uncertainty_samples_spread_around_centre():

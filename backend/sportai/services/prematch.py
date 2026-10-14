@@ -20,7 +20,7 @@ import numpy as np
 from sportai.connectors.base import Fixture, HistoricalResult, OddsQuote
 from sportai.connectors.teams import normalise
 from sportai.engine.football import dixon_coles as dc
-from sportai.engine.football.markets import MarketKey, likely_score, market_group, outcome
+from sportai.engine.football.markets import OPEN_MARKETS, MarketKey, likely_score, market_group, outcome, outcomes
 from sportai.engine.value import Outcome, devig_shin
 from sportai.selection.engine import Candidate, SelectionConfig, SelectionResult, select
 
@@ -130,7 +130,7 @@ def run_prematch(
         enriched, note = goals_lookup(fx.home, fx.away) if goals_lookup else (None, None)
         if enriched:
             model_only.update({k: round(v, 4) for k, v in enriched.items()})
-        samples = model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode()))
+        samples = np.stack(model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode())))
         fq = by_event.get(fx.provider_event_id, [])
         fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq),
                              goals_model=(goals_model_label or "enriched") if enriched else GOALS_MODEL_DC,
@@ -140,8 +140,11 @@ def run_prematch(
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)
         for key, best in _best_prices(fq, now).items():
-            out = outcome(central, key)
-            win_samples = np.array([outcome(s, key).win for s in samples])
+            try:
+                out = outcome(central, key)
+            except (ValueError, KeyError):
+                continue  # a selection the score model cannot price (the feed's parser should not emit it)
+            win_samples = outcomes(samples, key)[0]
             if enriched and key.label() in enriched:
                 p = float(enriched[key.label()])
                 win_samples = np.clip((p + win_samples - out.win) * (1 - GOALS_HAIRCUT), 0.0, 1.0)
@@ -158,6 +161,7 @@ def run_prematch(
                 bookmaker=best.bookmaker, odds_observed_at=best.observed_at, odds_expires_at=best.expires_at,
                 outcome=out, win_prob_samples=win_samples, push_prob=out.push,
                 market_fair_prob=consensus.get(key), data_quality=quality, data_mode=mode,
+                max_odds_age=cfg.max_odds_age_by_provider.get(best.provider),
             ))
         analyses.append(fa)
 
@@ -196,6 +200,16 @@ def _market_consensus(quotes: list[OddsQuote]) -> dict[MarketKey, float]:
             per_book[(q.bookmaker,)][MarketKey(q.market, q.selection, q.line)] = q.odds
     acc: dict[MarketKey, list[float]] = defaultdict(list)
     for prices in per_book.values():
+        # Open markets (exact score, exact goals): the margin is removed over whatever the bookmaker offers, only
+        # when its prices cover the whole outcome space (sum of 1/odds at least 1), else the board is partial.
+        open_groups: dict[str, list[MarketKey]] = defaultdict(list)
+        for k in prices:
+            if k.market in OPEN_MARKETS:
+                open_groups[k.market].append(k)
+        for group in open_groups.values():
+            if len(group) >= 3 and sum(1 / prices[g] for g in group) >= 1.0:
+                for g, p in zip(group, devig_shin([prices[g] for g in group])):
+                    acc[g].append(p)
         seen = set()
         for k in prices:
             group = market_group(k)
