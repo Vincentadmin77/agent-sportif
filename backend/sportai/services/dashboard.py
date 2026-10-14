@@ -58,8 +58,8 @@ SKIP_REASONS = {
 }
 
 
-UCL_INFO = ("Ligue des champions : estimation du modèle entraîné sur les cinq grands championnats et la coupe "
-            "d'Europe ensemble. Comparer des clubs de championnats différents n'est pas encore validé par un test sur "
+UCL_INFO = ("Ligue des champions : estimation du modèle entraîné ensemble sur 30 championnats européens et "
+            "les trois coupes d'Europe. Comparer des clubs de championnats différents n'est pas encore validé par un test sur "
             "matchs passés : information seulement, aucune sélection.")
 
 

@@ -31,6 +31,18 @@ Nouvelle règle : on choisit d'abord l'issue la plus probable (1, N ou 2), puis 
 **Avantage du terrain :** il est ajusté par championnat (modèle refait pour chaque championnat) et il est bien calibré : victoires à domicile prévues 43,2 %, observées 43,5 % ; extérieur prévu 32,4 %, observé 32,0 % ; écart de buts domicile prévu +0,27, observé +0,27. Sur les matchs serrés (écart 1/2 < 10 points, 1 965 matchs) : domicile prévu 36,2 %, observé 37,6 %, dans la marge d'erreur. Pas de correction nécessaire.
 
 ## Ligue des champions (modèle inter-championnats)
+
+**Mise à jour du 14 octobre 2026 : 25 championnats de plus et les C3 / C4.** Les clubs hors cinq grands championnats (Porto, Feyenoord, Bodø/Glimt, Shakhtar, Slovan Bratislava...) n'avaient pas assez de matchs : 5 des 9 matchs de C1 du 14 octobre n'étaient pas analysés. Le modèle C1 apprend désormais aussi sur les championnats PT1, NL1, TR1, BE1, AT1, SC1, GR1, UA1, CH1, CZ1, DK1, HR1, RS1, NO1, SK1, CY1, PL1, IL1, SE1, KZ1, AZ1, BG1, HU1, RO1, SI1 et sur la Ligue Europa et la Ligue Conférence (API-Football, score à 90 min, `UCL_EXTRA` dans `services/runs.py`). Les coupes relient les championnats entre eux : un club dominant un championnat faible est placé par les résultats européens de son championnat, pas mis au niveau des grands clubs. Même protocole (`backtest_ucl.py`, `--no-extra` pour l'ancien périmètre), saisons 2021-22 à 2025-26 :
+
+| Périmètre | Matchs prédits | Brier brut | Brier corrigé (×1,2 walk-forward) | Brier référence | Gain corrigé |
+|---|---|---|---|---|---|
+| Ancien périmètre (5 championnats + C1) | 465 / 1206 | 0,553 | 0,551 | 0,625 | 11,8 % |
+| Nouveau périmètre, tous | **994 / 1206** | 0,538 | **0,535** | 0,629 | 15,0 % |
+| dont matchs déjà couverts avant | 465 | 0,550 | 0,546 | 0,625 | 12,7 % |
+| dont matchs nouvellement couverts | 529 | 0,528 | 0,525 | 0,633 | 17,0 % |
+
+Club hors cinq championnats contre club des cinq (374 matchs) : victoire du « petit » club prévue 22,3 % (brute) / 20,2 % (corrigée), observée 21,4 % ± 4,2 : pas de surévaluation des clubs de championnats faibles, aucun terme de force de championnat n'a été nécessaire. Restent non couverts 212 matchs, presque tous de tours préliminaires (clubs de championnats non chargés). Avec ce périmètre l'étirement ajusté walk-forward monte à 1,17-1,30 (1,25 sur toutes les prévisions) ; la constante de production reste 1,2. Les chiffres détaillés ci-dessous sont ceux de l'ancien périmètre ; [backtest-ucl.json](backtest-ucl.json) contient le nouveau.
+
 **Données :** coupe d'Europe (C1) via API-Football, saisons 2018-19 à 2025-26, tours préliminaires compris, **score à 90 minutes** (prolongations et tirs au but ignorés) ; cinq grands championnats via openfootball (saisons 2018-19 à 2025-26 ; fin de saison 2025-26 partiellement absente du jeu openfootball, 2019-20 de Ligue 1 arrêtée). Saisons testées : 2021-22 à 2025-26, les précédentes servent d'échauffement.
 **Protocole :** celui de la production pour la C1. Chaque semaine de C1, un seul modèle est réajusté sur tous les matchs des cinq championnats et de la C1 joués avant cette semaine (3 ans glissants), clubs vus dans moins de 20 matchs écartés, puis il prédit les matchs de C1 de la semaine dont il connaît les deux clubs.
 **Référence naïve :** fréquences domicile / nul / extérieur des matchs de C1 antérieurs.
