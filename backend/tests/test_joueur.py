@@ -41,8 +41,8 @@ def test_candidates_value_and_kelly():
 
 def test_decisions_follow_the_profile():
     ds = {d["id"]: d for d in decide(PRONO, None, {}, 100.0, "equilibre", NOW)}
-    # The goal leg is not validated: never played.
-    assert not ds["ticket:fun"]["joue"] and "non validé" in ds["ticket:fun"]["raison"]
+    # The fun ticket (an unvalidated goal leg, on trial) is too unlikely for the profile.
+    assert not ds["ticket:fun"]["joue"] and ds["ticket:fun"]["motif"] == "proba"
     played = [d for d in ds.values() if d["joue"]]
     assert played and all(d["mise"] <= 5.0 for d in played)  # 5 % per bet at most
     assert sum(d["mise"] for d in played) <= 10.0  # 10 % per day at most
@@ -200,7 +200,10 @@ def test_singles_beyond_the_tickets_and_odds_watch():
     goals = {**leg("g-h", "Plus de 2,5 buts", 1.9, 0.6), "valide": False}
     empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
     first = decide(empty, None, {}, 1000.0, "prudent", NOW, legs=[ata, far, goals])
-    assert [d["id"] for d in first] == ["simple:2026-10-11-at-ve:Victoire at"]
+    assert [d["id"] for d in first] == ["simple:2026-10-11-g-h:Plus de 2,5 buts", "simple:2026-10-11-at-ve:Victoire at"]
+    # Any market the model prices is played, an unvalidated one on trial at half the stake.
+    assert first[0]["joue"] and "à l'essai" in first[0]["raison"]
+    first = first[1:]
     assert first[0]["joue"] and first[0]["type"] == "simple" and first[0]["cotes"][0]["cote"] == 1.45
     # The odds drift down to 1.38: value 1.6 %, under the prudent 3 %: the player withdraws, and says why.
     day, _ = run(empty, None, {}, {}, {"depart": 1000.0, "objectif": 1e5}, None,
@@ -237,3 +240,13 @@ def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing(
     assert "ucl" in lrn["correction"]
     d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"ucl_arret": True}, legs=[ucl])[0]
     assert not d["joue"] and d["raison"].startswith("Ligue des champions")
+    # Same rule for any unvalidated market: its own record, back to paper when it loses.
+    btts = {**leg("a-b", "Les deux équipes marquent", 1.9, 0.6), "valide": False, "marche": "Les deux équipes marquent"}
+    d_b = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[btts])[0]
+    assert d_b["joue"] and d_b["mise"] == round(decide(empty, None, {}, 1000.0, "agressif", NOW,
+                                                       legs=[{**btts, "valide": True}])[0]["mise"] / 2, 2)
+    lost_b = {**d_b, "resultat": "perdu", "jambes": [{**d_b["jambes"][0], "resultat": "perdu"}]}
+    lrn = joueur.learn({f"2026-09-{i + 1:02d}": {"decisions": [lost_b]} for i in range(20)})
+    assert lrn["essais_arret"] == ["Les deux équipes marquent"] and lrn["propositions"]["n"] == 0
+    d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"essais_arret": lrn["essais_arret"]}, legs=[btts])[0]
+    assert not d["joue"] and d["motif"] == "non_valide"

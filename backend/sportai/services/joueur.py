@@ -100,12 +100,16 @@ UCL_RULE = ("Ligue des champions : mes paris passés sur cette compétition perd
 UCL_MISE = 0.5
 UCL_MARGE = 0.01
 UCL_ARRET = (20, -0.10)  # 20 settled Champions League bets losing more than 10 % per euro: back to paper
+# Any odds the model prices (owner 2026-10-14: "n'importe quelles cotes"): a market the backtest has not validated
+# (both teams score, over/under 2.5, a Champions League draw...) is played on trial like the Champions League: half
+# the stake, one more point of value, its own record per market, and back to paper when that record loses.
+ESSAI_RULE = "{nom} : mes paris passés sur ce marché perdent trop, je ne mise plus, je les note pour juger plus tard."
 
 
 def _leg_ok(leg: dict) -> bool:
-    """A single the player may consider: validated market, value >= 0, and the model within the selection engine's
+    """A single the player may consider: value >= 0 (validated market or on trial), and the model within the selection engine's
     limit of the market (a bigger gap usually means information the model lacks)."""
-    if (not leg.get("valide", True) and not leg.get("ucl")) or leg.get("valeur", -1) < 0:
+    if leg.get("valeur", -1) < 0:
         return False
     pm = leg.get("proba_marche")
     return pm is None or abs(leg["proba"] - pm) <= leg.get("_divergence_max", 0.10)
@@ -115,9 +119,20 @@ def _ucl(d: dict) -> bool:
     return any(l.get("ucl") for l in d["jambes"])
 
 
+def _essais(d: dict) -> set[str]:
+    """The trial groups a bet belongs to: the Champions League, and each market the backtest has not validated."""
+    return {"ucl" if l.get("ucl") else l.get("marche") or l.get("pari") for l in d["jambes"]
+            if l.get("ucl") or not l.get("valide", True)}
+
+
+def _essai_nom(g: str) -> str:
+    return "Ligue des champions" if g == "ucl" else g
+
+
 def _kind(d: dict) -> str:
-    """Learning groups: combined tickets, single bets (top 3 or any other single), and Champions League bets."""
-    return "ucl" if _ucl(d) else "ticket" if d["type"] == "ticket" else "top3"
+    """Learning groups: combined tickets, single bets (top 3 or any other single), Champions League bets and bets on
+    markets on trial."""
+    return "ucl" if _ucl(d) else "essai" if _essais(d) else "ticket" if d["type"] == "ticket" else "top3"
 
 
 def _result(decision: dict, page: dict[str, dict]) -> dict:
@@ -208,27 +223,25 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
         c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
         c["kelly"] = round(max(c["valeur"], 0) / (c["cote"] - 1), 4) if c["cote"] > 1 else 0.0
         c["correction"] = r
-    def share(c: dict) -> float:  # part of the bankroll on this bet, halved in the Champions League
-        f = UCL_MISE if _ucl(c) else 1.0
+    def share(c: dict) -> float:  # part of the bankroll on this bet, halved on trial (Champions League, unvalidated)
+        f = UCL_MISE if _essais(c) else 1.0
         return min(p["kelly"] * f * c["kelly"], p["max_pari"] * f)
 
     fresh.sort(key=lambda c: -share(c) * c["valeur"])
     for c in fresh:
         stake = round(share(c) * bank_start, 2)
         matches = {l["match_id"] for l in c["jambes"]}
-        ucl = _ucl(c)
-        vmin = p["valeur_min"] + (UCL_MARGE if ucl else 0.0)
+        essais = _essais(c)
+        stopped = sorted(essais & set(ajust.get("essais_arret") or ()))
+        if ajust.get("ucl_arret") and "ucl" in essais and "ucl" not in stopped:
+            stopped.append("ucl")
+        vmin = p["valeur_min"] + (UCL_MARGE if essais else 0.0)
         why, motif = None, None
-        if ucl and ajust.get("ucl_arret"):
-            why, motif = UCL_RULE, "non_valide"
-        elif ucl and not all(l.get("valide", True) for l in c["jambes"]):
-            why, motif = ("Ligue des champions : je ne mise que sur une victoire à domicile ou à l'extérieur, "
-                          "cote entre 1,30 et 2,50 (pas le nul)."), "non_valide"
-        elif not ucl and not all(l.get("valide", True) for l in c["jambes"]):
-            why, motif = "Contient un pari « non validé » par le backtest : je ne mise pas dessus.", "non_valide"
+        if stopped:
+            why, motif = (UCL_RULE if stopped == ["ucl"] else ESSAI_RULE.format(nom=_essai_nom(stopped[0]))), "non_valide"
         elif c["valeur"] < vmin:
             why, motif = (f"Valeur {_pct(c['valeur'])} sous mon minimum de {_pct(vmin, 1)}"
-                          + (" (un point de plus en Ligue des champions)" if ucl else "")
+                          + (" (un point de plus sur un pari à l'essai)" if essais else "")
                           + " : l'avantage est trop mince pour couvrir l'erreur du modèle."), "valeur"
         elif c["proba"] < p["proba_min"]:
             why, motif = f"Chance de {_pct(c['proba'])} sous mon minimum de {_pct(p['proba_min'], 0)}.", "proba"
@@ -254,8 +267,8 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
                                      f"{_pct(c['valeur'])}. Kelly conseille {_pct(c['kelly'])} de la bankroll, "
                                      f"j'en mise {_pct(stake / bank_start)} (profil {p['titre'].lower()}"
                                      + (", mises relevées pour l'échéance" if accel else "")
-                                     + (", mise divisée par deux : Ligue des champions, modèle calibré mais pas "
-                                        "encore éprouvé face aux cotes" if ucl else "") + ").")})
+                                     + (", mise divisée par deux : " + ", ".join(_essai_nom(g) for g in sorted(essais))
+                                        + " à l'essai, pas encore éprouvé face aux cotes" if essais else "") + ").")})
     for gone in set(old) - {d["id"] for d in decisions}:
         if old[gone].get("joue"):
             decisions.append({**old[gone], "joue": False, "mise": 0.0, "mise_pct": 0.0, "motif": "retire",
@@ -320,15 +333,15 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
     # The model's record is judged on every validated proposal it priced, played or not: a bet passed is evidence
     # too, and the player learns three times faster than from its own stakes alone.
     # Champions League bets have their own record (below), kept out of the one that sets the profile.
-    g = _stats([d for _, d in settled if _motif(d) != "non_valide" and not _ucl(d)])
+    g = _stats([d for _, d in settled if _motif(d) != "non_valide" and not _essais(d)])
     # Correction of the model's chances: wins seen against wins announced, pulled towards 1 while evidence is thin.
     ratio = {}
-    for kind in ("ticket", "top3", "ucl"):
-        items = [d for _, d in settled if _kind(d) == kind and (kind == "ucl" or _motif(d) != "non_valide")]
+    for kind in ("ticket", "top3", "ucl", "essai"):
+        items = [d for _, d in settled if _kind(d) == kind and (kind in ("ucl", "essai") or _motif(d) != "non_valide")]
         st = _stats(items)
         ratio[kind] = round(min(max((PRIOR_GAINS + st["gagnes"]) / (PRIOR_GAINS + st["attendus"]), 0.6), 1.3), 3)
     # Least value: lowered if the bets passed for too thin a value would have paid, raised if those played lose.
-    passed = _stats([d for _, d in settled if not d["joue"] and _motif(d) == "valeur" and not _ucl(d)])
+    passed = _stats([d for _, d in settled if not d["joue"] and _motif(d) == "valeur" and not _essais(d)])
     base = PROFILS["prudent"]["valeur_min"]
     valeur_min, why_min = None, None
     if passed["n"] >= 20 and passed["roi"] > 0:
@@ -378,7 +391,17 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
                      f"Je mise en Ligue des champions avec des mises divisées par deux ; j'arrête si, après "
                      f"{UCL_ARRET[0]} paris réglés, ils perdent plus de {_pct(-UCL_ARRET[1], 0)} par euro "
                      f"(aujourd'hui {ucl['n']} réglé(s)).")
+    # Every other market on trial, played or passed, with the same rule.
+    essais = {}
+    for grp in sorted({x for _, d in settled for x in _essais(d)} - {"ucl"}):
+        st = _stats([d for _, d in settled if grp in _essais(d)])
+        stop = st["n"] >= UCL_ARRET[0] and st["roi"] < UCL_ARRET[1]
+        essais[grp] = {**st, "mise": "papier" if stop else "reduite", "raison": (
+            f"{grp} : mes {st['n']} paris perdent {_pct(-st['roi'])} par euro, je ne mise plus dessus." if stop else
+            f"{grp} : à l'essai, mises divisées par deux ({st['n']} réglé(s) ; j'arrête après {UCL_ARRET[0]} s'ils "
+            f"perdent plus de {_pct(-UCL_ARRET[1], 0)} par euro).")}
     return {"joues": joues, "propositions": g, "passes_valeur": passed, "ucl_sur_papier": ucl, "ucl_arret": arret,
+            "essais": essais, "essais_arret": [k for k, v in essais.items() if v["mise"] == "papier"],
             "correction": ratio, "valeur_min": valeur_min,
             "valeur_min_raison": why_min, "profil_auto": auto, "profil_raison": why, "plafond": plafond,
             "examens": exams[::-1]}
@@ -649,7 +672,8 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
     echeance = date.fromisoformat((choix or {}).get("echeance") or f"{ECHEANCE}")
     rythme = pace(bank_start, depart, objectif, date.fromisoformat(day), echeance=echeance)
     kelly = kelly_fraction(PROFILS[profil], rythme["ecart"], bool(frein))
-    ajust = {"ratio": lrn["correction"], "valeur_min": lrn["valeur_min"], "ucl_arret": lrn["ucl_arret"]}
+    ajust = {"ratio": lrn["correction"], "valeur_min": lrn["valeur_min"], "ucl_arret": lrn["ucl_arret"],
+             "essais_arret": lrn["essais_arret"]}
     decisions = decide(pronostic, previous_day, page, bank_start, profil, now, kelly, ajust, legs)
 
     journal = list((previous_day or {}).get("journal") or [])
@@ -665,6 +689,10 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
             journal.append({"heure": heure, "texte": lrn["valeur_min_raison"]})
     if any(_ucl(d) for d in decisions) and not any(x["texte"] == lrn["ucl_sur_papier"]["raison"] for x in journal):
         journal.append({"heure": heure, "texte": lrn["ucl_sur_papier"]["raison"]})
+    if any(_essais(d) - {"ucl"} for d in decisions) and not any(x["texte"].startswith("À l'essai") for x in journal):
+        journal.append({"heure": heure, "texte": "À l'essai : je mise aussi sur les marchés que le backtest n'a pas "
+                                                 "validés, avec des mises divisées par deux, et j'arrête chaque marché "
+                                                 "dont le bilan perd."})
     if frein and not any(e["texte"] == frein for e in journal):
         journal.append({"heure": heure, "texte": frein})
     if not journal or (previous_day or {}).get("resume") != resume:
