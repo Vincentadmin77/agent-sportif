@@ -213,13 +213,22 @@ def test_singles_beyond_the_tickets_and_odds_watch():
     assert any(e["texte"].startswith("La cote de Victoire at") and "Je retire" in e["texte"] for e in day2["journal"])
 
 
-def test_champions_league_singles_noted_on_paper_never_staked():
-    ucl = {**leg("psg-bay", "Victoire psg", 2.2, 0.52), "valide": False, "ucl": True, "proba_marche": 0.46,
+def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing():
+    ucl = {**leg("psg-bay", "Victoire psg", 2.2, 0.52), "valide": True, "ucl": True, "proba_marche": 0.46,
            "_divergence_max": 0.10}
+    nat = leg("lyo-nan", "Victoire lyo", 2.2, 0.52)
     empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
-    ds = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[ucl])
-    assert len(ds) == 1 and not ds[0]["joue"] and ds[0]["raison"].startswith("Ligue des champions")
-    settled = {**ds[0], "resultat": "gagne", "jambes": [{**ds[0]["jambes"][0], "resultat": "gagne"}]}
-    lrn = joueur.learn({"2026-10-10": {"decisions": [settled]}})
-    assert lrn["ucl_sur_papier"]["n"] == 1 and lrn["ucl_sur_papier"]["roi"] == 1.2
-    assert lrn["propositions"]["n"] == 0  # never mixed into the record that sets the profile
+    d_ucl, d_nat = (decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[x])[0] for x in (ucl, nat))
+    assert d_ucl["joue"] and d_nat["joue"] and d_ucl["mise"] == round(d_nat["mise"] / 2, 2)
+    assert "Ligue des champions" in d_ucl["raison"]
+    # One more point of value asked: 2.2 x 0.465 = +2.3 %, enough elsewhere (prudent 3 % ... equilibre 2 %), not here.
+    thin = {**ucl, "proba": 0.465, "valeur": round(0.465 * 2.2 - 1, 4)}
+    d = decide(empty, None, {}, 1000.0, "equilibre", NOW, legs=[thin])[0]
+    assert not d["joue"] and d["motif"] == "valeur"
+    # Its record is kept apart from the profile's, and 20 settled losses send it back to paper.
+    lost = {**d_ucl, "resultat": "perdu", "jambes": [{**d_ucl["jambes"][0], "resultat": "perdu"}]}
+    lrn = joueur.learn({f"2026-09-{i + 1:02d}": {"decisions": [lost]} for i in range(20)})
+    assert lrn["propositions"]["n"] == 0 and lrn["ucl_sur_papier"]["n"] == 20 and lrn["ucl_arret"]
+    assert "ucl" in lrn["correction"]
+    d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"ucl_arret": True}, legs=[ucl])[0]
+    assert not d["joue"] and d["raison"].startswith("Ligue des champions")
