@@ -32,7 +32,13 @@ for sub in ("joueur", "pronostic", "stats"):  # the player's day followed live; 
         if sub != "stats" and k[:4].isdigit() and k not in days:
             continue  # an earlier day's finished matches still sit in the page copy: leave that day alone
         w.append({"op":"set","collection":sub,"doc_id":k,"file_path":p,"if_version":v.get(f"{sub}/{k}")})
-print(json.dumps(w))
+# a batch takes at most 1 MiB: since every market is listed, match pages weigh ~120 KB, so split it
+chunks,size=[[]],0
+for x in w:
+    n=os.path.getsize(x["file_path"])
+    if chunks[-1] and size+n>900_000: chunks.append([]); size=0
+    chunks[-1].append(x); size+=n
+for c in chunks: print(json.dumps(c))  # one batch per line, write them in order
 for x in w:  # the batch printed above is expected to succeed
     key = x['doc_id'] if x['collection'] == 'matchs' else f"{x['collection']}/{x['doc_id']}"
     v[key] = v.get(key, 0) + 1
