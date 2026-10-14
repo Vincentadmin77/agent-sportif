@@ -124,3 +124,19 @@ def test_empty_safe_filled_by_the_15_min_pass_when_odds_rise():
     safe = m15["tickets"]["safe"]
     assert [l["cote"] for l in safe["jambes"]] == [1.52] and safe["fige"]
     assert safe["message"].startswith("Ticket ajouté au dernier passage")
+
+
+def test_champions_league_one_bet_per_ticket_half_stake():
+    from sportai.services.bilan import apply_stakes
+
+    u1 = {**leg("ucl1", "Victoire u", 1.60, 0.66, 0.62), "ucl": True}
+    u2 = {**leg("ucl2", "Victoire w", 1.55, 0.68, 0.64), "ucl": True}
+    draw = {**leg("ucl3", "Match nul", 3.4, 0.33, 0.29), "ucl": True, "valide": False}
+    doc = build_pronostic([u1, u2, draw], {}, None, NOW, "h3")
+    for t in doc["tickets"].values():
+        assert sum(bool(l.get("ucl")) for l in t["jambes"]) <= 1
+        assert all(l["pari"] != "Match nul" for l in t["jambes"])
+    assert doc["tickets"]["safe"]["jambes"]  # a single Champions League bet is allowed
+    settings = {"mises": {"safe": 0.04, "semi_safe": 0.02, "fun": 0.01}}
+    apply_stakes(doc, settings, 1000.0)
+    assert doc["tickets"]["safe"]["mise"] == 20.0

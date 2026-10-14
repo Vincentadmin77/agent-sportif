@@ -59,11 +59,17 @@ def _aware(d: datetime) -> datetime:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
-def legs_from_db(db: DB, day, ucl: bool = False) -> list[dict]:
+# Champions League in the tickets (owner, 2026-10-14), with care: the cross-league model is calibrated there but
+# has no record against the market yet (docs/04-backtest.md). Only a home or away win (the draw is over-predicted),
+# odds between 1.30 and 2.50, one Champions League bet per ticket at most, and the ticket's stake halved.
+UCL_ODDS = (1.30, 2.50)
+UCL_STAKE_FACTOR = 0.5
+
+
+def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
     """Every validated-market bet priced today, from the latest run that analysed each match.
 
-    ucl: also the Champions League 1X2 bets, marked `valide: False, ucl: True`. The cross-league model is not
-    validated there (docs/04-backtest.md): only the player notes them on paper, never the tickets."""
+    ucl: also the Champions League 1X2 bets, marked `ucl: True` and validated only within the limits above."""
     runs = db.scalars(select(AnalysisRun).where(AnalysisRun.status == "completed", AnalysisRun.kind == "prematch")
                       .order_by(AnalysisRun.started_at))
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
@@ -115,12 +121,15 @@ def legs_from_db(db: DB, day, ucl: bool = False) -> list[dict]:
                 "valide": c.market in enabled if c.market not in GOAL_MARKETS
                 else goal_market_validated(c.market, c.line, f.get("goals_model")),
                 "_divergence_max": cfg.get("max_market_divergence", 0.10),
-                **({"valide": False, "ucl": True} if paper else {}),
+                **({"valide": c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1], "ucl": True}
+                   if paper else {}),
             })
     return legs
 
 
 def _correct(leg: dict) -> bool:
+    if leg.get("ucl") and not leg["valide"]:  # Champions League: only within the limits above
+        return False
     return (leg["valeur"] >= 0 and leg["proba_marche"] is not None
             and abs(leg["proba"] - leg["proba_marche"]) <= leg["_divergence_max"])
 
@@ -136,7 +145,8 @@ def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min
     pool = [l for l in legs if l["proba"] >= min_leg]
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
-            if (len({l["match_id"] for l in combo}) == n and math.prod(l["cote"] for l in combo) > min_odds
+            if (len({l["match_id"] for l in combo}) == n and sum(bool(l.get("ucl")) for l in combo) <= 1
+                    and math.prod(l["cote"] for l in combo) > min_odds
                     and math.prod(l["proba"] for l in combo) >= min_total):
                 yield list(combo)
 

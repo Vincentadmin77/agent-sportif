@@ -79,9 +79,8 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
         from sportai.services.joueur import ticket_stakes
         from sportai.services.joueur import write as write_player
 
-        # every validated single with value, plus the Champions League 1X2 noted on paper (never staked)
-        paper = [l for l in legs_from_db(db, date.fromisoformat(day), ucl=True) if l.get("ucl")]
-        ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now, legs + paper))
+        # every validated single with value, Champions League included
+        ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now, legs))
     except Exception as e:  # the player is a bonus: never lose the pass for it
         print(f"joueur unavailable ({str(e)[:160]})", file=sys.stderr)
     bilan = build_bilan(matchs, days, settings, now)
