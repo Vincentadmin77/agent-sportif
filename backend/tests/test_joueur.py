@@ -191,3 +191,35 @@ def test_learning_corrects_an_overconfident_model_and_thin_value_threshold():
                                                          motif="valeur")]} for i in range(1, 25)}
     assert joueur.learn(passed)["valeur_min"] == 0.02
     assert joueur.learn(passed)["examens"][0]["texte"].startswith("0 pari(s) joué(s)")
+
+
+def test_singles_beyond_the_tickets_and_odds_watch():
+    # Atalanta case (2026-10-12): not in any ticket nor the top 3, but a validated single with value.
+    ata = {**leg("at-ve", "Victoire at", 1.45, 0.736), "proba_marche": 0.68, "_divergence_max": 0.10}
+    far = {**leg("x-y", "Victoire x", 2.0, 0.60), "proba_marche": 0.45, "_divergence_max": 0.10}  # gap too big
+    goals = {**leg("g-h", "Plus de 2,5 buts", 1.9, 0.6), "valide": False}
+    empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
+    first = decide(empty, None, {}, 1000.0, "prudent", NOW, legs=[ata, far, goals])
+    assert [d["id"] for d in first] == ["simple:2026-10-11-at-ve:Victoire at"]
+    assert first[0]["joue"] and first[0]["type"] == "simple" and first[0]["cotes"][0]["cote"] == 1.45
+    # The odds drift down to 1.38: value 1.6 %, under the prudent 3 %: the player withdraws, and says why.
+    day, _ = run(empty, None, {}, {}, {"depart": 1000.0, "objectif": 1e5}, None,
+                 {"simulation": fake_simulation()}, NOW, [ata])
+    later = NOW + timedelta(hours=1)
+    day2, _ = run(empty, day, {}, {}, {"depart": 1000.0, "objectif": 1e5}, None,
+                  {"simulation": fake_simulation()}, later, [{**ata, "cote": 1.38, "valeur": round(0.736 * 1.38 - 1, 4)}])
+    d = day2["decisions"][0]
+    assert not d["joue"] and [c["cote"] for c in d["cotes"]] == [1.45, 1.38]
+    assert any(e["texte"].startswith("La cote de Victoire at") and "Je retire" in e["texte"] for e in day2["journal"])
+
+
+def test_champions_league_singles_noted_on_paper_never_staked():
+    ucl = {**leg("psg-bay", "Victoire psg", 2.2, 0.52), "valide": False, "ucl": True, "proba_marche": 0.46,
+           "_divergence_max": 0.10}
+    empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
+    ds = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[ucl])
+    assert len(ds) == 1 and not ds[0]["joue"] and ds[0]["raison"].startswith("Ligue des champions")
+    settled = {**ds[0], "resultat": "gagne", "jambes": [{**ds[0]["jambes"][0], "resultat": "gagne"}]}
+    lrn = joueur.learn({"2026-10-10": {"decisions": [settled]}})
+    assert lrn["ucl_sur_papier"]["n"] == 1 and lrn["ucl_sur_papier"]["roi"] == 1.2
+    assert lrn["propositions"]["n"] == 0  # never mixed into the record that sets the profile

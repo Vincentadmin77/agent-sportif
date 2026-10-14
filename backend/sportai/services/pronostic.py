@@ -59,14 +59,17 @@ def _aware(d: datetime) -> datetime:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
-def legs_from_db(db: DB, day) -> list[dict]:
-    """Every validated-market bet priced today, from the latest run that analysed each match."""
+def legs_from_db(db: DB, day, ucl: bool = False) -> list[dict]:
+    """Every validated-market bet priced today, from the latest run that analysed each match.
+
+    ucl: also the Champions League 1X2 bets, marked `valide: False, ucl: True`. The cross-league model is not
+    validated there (docs/04-backtest.md): only the player notes them on paper, never the tickets."""
     runs = db.scalars(select(AnalysisRun).where(AnalysisRun.status == "completed", AnalysisRun.kind == "prematch")
                       .order_by(AnalysisRun.started_at))
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
     goals_run: dict[str, int] = {}  # goal odds are only fetched 45 min before: keep the last run that has them
     for run in runs:
-        if run.competition == "UCL" or journee(_aware(run.started_at)) != day:
+        if (run.competition == "UCL" and not ucl) or journee(_aware(run.started_at)) != day:
             continue
         priced = set(db.scalars(select(CandidateRow.match_id).where(
             CandidateRow.run_id == run.id, CandidateRow.market.in_(tuple(GOAL_MARKETS)))))
@@ -79,10 +82,13 @@ def legs_from_db(db: DB, day) -> list[dict]:
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
+        paper = run.competition == "UCL"
+        if paper:
+            enabled = ("1x2",)
         # Goal markets enter the tickets at the owner's request (2026-10-11). Validated (fragile): over/under
         # 1.5 and 3.5 when priced by the enriched goals model (docs/11-backtest-buts.md); btts and 2.5 stay
         # "non validé". Their odds exist only after a pass run with --goals (45 min before kick-off).
-        goals = cfg.get("info_markets", ("totals", "btts"))
+        goals = () if paper else cfg.get("info_markets", ("totals", "btts"))
         home, _, away = f["match"].partition(" - ")
         ko = datetime.fromisoformat(f["kickoff"])
         rows = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id,
@@ -109,6 +115,7 @@ def legs_from_db(db: DB, day) -> list[dict]:
                 "valide": c.market in enabled if c.market not in GOAL_MARKETS
                 else goal_market_validated(c.market, c.line, f.get("goals_model")),
                 "_divergence_max": cfg.get("max_market_divergence", 0.10),
+                **({"valide": False, "ucl": True} if paper else {}),
             })
     return legs
 

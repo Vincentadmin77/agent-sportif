@@ -70,7 +70,8 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     raw = folder / "reglages" / "bankroll.json"
     settings = bankroll_settings(json.loads(raw.read_text()) if raw.exists() else None)
     matchs = {**_load_page(page), **docs}
-    doc = build_pronostic(legs_from_db(db, date.fromisoformat(day)), matchs, days.get(day), now, passage,
+    legs = legs_from_db(db, date.fromisoformat(day))
+    doc = build_pronostic(legs, matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
     bank_at_start, _ = replay({d: v for d, v in days.items() if d < day}, settings)
     days[day] = apply_stakes(doc, settings, bank_at_start)
@@ -78,7 +79,9 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
         from sportai.services.joueur import ticket_stakes
         from sportai.services.joueur import write as write_player
 
-        ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now))
+        # every validated single with value, plus the Champions League 1X2 noted on paper (never staked)
+        paper = [l for l in legs_from_db(db, date.fromisoformat(day), ucl=True) if l.get("ucl")]
+        ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now, legs + paper))
     except Exception as e:  # the player is a bonus: never lose the pass for it
         print(f"joueur unavailable ({str(e)[:160]})", file=sys.stderr)
     bilan = build_bilan(matchs, days, settings, now)
