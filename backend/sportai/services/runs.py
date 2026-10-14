@@ -181,6 +181,11 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     odds_source = fixtures_p.name
                 except ProviderUnavailable as e:
                     _mark(db, fixtures_p.name, f"odds: {e}")
+            # API-Football refreshes its odds only every few hours: once they are past their age limit, nothing
+            # could be priced, so The Odds API supplies the current 1X2 odds (2026-10-14: 16:30 pass found none).
+            if quotes and not any(q.expires_at is None or q.expires_at > now for q in quotes):
+                _mark(db, fixtures_p.name, "odds: every API-Football quote past its age limit")
+                quotes = []
             if not quotes and (fixtures is None or window):
                 current = TheOddsApiProvider.name
                 # Each market requested costs one credit: totals only when that market is enabled.
