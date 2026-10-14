@@ -221,6 +221,11 @@ def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing(
     d_ucl, d_nat = (decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[x])[0] for x in (ucl, nat))
     assert d_ucl["joue"] and d_nat["joue"] and d_ucl["mise"] == round(d_nat["mise"] / 2, 2)
     assert "Ligue des champions" in d_ucl["raison"]
+    # A ticket holding a Champions League leg is played too, at half the stake.
+    t = {"jour": "2026-10-11", "top3": [], "tickets": {"safe": {"titre": "Safe", "jambes": [ucl], "cote_totale": 2.2,
+                                                               "proba_totale": 0.52}}}
+    d_t = decide(t, None, {}, 1000.0, "agressif", NOW)[0]
+    assert d_t["joue"] and d_t["mise"] == d_ucl["mise"]
     # One more point of value asked: 2.2 x 0.465 = +2.3 %, enough elsewhere (prudent 3 % ... equilibre 2 %), not here.
     thin = {**ucl, "proba": 0.465, "valeur": round(0.465 * 2.2 - 1, 4)}
     d = decide(empty, None, {}, 1000.0, "equilibre", NOW, legs=[thin])[0]

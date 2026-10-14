@@ -94,7 +94,7 @@ def candidates(pronostic: dict, legs: list[dict] | None = None) -> list[dict]:
 
 UCL_RULE = ("Ligue des champions : mes paris passés sur cette compétition perdent trop, je ne mise plus, je les note "
             "pour juger plus tard s'ils auraient payé.")
-# Champions League (owner 2026-10-14: the player must stake on it too). The cross-league model is calibrated
+# Champions League (owner 2026-10-14: the player must stake on it too), in singles and in the tickets that hold one. The cross-league model is calibrated
 # (runs.UCL_CALIBRATION) but has no validated record against the odds yet, so the player stakes half of what it
 # would elsewhere, asks one more point of value, and stops (back to paper) as soon as its own record there turns bad.
 UCL_MISE = 0.5
@@ -224,8 +224,6 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
         elif ucl and not all(l.get("valide", True) for l in c["jambes"]):
             why, motif = ("Ligue des champions : je ne mise que sur une victoire à domicile ou à l'extérieur, "
                           "cote entre 1,30 et 2,50 (pas le nul)."), "non_valide"
-        elif ucl and c["type"] == "ticket":
-            why, motif = "Ligue des champions : je la joue en paris simples seulement, pas en combiné.", "non_valide"
         elif not ucl and not all(l.get("valide", True) for l in c["jambes"]):
             why, motif = "Contient un pari « non validé » par le backtest : je ne mise pas dessus.", "non_valide"
         elif c["valeur"] < vmin:
