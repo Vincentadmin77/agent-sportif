@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from sportai.services import chasseur
-from sportai.services.chasseur import eligible, live, replay, run, stopped
+from sportai.services.chasseur import eligible, replay, run
 
 NOW = datetime(2026, 10, 15, 6, tzinfo=timezone.utc)
 
@@ -26,10 +26,7 @@ def test_eligible_rules():
     assert eligible(A) is None
     assert eligible(leg("x-y", "Victoire x", 1.40, 0.75, 0.70)) == "cote hors de 1,50 à 2,00"
     assert eligible(leg("x-y", "Victoire x", 1.90, 0.60, 0.49)) == "les bookmakers n'en font pas le favori"
-    trial = {**A, "valide": False, "marche": "Les deux équipes marquent"}
-    assert eligible(trial) is None  # every market, like the joueur pro
-    assert eligible({**trial, "proba": 0.63, "proba_marche": 0.62}) == "pas assez de valeur"  # 3 % asked on trial
-    assert "je le note" in eligible(trial, arretes={"Les deux équipes marquent"})
+    assert eligible({**A, "valide": False}) == "marché non validé"
     assert "chances" in eligible(leg("x-y", "Victoire x", 1.80, 0.57, 0.53))
 
 
@@ -61,33 +58,3 @@ def test_day_pick_freeze_and_wait():
 def test_stays_at_the_chalet():
     doc, etat, _ = run([leg("x-y", "Victoire x", 2.4, 0.45, 0.40)], {}, None, {}, NOW, "2026-10-15")
     assert doc["statut"] == "au_chalet" and "chalet" in doc["raison"] and etat["jauge"] == chasseur.DEPART
-
-
-def test_trial_market_back_to_paper():
-    bad = {"pari": {"cote": 1.6, "fige": True, "resultat": "perdu", "confiance": 0.6, "valide": False,
-                    "marche": "Handicap"}}
-    days = {f"2026-10-{d:02d}": bad for d in range(1, 9)}
-    assert stopped(replay(days)) == {"Handicap"}
-
-
-def live_match(score="1 - 0", minute=30, statut="en_direct", rows=()):
-    return {"jour": "2026-10-15", "statut": statut, "domicile": "a", "exterieur": "b", "score": score,
-            "minute": minute, "coup_envoi": NOW.isoformat(),
-            "direct": {"maj": NOW.isoformat(), "proba": {"domicile": 0.7, "nul": 0.2, "exterieur": 0.1},
-                       "cotes_direct": list(rows)}}
-
-
-def test_live_pick_followed_and_settled():
-    day = {"jour": "2026-10-15", "statut": "au_chalet", "pari": None, "raison": "rien", "seuil": 0.58, "journal": []}
-    row = {"pari": "Victoire a", "cote": 1.55, "proba": 0.70, "proba_marche": 0.62, "valeur": 0.085,
-           "statut": "opportunite"}
-    page = {"2026-10-15-a-b": live_match(rows=[row, {**row, "pari": "Match nul", "statut": "ecarte"}])}
-    d = live(day, page, NOW, {})
-    assert d["statut"] == "joue" and d["pari"]["en_direct"] and d["pari"]["mise"] == 100
-    assert d["direct"]["chance"] == 0.7
-    page = {"2026-10-15-a-b": live_match("2 - 0", 90, "termine")}
-    d2 = live(d, page, NOW, {})
-    assert d2["pari"]["resultat"] == "gagne"
-    assert replay({"2026-10-15": d2})["montante"] == 155
-    late = live(day, {"2026-10-15-a-b": live_match(rows=[row])}, NOW + timedelta(minutes=10), {})
-    assert late["pari"] is None  # live data too old

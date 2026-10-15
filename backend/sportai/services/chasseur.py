@@ -8,12 +8,8 @@ it judges the day too risky it does not bet ("il reste au chalet").
 Rules (docs/chasseur-alpin-avis.md, docs/13-lecons.md):
 - one single bet a day at most, never a combined ticket, and never before the previous bet is settled (a montante
   only re-stakes money it has actually won);
-- odds from 1.50 to 2.00, on any market the model prices, like the joueur pro (owner 2026-10-15: "les mêmes
-  capacités que le joueur pro"): a market the backtest has not validated asks 3 % of value and has its own record,
-  and goes back to paper (noted, not played) after ESSAI_ARRET settled bets winning clearly less than announced;
-- live too (live): on a day it has no bet, it may take one in-play price the live page calls "opportunite"
-  (never against the match), under the same rules; its bet is followed minute by minute and settled at the final
-  whistle, so the climb moves as soon as a match ends;
+- odds from 1.50 to 2.00, validated markets only (1X2, double chance, draw no bet; the European cups' win within
+  their own limits), never a market on trial;
 - chosen on confidence, not on value (lesson of 2026-10-14): the more cautious of the model's and the bookmakers'
   chances must reach SEUIL (58 %), the bookmakers must make it the favourite (>= 50 %), the model must agree with
   the market (pronostic.agrees), and the value on the cautious chance must be >= VALEUR_MIN;
@@ -33,7 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from sportai.services.prematch import LOCAL_TZ
-from sportai.services.pronostic import TRIAL_MIN_VALUE, _settle_ticket, agrees, cautious_proba, confidence
+from sportai.services.pronostic import _settle_ticket, agrees, cautious_proba, confidence
 
 DEPART = 100.0  # each climb starts with 100 EUR
 REFUGE = 600.0  # at 600 EUR the climb reaches a refuge: everything above DEPART goes into the vault
@@ -44,18 +40,13 @@ FAVORI = 0.50
 VALEUR_MIN = 0.02
 FIGE_AVANT = timedelta(minutes=60)
 PREUVES = 10  # settled bets before it judges its own record
-ESSAI_ARRET = (8, 0.8)  # a market on trial: back to paper after 8 settled bets winning under 80 % of the announced
-DIRECT = "Direct"
-LIVE_MAX_AGE = 300  # seconds: live data older than this is never bet on
 AVERTISSEMENT = ("Défi virtuel à haut risque : le chasseur remise tout ce qu'il gagne, une seule défaite efface la "
                  "montante en cours. Ce n'est pas une méthode à copier ; le joueur pro montre la gestion prudente.")
 REGLES = [
     "Une seule cote par jour au maximum, en pari simple, jamais en combiné.",
-    "Cote entre 1,50 et 2,00, sur tous les marchés que le modèle sait chiffrer. Un marché pas encore validé demande "
-    "3 % de valeur et il est arrêté si son bilan perd.",
+    "Cote entre 1,50 et 2,00, uniquement sur les marchés validés.",
     "Au moins 58 % de chances selon le plus prudent du modèle et des bookmakers, et favori des bookmakers.",
-    "Pari choisi 45 minutes avant le match, compositions connues. Sans pari ce jour-là, il peut saisir une cote en "
-    "direct, jamais contre le cours du match.",
+    "Pari choisi 45 minutes avant le match, compositions connues.",
     "Il remise tout ce qu'il gagne. À 600 €, il dépose tout ce qui dépasse 100 € dans sa jauge et repart avec 100 €.",
     "Après une chute, il repart avec 100 € pris dans sa jauge.",
     "Si rien n'est assez sûr, il ne joue pas et il dit pourquoi.",
@@ -75,20 +66,10 @@ def _started(leg: dict, page: dict[str, dict], now: datetime) -> bool:
     return status != "a_venir" or datetime.fromisoformat(leg["coup_envoi"]) <= now
 
 
-def family(leg: dict) -> str | None:
-    """The trial group of a bet: None for a validated market, "Direct" for a live bet, else its market."""
-    if leg.get("en_direct"):
-        return DIRECT
-    if leg.get("valide", True) and not leg.get("validation"):
-        return None
-    return leg.get("marche") or leg.get("pari")
-
-
-def eligible(leg: dict, seuil: float = SEUIL, arretes: set[str] | frozenset = frozenset()) -> str | None:
+def eligible(leg: dict, seuil: float = SEUIL) -> str | None:
     """None when the chasseur may climb on this bet, else why not (in French, for the page)."""
-    fam = family(leg)
-    if fam in arretes:
-        return f"{fam} : mon bilan sur ce marché perd, je le note sans le jouer"
+    if not leg.get("valide", True) or leg.get("validation"):
+        return "marché non validé"
     if not COTE_MIN <= leg["cote"] <= COTE_MAX:
         return "cote hors de 1,50 à 2,00"
     if leg.get("proba_marche") is None:
@@ -99,26 +80,24 @@ def eligible(leg: dict, seuil: float = SEUIL, arretes: set[str] | frozenset = fr
         return "le modèle et les bookmakers ne sont pas d'accord"
     if confidence(leg) < seuil:
         return f"moins de {_pct(seuil)} de chances"
-    if cautious_proba(leg) * leg["cote"] - 1 < (TRIAL_MIN_VALUE if fam else VALEUR_MIN):
+    if cautious_proba(leg) * leg["cote"] - 1 < VALEUR_MIN:
         return "pas assez de valeur"
     return None
 
 
-def choose(legs: list[dict], page: dict[str, dict], now: datetime, seuil: float = SEUIL,
-           arretes: set[str] | frozenset = frozenset()) -> tuple[dict | None, str]:
-    """The best bet among today's matches still to come: highest confidence, then a validated market, then the
-    highest odds."""
+def choose(legs: list[dict], page: dict[str, dict], now: datetime, seuil: float = SEUIL) -> tuple[dict | None, str]:
+    """The best bet among today's matches still to come: highest confidence, then highest odds."""
     open_legs = [l for l in legs if not _started(l, page, now)]
-    ok = [l for l in open_legs if eligible(l, seuil, arretes) is None]
+    ok = [l for l in open_legs if eligible(l, seuil) is None]
     if not ok:
         if not open_legs:
             return None, "Plus aucun match à venir aujourd'hui."
-        near = [l for l in open_legs if COTE_MIN <= l["cote"] <= COTE_MAX]
+        near = [l for l in open_legs if COTE_MIN <= l["cote"] <= COTE_MAX and l.get("valide", True)]
         best = max(near, key=confidence, default=None)
         why = (f" La meilleure piste, {best['pari']} ({best['match']}) à {_fr(best['cote'])}, est écartée : "
-               f"{eligible(best, seuil, arretes)}." if best else " Aucune cote entre 1,50 et 2,00.")
+               f"{eligible(best, seuil)}." if best else " Aucune cote validée entre 1,50 et 2,00.")
         return None, "Je reste au chalet : rien d'assez sûr aujourd'hui." + why
-    best = max(ok, key=lambda l: (round(confidence(l), 2), family(l) is None, l["cote"]))
+    best = max(ok, key=lambda l: (round(confidence(l), 2), l["cote"]))
     clean = {k: v for k, v in best.items() if not k.startswith("_")}
     return clean, (f"Je vise {best['pari']} ({best['match']}) à {_fr(best['cote'])} : {_pct(confidence(best))} de "
                    "chances selon le plus prudent du modèle et des bookmakers.")
@@ -127,8 +106,7 @@ def choose(legs: list[dict], page: dict[str, dict], now: datetime, seuil: float 
 def replay(days: dict[str, dict]) -> dict:
     """The climb, the vault and the record after each settled bet, from the first day on."""
     s = {"montante": DEPART, "coffre": 0.0, "apports": DEPART, "serie": 0, "record": DEPART, "refuges": [],
-         "chutes": 0, "gagnes": 0, "perdus": 0, "attendus": 0.0, "historique": [], "en_attente": None,
-         "essais": {}}
+         "chutes": 0, "gagnes": 0, "perdus": 0, "attendus": 0.0, "historique": [], "en_attente": None}
     for day in sorted(days):
         p = (days[day] or {}).get("pari")
         if not p or not p.get("fige"):
@@ -137,12 +115,6 @@ def replay(days: dict[str, dict]) -> dict:
             s["en_attente"] = day
             continue
         s["attendus"] += p.get("confiance") or 0
-        fam = family(p)
-        if fam and p["resultat"] != "rembourse":
-            e = s["essais"].setdefault(fam, {"joues": 0, "gagnes": 0, "attendus": 0.0})
-            e["joues"] += 1
-            e["gagnes"] += p["resultat"] == "gagne"
-            e["attendus"] = round(e["attendus"] + (p.get("confiance") or 0), 4)
         if p["resultat"] == "gagne":
             s["montante"] = round(s["montante"] * p["cote"], 2)
             s["serie"] += 1
@@ -175,12 +147,6 @@ def settle_day(doc: dict, page: dict[str, dict]) -> dict:
     return {**doc, "pari": p, "statut": "joue"} if p.get("resultat") else doc
 
 
-def stopped(s: dict) -> set[str]:
-    """The markets on trial whose record says the model overrates them: back to paper."""
-    n, ratio = ESSAI_ARRET
-    return {f for f, e in s["essais"].items() if e["joues"] >= n and e["gagnes"] < ratio * e["attendus"]}
-
-
 def threshold(s: dict) -> tuple[float, str | None]:
     """SEUIL, or SEUIL_PRUDENT when its settled bets won clearly less often than their chances said."""
     n = s["gagnes"] + s["perdus"]
@@ -207,16 +173,12 @@ def run(legs: list[dict], page: dict[str, dict], previous_day: dict | None, past
         pari, raison = None, (f"J'attends le résultat de mon pari du {state['en_attente']} : je ne remise que ce que "
                               "j'ai vraiment gagné.")
     else:
-        pari, raison = choose(legs, page, now, seuil, stopped(state))
+        pari, raison = choose(legs, page, now, seuil)
         if pari:
             ko = datetime.fromisoformat(pari["coup_envoi"])
-            same = old and (old["match_id"], old["pari"]) == (pari["match_id"], pari["pari"])
-            cotes = list((old or {}).get("cotes") or []) if same else []
-            if not cotes or cotes[-1]["cote"] != pari["cote"]:  # the price watched across passes
-                cotes.append({"heure": now.isoformat(), "cote": pari["cote"]})
             pari = {**pari, "confiance": round(confidence(pari), 4), "mise": state["montante"],
                     "gain_possible": round(state["montante"] * (pari["cote"] - 1), 2),
-                    "fige": now >= ko - FIGE_AVANT, "cotes": cotes[-20:]}
+                    "fige": now >= ko - FIGE_AVANT}
         elif old:  # an unfrozen pick no longer qualifies: dropped
             raison = f"Je retire {old['pari']} ({old['match']}) : il ne passe plus mes règles. " + raison
     if pari:
@@ -237,28 +199,21 @@ def run(legs: list[dict], page: dict[str, dict], previous_day: dict | None, past
               "en_attente" if state["en_attente"] else "au_chalet")
     doc = {"jour": day, "maj": now.isoformat(), "statut": statut, "pari": pari, "raison": raison,
            "montante_du_jour": state["montante"], "seuil": seuil, "journal": journal[-40:]}
-    if (previous_day or {}).get("direct") and pari and pari.get("fige"):  # written by the live loop, kept
-        doc["direct"] = previous_day["direct"]
 
-    etat = _etat(replay({**earlier, day: doc}), now, doc)
-    changed = {d: v for d, v in earlier.items() if v is not past_days[d]}
-    return doc, etat, changed
-
-
-def _etat(after: dict, now: datetime, doc: dict) -> dict:
+    after = replay({**earlier, day: doc})
     jauge = round(after["coffre"] + after["montante"], 2)
-    return {
+    etat = {
         "maj": now.isoformat(), "nom": "Le chasseur alpin",
         "jauge": jauge, "montante": after["montante"], "coffre": after["coffre"], "apports": after["apports"],
         "net": round(jauge - after["apports"], 2), "objectif": OBJECTIF, "progression": round(jauge / OBJECTIF, 6),
         "depart": DEPART, "refuge": REFUGE, "serie": after["serie"], "record_montante": after["record"],
         "refuges": after["refuges"], "chutes": after["chutes"],
         "bilan": {"joues": after["gagnes"] + after["perdus"], "gagnes": after["gagnes"], "perdus": after["perdus"]},
-        "historique": after["historique"][-200:], "seuil": doc["seuil"], "regles": REGLES,
-        "avertissement": AVERTISSEMENT, "essais": after["essais"], "sur_papier": sorted(stopped(after)),
-        "aujourdhui": {"jour": doc["jour"], "statut": doc["statut"], "raison": doc["raison"],
-                       **({"direct": doc["direct"]} if doc.get("direct") else {})},
+        "historique": after["historique"][-200:], "seuil": seuil, "regles": REGLES, "avertissement": AVERTISSEMENT,
+        "aujourdhui": {"jour": day, "statut": statut, "raison": raison},
     }
+    changed = {d: v for d, v in earlier.items() if v is not past_days[d]}
+    return doc, etat, changed
 
 
 def write(page_folder: str | None, out: str, legs: list[dict], page: dict[str, dict], now: datetime,
@@ -271,94 +226,3 @@ def write(page_folder: str | None, out: str, legs: list[dict], page: dict[str, d
     for name, body in ((day, doc), ("etat", etat), *changed.items()):
         (Path(out) / "chasseur" / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
     return doc
-
-
-def _fresh(m: dict, now: datetime) -> bool:
-    maj = (m.get("direct") or {}).get("maj")
-    try:
-        return bool(maj) and (now - datetime.fromisoformat(maj)).total_seconds() <= LIVE_MAX_AGE
-    except (TypeError, ValueError):
-        return False
-
-
-def _live_pick(day: str, page: dict[str, dict], now: datetime, seuil: float, arretes: set[str]) -> dict | None:
-    """The best in-play price of the day under the chasseur's rules, from the rows the live page calls
-    "opportunite" (5 % of value at least, within 10 points of the market, never against the match)."""
-    best = None
-    for key, m in sorted(page.items()):
-        if m.get("jour") != day or m.get("statut") != "en_direct" or not _fresh(m, now):
-            continue
-        match = f"{m['domicile']} - {m['exterieur']}"
-        for r in (m.get("direct") or {}).get("cotes_direct") or []:
-            if r.get("statut") != "opportunite":
-                continue
-            leg = {"match_id": key, "match": match, "competition": m.get("competition"),
-                   "coup_envoi": m.get("coup_envoi") or now.isoformat(), "pari": r["pari"],
-                   "marche": r.get("marche") or DIRECT, "cote": r["cote"], "proba": r["proba"],
-                   "proba_marche": r.get("proba_marche"), "valeur": r["valeur"], "valide": False,
-                   "_divergence_max": 0.10, "_p_cmp": r["proba"],
-                   "en_direct": {"minute": m.get("minute"), "score": m.get("score"), "heure": now.isoformat()},
-                   **({"buteur": r["buteur"]} if r.get("buteur") else {})}
-            if eligible(leg, seuil, arretes) is None and (best is None or confidence(leg) > confidence(best)):
-                best = leg
-    return best
-
-
-def live(doc: dict, page: dict[str, dict], now: datetime, past_days: dict[str, dict]) -> dict:
-    """The day's document during the matches: its bet followed minute by minute and settled at the final whistle,
-    or, on a day without a bet, one in-play price taken under the same rules."""
-    from sportai.services.joueur import leg_live_chance
-
-    doc = {**doc, "journal": list(doc.get("journal") or [])}
-    heure = f"{now.astimezone(LOCAL_TZ):%H:%M}"
-    p = doc.get("pari")
-    state = replay({d: settle_day(v, page) for d, v in past_days.items() if d < doc["jour"]})
-    if not p and not state["en_attente"]:
-        leg = _live_pick(doc["jour"], page, now, doc.get("seuil") or SEUIL, stopped(state))
-        if leg:
-            where = f"En direct {leg['en_direct']['minute']}e, {leg['en_direct']['score']}"
-            p = {k: v for k, v in leg.items() if not k.startswith("_")}
-            p.update(confiance=round(confidence(leg), 4), mise=state["montante"], fige=True, verrouille=True,
-                     gain_possible=round(state["montante"] * (leg["cote"] - 1), 2),
-                     cotes=[{"heure": now.isoformat(), "cote": leg["cote"]}])
-            doc.update(statut="joue", raison=(f"{where} : je saisis {leg['pari']} ({leg['match']}) à "
-                                              f"{_fr(leg['cote'])}, {_pct(confidence(leg))} de chances selon le "
-                                              "plus prudent du modèle du direct et des bookmakers."))
-            doc["journal"].append({"heure": heure, "texte": doc["raison"] + f" Je remise {_fr(p['mise'])} €."})
-    if p and p.get("fige"):
-        m = page.get(p["match_id"]) or {}
-        if m.get("statut") in ("en_direct", "termine"):
-            c = leg_live_chance(p, m)
-            old = doc.get("direct") or {}
-            doc["direct"] = {"maj": now.isoformat(), "score": m.get("score"), "minute": m.get("minute"),
-                             "statut": m["statut"], "chance": None if c is None else round(c, 4)}
-            if m.get("score") != old.get("score") and m["statut"] == "en_direct":
-                doc["journal"].append({"heure": heure, "texte": (
-                    f"{p['match']} {m.get('score') or ''} ({m.get('minute')}e) : "
-                    + (f"{_pct(c)} de chances pour {p['pari']}." if c is not None else f"je suis {p['pari']}."))})
-        settled = _settle_ticket({"jambes": [p]}, page)["jambes"][0]
-        if settled.get("resultat") and not p.get("resultat"):
-            word = {"gagne": "gagné", "perdu": "perdu", "rembourse": "remboursé"}[settled["resultat"]]
-            doc["journal"].append({"heure": heure, "texte": f"{p['pari']} {word}."})
-        p = settled
-    doc["pari"] = p
-    doc["maj"] = now.isoformat()
-    doc["journal"] = doc["journal"][-40:]
-    return doc
-
-
-def live_write(page_folder: str | None, out: str, page: dict[str, dict], now: datetime) -> list[str]:
-    """Update out/chasseur/<day>.json and etat for each day with a match under way or just ended."""
-    folder = Path(page_folder or "/nonexistent") / "chasseur"
-    past = {p.stem: json.loads(p.read_text()) for p in folder.glob("*.json") if p.stem != "etat"}
-    days = sorted({m.get("jour") for m in page.values() if m.get("statut") in ("en_direct", "termine")} & set(past))
-    if not days:
-        return []
-    for name in days:
-        past[name] = live(past[name], page, now, past)
-    last = past[max(past)]
-    etat = _etat(replay({d: settle_day(v, page) for d, v in past.items()}), now, last)
-    (Path(out) / "chasseur").mkdir(parents=True, exist_ok=True)
-    for name, body in (*((d, past[d]) for d in days), ("etat", etat)):
-        (Path(out) / "chasseur" / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
-    return days
