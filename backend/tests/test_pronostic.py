@@ -162,3 +162,23 @@ def test_safe_ticket_on_confidence_2026_10_14():
     # a coin flip the model rates far above the market is still left out
     far = leg("k-l", "Victoire k", 2.5, 0.60, 0.38)
     assert "k-l" not in str(build_pronostic([far], {}, None, NOW, "h3"))
+
+
+def test_one_bankroll_per_ticket_kind():
+    """Owner 2026-10-15: one gauge per kind of ticket, so the fun tickets do not drag the safe ones."""
+    from sportai.services.bilan import apply_stakes, build_bilan, replay_by_ticket
+
+    settings = {"depart": 1000.0, "objectif": 100000.0, "mises": {"safe": 0.03, "semi_safe": 0.02, "fun": 0.01}}
+    won = lambda cote, mise: {"titre": "t", "jambes": [{"cote": cote, "resultat": "gagne", "pari": "p", "match": "m"}], "resultat": "gagne",
+                              "cote_totale": cote, "mise": mise}
+    lost = lambda mise: {"titre": "t", "jambes": [{"cote": 3.0, "resultat": "perdu", "pari": "p", "match": "m"}], "resultat": "perdu",
+                         "cote_totale": 3.0, "mise": mise}
+    days = {"2026-10-11": {"tickets": {"safe": won(1.5, 30.0), "fun": lost(10.0)}},
+            "2026-10-12": {"tickets": {"safe": won(1.6, 30.45), "semi_safe": lost(20.0), "fun": lost(10.0)}}}
+    banks = {k: b for k, (b, _) in replay_by_ticket(days, settings).items()}
+    assert banks == {"safe": 1033.27, "semi_safe": 980.0, "fun": 980.0}
+    doc = apply_stakes({"tickets": {"safe": {"jambes": [{"cote": 1.5}]}, "fun": {"jambes": [{"cote": 3.0}]}}},
+                       settings, banks)
+    assert doc["tickets"]["safe"]["mise"] == 31.0 and doc["tickets"]["fun"]["mise"] == 9.8
+    per = build_bilan({}, days, settings, NOW)["bankroll"]["par_ticket"]
+    assert per["safe"]["actuelle"] == 1033.27 and per["fun"]["actuelle"] == 980.0 and per["safe"]["depart"] == 1000.0

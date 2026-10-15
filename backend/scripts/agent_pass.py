@@ -65,7 +65,7 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     """Write out/pronostic/<day>.json (default today) and out/stats/bilan.json; returns the day's summary."""
     from datetime import date
 
-    from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay
+    from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay, replay_by_ticket
     from sportai.services.prematch import journee
     from sportai.services.pronostic import build_pronostic, legs_from_db
 
@@ -78,8 +78,9 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     legs = legs_from_db(db, date.fromisoformat(day))
     doc = build_pronostic(legs, matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
-    bank_at_start, _ = replay({d: v for d, v in days.items() if d < day}, settings)
-    days[day] = apply_stakes(doc, settings, bank_at_start)
+    banks = replay_by_ticket({d: v for d, v in days.items() if d < day}, settings)
+    days[day] = apply_stakes(doc, settings, {k: b for k, (b, _) in banks.items()})
+    doc["bankroll_du_jour"] = replay({d: v for d, v in days.items() if d < day}, settings)[0]  # combined, for reference
     try:  # "Agent joueur pro": decides which tickets / top 3 picks to play and the stakes (0 when it passes)
         from sportai.services.joueur import ticket_stakes
         from sportai.services.joueur import write as write_player

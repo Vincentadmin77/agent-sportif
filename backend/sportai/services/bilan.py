@@ -3,7 +3,8 @@
 Every settled forecast of every day: the tickets and the three best odds of "Mon pronostic", the
 selections and the estimated final score of each match, each marked right or wrong, with the hit rate
 overall and per kind. The bankroll starts from the page's setting (reglages/bankroll) and follows the
-tickets: each ticket stakes a fixed share of the bankroll as it stood at the start of its day.
+tickets; since 2026-10-15 each kind of ticket (safe, semi-safe, fun) has its own bankroll from that start, and stakes
+a fixed share of it as it stood at the start of its day. The combined one is kept for reference.
 """
 
 from __future__ import annotations
@@ -51,10 +52,22 @@ def replay(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dic
     return bank, history
 
 
-def apply_stakes(doc: dict, settings: dict, bank_at_start: float) -> dict:
-    """Stake of each ticket of a day not yet frozen, a fixed share of the bankroll at the start of the day."""
+def replay_by_ticket(pronostics: dict[str, dict], settings: dict) -> dict[str, tuple[float, list[dict]]]:
+    """One bankroll per kind of ticket (owner 2026-10-15: "une jauge par ticket, sinon les fun vont plomber les
+    safe"), each from the same start, replayed over the settled tickets of that kind only."""
+    out = {}
+    for key in TICKET_ORDER:
+        only = {d: {**doc, "tickets": {key: (doc.get("tickets") or {}).get(key) or {}}} for d, doc in pronostics.items()}
+        out[key] = replay(only, settings)
+    return out
+
+
+def apply_stakes(doc: dict, settings: dict, bank_at_start: float | dict[str, float]) -> dict:
+    """Stake of each ticket of a day not yet frozen, a fixed share of its own bankroll at the start of the day
+    (bank_at_start per kind of ticket; a single amount for all, as before 2026-10-15)."""
     for key, t in (doc.get("tickets") or {}).items():
         if t.get("jambes") and "mise" not in t:
+            bank = bank_at_start.get(key, settings["depart"]) if isinstance(bank_at_start, dict) else bank_at_start
             pct = settings["mises"].get(key, 0.0)
             from sportai.services.pronostic import TRIAL_STAKE_FACTOR, UCL_STAKE_FACTOR
 
@@ -64,8 +77,11 @@ def apply_stakes(doc: dict, settings: dict, bank_at_start: float) -> dict:
                 pct = round(pct * TRIAL_STAKE_FACTOR, 4)
                 t["mise_reduite"] = "pari non validé dans le ticket : mise divisée par deux"
             t["mise_pct"] = pct
-            t["mise"] = round(bank_at_start * pct, 2)
-    doc["bankroll_du_jour"] = round(bank_at_start, 2)
+            t["mise"] = round(bank * pct, 2)
+    if isinstance(bank_at_start, dict):
+        doc["bankrolls_du_jour"] = {k: round(v, 2) for k, v in bank_at_start.items()}
+    else:
+        doc["bankroll_du_jour"] = round(bank_at_start, 2)
     return doc
 
 
@@ -120,6 +136,12 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
         "valides": [i for i in items if i["valide"]], "non_valides": [i for i in items if not i["valide"]],
         "bankroll": {"depart": settings["depart"], "objectif": settings["objectif"], "actuelle": bank,
                      "progression": round(bank / settings["objectif"], 6), "mises": settings["mises"],
-                     "historique": history},
+                     "historique": history,
+                     # one gauge per kind of ticket (owner 2026-10-15): the fun tickets no longer drag the safe ones
+                     "par_ticket": {key: {"titre": title, "depart": settings["depart"], "actuelle": b,
+                                          "progression": round(b / settings["objectif"], 6),
+                                          "mise": settings["mises"][key], "historique": h}
+                                    for (key, (b, h)), title in zip(replay_by_ticket(pronostics, settings).items(),
+                                                                    ("Ticket safe", "Ticket semi safe", "Ticket fun"))}},
         "note": NOTE,
     }
