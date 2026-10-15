@@ -39,3 +39,9 @@ Chaque erreur constatée sur les vrais matchs devient ici une règle. Tous les a
 - **Règle :**
   - aucun pari sous 1,15 dans un ticket ;
   - la victoire en coupe d'Europe est permise de 1,15 à 2,50.
+
+## 15/10/2026 : Benfica dans le ticket safe et dans le ticket semi safe
+
+- **Constat :** le même pari (victoire de Benfica) était dans deux tickets officiels.
+- **Conséquence :** s'il perd, il fait perdre les deux tickets d'un coup.
+- **Règle de base (Vincent) :** un même choix ne va que dans un seul ticket. Le safe se construit en premier, puis le semi safe et le fun prennent d'autres paris. Les tickets bonus non plus ne reprennent aucun pari déjà joué.

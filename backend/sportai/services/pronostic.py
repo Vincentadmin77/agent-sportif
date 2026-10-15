@@ -346,10 +346,12 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             frozen = {**old, "fige": True, "jambes": [{**l, "verrouille": True} if started(l) else l
                                                       for l in old["jambes"]]}
             return _settle_ticket(frozen, page)
+        # A bet goes in one ticket only: if it loses, it must not sink the other tickets too (owner, 2026-10-15).
+        used = set().union(*taken)
         for fewest in range(min_legs, 0, -1):
             combos = [c for c in _combos(open_legs if pool is None else pool, fewest, max_legs, min_odds, min_total, min_leg,
                                          chance)
-                      if {(l["match_id"], l["pari"]) for l in c} not in taken]
+                      if not {(l["match_id"], l["pari"]) for l in c} & used]
             if combos:
                 break
         if combos:
@@ -358,7 +360,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                           key=lambda l: l["coup_envoi"])
             short = None if len(best) >= min_legs else (
                 f"Pas de combiné de {min_legs} paris correct pour l'instant : "
-                + ("un seul pari" if len(best) == 1 else f"{len(best)} paris") + " atteint la cote visée.")
+                + ("un seul pari atteint" if len(best) == 1 else f"{len(best)} paris atteignent") + " la cote visée.")
             ticket = _ticket(best, title, short)
             if fixed(best):
                 # an official ticket still empty at the 45-min pass can be filled by a later one, then fixed at once
