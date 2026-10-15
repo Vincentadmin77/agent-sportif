@@ -31,3 +31,11 @@ Chaque erreur constatée sur les vrais matchs devient ici une règle. Tous les a
    - La mise est divisée par deux.
 5. **Le joueur pro doit aussi saisir les occasions du direct**, y compris les buteurs (Haaland, Mbappé…).
    - Elles sont jouées comme un essai : mise réduite, bilan suivi à part, et arrêt si ce bilan perd.
+
+## 15/10/2026 : tickets du matin bourrés de « moins de 5,5 buts » à 1,07 et favoris écartés
+
+- **Constat :** les grands favoris de Ligue Europa (Benfica à 1,24, Bournemouth à 1,21) étaient exclus par un plancher de cote à 1,30.
+- **Conséquence :** les tickets se remplissaient de paris à 1,07, qui n'ajoutent presque rien à la cote mais portent leur propre risque.
+- **Règle :**
+  - aucun pari sous 1,15 dans un ticket ;
+  - la victoire en coupe d'Europe est permise de 1,15 à 2,50.

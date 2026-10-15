@@ -41,7 +41,7 @@ from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
-COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL"]
+COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL", "UEL"]
 
 
 def _load_page(folder: str | None) -> dict[str, dict]:
@@ -258,7 +258,7 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
     api = ApiFootballProvider(get_settings().api_football_key)
     day = journee(now)
     out = {}
-    for fx in api.fixtures_on([c for c in comps if c != "UCL"], day):
+    for fx in api.fixtures_on(comps, day):
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
         key = find_doc(soon, f"{day:%Y-%m-%d}", home, away)
         if not key:

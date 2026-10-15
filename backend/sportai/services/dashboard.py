@@ -29,7 +29,7 @@ from sportai.services.position import position
 from sportai.services.prematch import LOCAL_TZ, journee
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
-                     "IT1": "Serie A", "UCL": "Ligue des champions", "BR1": "Brasileirão"}
+                     "IT1": "Serie A", "UCL": "Ligue des champions", "UEL": "Ligue Europa", "BR1": "Brasileirão"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul",
                 "totals": "Nombre de buts", "btts": "Les deux équipes marquent",
                 "team_total_home": "Buts de l'équipe à domicile", "team_total_away": "Buts de l'équipe à l'extérieur",
@@ -83,7 +83,13 @@ SKIP_REASONS = {
 
 UCL_INFO = ("Ligue des champions : estimation du modèle entraîné ensemble sur 30 championnats européens et "
             "les trois coupes d'Europe, calibré sur cinq saisons de Ligue des champions. Pas encore d'historique face aux "
-            "cotes : il entre dans les tickets avec prudence (victoire seulement, cote de 1,30 à 2,50, un par ticket, "
+            "cotes : il entre dans les tickets avec prudence (victoire de 1,15 à 2,50, autres marchés « non validé », "
+            "mise divisée par deux).")
+
+
+UEL_INFO = ("Ligue Europa : même modèle que la Ligue des champions (30 championnats européens et les trois coupes "
+            "d'Europe ensemble), avec le réglage mesuré sur la Ligue des champions, pas encore vérifié sur la Ligue "
+            "Europa. Mêmes règles prudentes dans les tickets (victoire de 1,15 à 2,50, autres marchés « non validé », "
             "mise divisée par deux).")
 
 
@@ -502,8 +508,8 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
                     rejets.append(text)
         for label in set(previous) - {s["pari"] for s in selections}:
             rejets.insert(0, f"{label} : retenue à H−3 mais plus à H−45.")
-        if run.competition == "UCL":
-            rejets = [UCL_INFO] + [t for t in (ucl_model_line(f, mine, home, away),) if t]
+        if run.competition in ("UCL", "UEL"):
+            rejets = [UCL_INFO if run.competition == "UCL" else UEL_INFO] + [t for t in (ucl_model_line(f, mine, home, away),) if t]
         doc["selections"] = selections
         doc["rejets"] = rejets
         info = (run.config or {}).get("info_markets", ("totals", "btts"))

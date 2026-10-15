@@ -67,6 +67,9 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
 
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
+# European cups analysed with the cross-league model (owner 2026-10-15: the Europa League too, same rules as the
+# Champions League). Its calibration was fitted on the Champions League only (scripts/backtest_ucl.py).
+EUROPEAN_CUPS = ("UCL", "UEL")
 # Clubs of the other leagues (Porto, Feyenoord, Bodø/Glimt, Shakhtar...) need their own league's results to be
 # known, and the Europa League / Conference League to tie those leagues to the big five: a club dominating a
 # weak league is placed through its league's European results, not ranked with the big clubs.
@@ -127,7 +130,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     cfg = selection_config(db)
     if max_hours_ahead is not None:
         cfg = replace(cfg, max_hours_ahead=max_hours_ahead)
-    if competition == "UCL":
+    if competition in EUROPEAN_CUPS:
         # cross-league model not validated: information only, no market on trial either (the tickets and the player
         # take its 1X2 bets under their own Champions League rules)
         cfg = replace(cfg, enabled_markets=(), trial_markets=())
@@ -153,14 +156,14 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
             current = fixtures_p.name
             history, used = load_history(db, competition, now, fixtures_p, backup)
-            if competition == "UCL":
+            if competition in EUROPEAN_CUPS:
                 # Clubs of different leagues are only comparable through a model fitted on all of them at once.
                 for dom in UCL_DOMESTIC:
                     more, more_used = load_history(db, dom, now, fixtures_p,
                                                    OpenFootballProvider() if dom in OPENFOOTBALL_FILES else None)
                     history += more
                     used |= more_used
-                for extra in UCL_EXTRA:  # API-Football only; a missing one costs coverage, never the run
+                for extra in [c for c in ("UCL", *UCL_EXTRA) if c != competition]:  # API-Football only; a missing one costs coverage, never the run
                     for season in _history_seasons(now, extra):
                         try:
                             history += fixtures_p.results(extra, season)
@@ -211,16 +214,16 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
 
     try:
         # A club seen only in a few European matches cannot be placed against the five leagues.
-        fit_cfg = dc.FitConfig(min_matches_per_team=UCL_MIN_MATCHES) if competition == "UCL" else None
+        fit_cfg = dc.FitConfig(min_matches_per_team=UCL_MIN_MATCHES) if competition in EUROPEAN_CUPS else None
         goals_lookup = goals_label = None
-        if mode == "real" and competition != "UCL":
+        if mode == "real" and competition not in EUROPEAN_CUPS:
             book = load_book_safely(now)
             if book is not None:
                 goals_lookup = lambda h, a: book.lookup(competition, h, a)  # noqa: E731
                 goals_label = book.data["model"]
         report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now, goals_lookup=goals_lookup,
                               goals_model_label=goals_label,
-                              calibration=UCL_CALIBRATION if competition == "UCL" else None)
+                              calibration=UCL_CALIBRATION if competition in EUROPEAN_CUPS else None)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()

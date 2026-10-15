@@ -223,7 +223,7 @@ def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing(
     empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
     d_ucl, d_nat = (decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[x])[0] for x in (ucl, nat))
     assert d_ucl["joue"] and d_nat["joue"] and d_ucl["mise"] == round(d_nat["mise"] / 2, 2)
-    assert "Ligue des champions" in d_ucl["raison"]
+    assert "Coupes d'Europe" in d_ucl["raison"]
     # A ticket holding a Champions League leg is played too, at half the stake.
     t = {"jour": "2026-10-11", "top3": [], "tickets": {"safe": {"titre": "Safe", "jambes": [ucl], "cote_totale": 2.2,
                                                                "proba_totale": 0.52}}}
@@ -239,7 +239,7 @@ def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing(
     assert lrn["propositions"]["n"] == 0 and lrn["ucl_sur_papier"]["n"] == 20 and lrn["ucl_arret"]
     assert "ucl" in lrn["correction"]
     d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"ucl_arret": True}, legs=[ucl])[0]
-    assert not d["joue"] and d["raison"].startswith("Ligue des champions")
+    assert not d["joue"] and d["raison"].startswith("Coupes d'Europe")
     # Same rule for any unvalidated market: its own record, back to paper when it loses.
     btts = {**leg("a-b", "Les deux équipes marquent", 1.9, 0.6), "valide": False, "marche": "Les deux équipes marquent"}
     d_b = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[btts])[0]

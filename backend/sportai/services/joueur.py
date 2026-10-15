@@ -98,7 +98,7 @@ def candidates(pronostic: dict, legs: list[dict] | None = None) -> list[dict]:
     return out
 
 
-UCL_RULE = ("Ligue des champions : mes paris passés sur cette compétition perdent trop, je ne mise plus, je les note "
+UCL_RULE = ("Coupes d'Europe : mes paris passés sur ces compétitions perdent trop, je ne mise plus, je les note "
             "pour juger plus tard s'ils auraient payé.")
 # Champions League (owner 2026-10-14: the player must stake on it too), in singles and in the tickets that hold one. The cross-league model is calibrated
 # (runs.UCL_CALIBRATION) but has no validated record against the odds yet, so the player stakes half of what it
@@ -132,7 +132,7 @@ def _essais(d: dict) -> set[str]:
 
 
 def _essai_nom(g: str) -> str:
-    return "Ligue des champions" if g == "ucl" else g
+    return "Coupes d'Europe" if g == "ucl" else g  # Champions League and, since 2026-10-15, Europa League
 
 
 def _kind(d: dict) -> str:
@@ -448,9 +448,9 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
     ucl = _stats([d for _, d in settled if _ucl(d)])
     arret = ucl["n"] >= UCL_ARRET[0] and ucl["roi"] < UCL_ARRET[1]
     ucl["mise"] = "papier" if arret else "reduite"
-    ucl["raison"] = (f"Mes {ucl['n']} paris de Ligue des champions perdent {_pct(-ucl['roi'])} par euro : je ne mise "
+    ucl["raison"] = (f"Mes {ucl['n']} paris de coupes d'Europe perdent {_pct(-ucl['roi'])} par euro : je ne mise "
                      "plus dessus, je les note." if arret else
-                     f"Je mise en Ligue des champions avec des mises divisées par deux ; j'arrête si, après "
+                     f"Je mise en coupes d'Europe avec des mises divisées par deux ; j'arrête si, après "
                      f"{UCL_ARRET[0]} paris réglés, ils perdent plus de {_pct(-UCL_ARRET[1], 0)} par euro "
                      f"(aujourd'hui {ucl['n']} réglé(s)).")
     # Every other market on trial, played or passed, with the same rule.

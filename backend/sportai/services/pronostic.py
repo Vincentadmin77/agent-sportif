@@ -47,6 +47,7 @@ from sportai.services.dashboard import (
 )
 from sportai.services.buteurs import scorer_leg_info, settle_scorer
 from sportai.services.prematch import LOCAL_TZ, journee
+from sportai.services.runs import EUROPEAN_CUPS
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
 # key, title, fewest bets, most bets, total odds above, combined probability at least, each bet at least.
@@ -73,10 +74,13 @@ def _aware(d: datetime) -> datetime:
 
 # Champions League in the tickets (owner, 2026-10-14), with care: the cross-league model is calibrated there but
 # has no record against the market yet (docs/04-backtest.md). A home or away win (the draw is over-predicted) at odds
-# between 1.30 and 2.50, and the ticket's stake halved. Since 2026-10-15 (owner: Liverpool with Aston Villa, over 1.5
+# between 1.15 and 2.50, and the ticket's stake halved. Since 2026-10-15 (owner: Liverpool with Aston Villa, over 1.5
 # goals, both teams score), several Champions League matches may share a ticket and its other markets enter as
 # "non validé" bets, under the same care as elsewhere (TRIAL_* below).
-UCL_ODDS = (1.30, 2.50)
+UCL_ODDS = (1.15, 2.50)  # floor 1.30 until 2026-10-15: it kept Benfica (1.24) and Bournemouth (1.21) out of the safe ticket
+# A bet under these odds adds next to nothing to a ticket's odds but still its own risk (under 5.5 goals at 1.07 padding the
+# 2026-10-15 morning tickets): never a ticket leg.
+TICKET_MIN_LEG_ODDS = 1.15
 UCL_STAKE_FACTOR = 0.5
 # Every other market the model prices (owner, 2026-10-14: any odds a bookmaker offers): a bet on a market the backtest
 # has not validated is labelled "non validé" and enters with care: 3 % of value at least, a complete market to compare
@@ -102,7 +106,7 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
     # so the last run that has them is kept for them.
     goals_run: dict[str, int] = {}
     for run in runs:
-        if (run.competition == "UCL" and not ucl) or journee(_aware(run.started_at)) != day:
+        if (run.competition in EUROPEAN_CUPS and not ucl) or journee(_aware(run.started_at)) != day:
             continue
         priced = set(db.scalars(select(CandidateRow.match_id).where(
             CandidateRow.run_id == run.id, CandidateRow.market.not_in(VALIDATED_MARKETS))))
@@ -115,7 +119,7 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
-        paper = run.competition == "UCL"
+        paper = run.competition in EUROPEAN_CUPS  # Champions League rules, Europa League too (owner 2026-10-15)
         if paper:
             enabled = ("1x2",)
         # Goal markets enter the tickets at the owner's request (2026-10-11). Validated (fragile): over/under
@@ -268,7 +272,7 @@ def _front(legs: list[dict], keep: int = COMBO_PER_MATCH, chance=confidence) -> 
 
 def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min_total: float, min_leg: float,
             chance=confidence):
-    pool = _front([l for l in legs if chance(l) >= min_leg], chance=chance)
+    pool = _front([l for l in legs if chance(l) >= min_leg and l["cote"] >= TICKET_MIN_LEG_ODDS], chance=chance)
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
             if (len({l["match_id"] for l in combo}) == n and sum(_trial(l) for l in combo) <= 1
