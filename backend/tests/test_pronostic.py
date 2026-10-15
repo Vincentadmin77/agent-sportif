@@ -163,9 +163,11 @@ def test_safe_ticket_on_confidence_2026_10_14():
     # a single above 1.65 since the same day: Aston Villa, the favourite of both (won 6-0)
     assert {l["pari"] for l in safe["jambes"]} == {"Victoire Aston Villa"}
     assert safe["cote_totale"] == 1.74 and safe["confiance"] >= 0.55
-    # a market on trial never makes the safe single, even above 1.65
-    trial = {**over, "pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.70, "proba_marche": 0.62, "valeur": 0.26}
-    assert build_pronostic([trial], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] == []
+    # the match's goals may make the safe single (owner, 2026-10-15); another market on trial may not
+    goals = {**over, "pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.70, "proba_marche": 0.62, "valeur": 0.26}
+    assert build_pronostic([goals], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] != []
+    hcap = {**goals, "marche": "Handicap asiatique", "pari": "k handicap asiatique -1"}
+    assert build_pronostic([hcap], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] == []
     assert "Victoire Manchester City" not in {l["pari"] for l in safe["jambes"]}
     # Aston Villa is in the safe ticket, so the semi-safe one may not take it again (owner, 2026-10-15)
     assert "Victoire Aston Villa" not in {l["pari"] for l in doc["tickets"]["semi_safe"]["jambes"]}

@@ -350,8 +350,9 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         # A bet goes in one ticket only: if it loses, it must not sink the other tickets too (owner, 2026-10-15).
         used = set().union(*taken)
         candidates = open_legs if pool is None else pool
-        if key == "safe":  # a single carries the whole safe ticket: never a market still on trial
-            candidates = [l for l in candidates if not _trial(l)]
+        if key == "safe":  # a single carries the whole safe ticket: a validated market, or the match's goals (owner,
+            # 2026-10-15: goals are read from the form of both sides and the likely scenario); no scorer, handicap...
+            candidates = [l for l in candidates if not _trial(l) or l.get("marche") in GOAL_MARKETS.values()]
         for fewest in range(min_legs, 0, -1):
             combos = [c for c in _combos(candidates, fewest, max_legs, min_odds, min_total, min_leg, chance)
                       if not {(l["match_id"], l["pari"]) for l in c} & used]

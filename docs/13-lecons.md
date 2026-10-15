@@ -50,5 +50,5 @@ Chaque erreur constatée sur les vrais matchs devient ici une règle. Tous les a
 
 - **Règle (Vincent) :** le ticket safe est toujours un pari simple, jamais un combiné, à une cote au-dessus de 1,65.
 - Il lui faut au moins 55 % de chances, en prenant le plus prudent du modèle et des bookmakers.
-- Il n'est jamais pris sur un marché encore en essai (« non validé »), puisque ce seul pari porte tout le ticket.
+- Il peut porter sur le résultat ou sur les buts du match (nombre de buts, les deux équipes marquent) : Vincent compte les buts comme un résultat d'analyse (forme des équipes et des attaquants, match ouvert ou fermé). Les autres marchés en essai (buteurs, handicaps, score exact…) n'y vont pas.
 - Sans pari qui remplisse ces conditions, le safe reste vide et dit pourquoi.
