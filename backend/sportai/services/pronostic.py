@@ -51,9 +51,10 @@ from sportai.services.runs import EUROPEAN_CUPS
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
 # key, title, fewest bets, most bets, total odds above, combined probability at least, each bet at least.
-# Tickets are combined bets ("combinés", owner 2026-10-11): two bets at least, three for the fun one; when no
-# such combination is correct, the ticket falls back to fewer bets and says so.
-TICKETS = (("safe", "Ticket safe", 2, 3, 1.50, 0.50, 0.55),
+# The safe ticket is always a single bet above 1.65 (owner, 2026-10-15); the others are combined bets ("combinés",
+# owner 2026-10-11): two bets, three for the fun one; when no such combination is correct, the ticket falls back to
+# fewer bets and says so.
+TICKETS = (("safe", "Ticket safe", 1, 1, 1.65, 0.50, 0.55),
            ("semi_safe", "Ticket semi safe", 2, 2, 1.90, 0.30, 0.35),
            ("fun", "Ticket fun", 3, 3, 2.50, 0.15, 0.30))
 FIX_BEFORE, FIX_SLACK = timedelta(minutes=45), timedelta(minutes=5)
@@ -348,9 +349,11 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             return _settle_ticket(frozen, page)
         # A bet goes in one ticket only: if it loses, it must not sink the other tickets too (owner, 2026-10-15).
         used = set().union(*taken)
+        candidates = open_legs if pool is None else pool
+        if key == "safe":  # a single carries the whole safe ticket: never a market still on trial
+            candidates = [l for l in candidates if not _trial(l)]
         for fewest in range(min_legs, 0, -1):
-            combos = [c for c in _combos(open_legs if pool is None else pool, fewest, max_legs, min_odds, min_total, min_leg,
-                                         chance)
+            combos = [c for c in _combos(candidates, fewest, max_legs, min_odds, min_total, min_leg, chance)
                       if not {(l["match_id"], l["pari"]) for l in c} & used]
             if combos:
                 break
@@ -372,7 +375,12 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             return ticket
         if not empty_message:
             return None
-        most = "un seul pari" if max_legs == 1 else f"{max_legs} paris au plus"
+        if max_legs == 1:
+            return _ticket([], title, (
+                f"Pas de {title.lower()} correct : il faudrait un pari simple à une cote au-dessus de "
+                f"{min_odds:.2f}".replace(".", ",") + f", avec au moins {round(max(min_leg, min_total) * 100)} % de "
+                "chances et de la valeur" + (" (le plus prudent du modèle et des bookmakers)." if key != "fun" else ".")))
+        most = f"{max_legs} paris au plus"
         return _ticket([], title, (
             f"Pas de {title.lower()} correct : il faudrait une cote totale au-dessus de "
             f"{min_odds:.2f}".replace(".", ",") + f" avec {most}, chacun à {round(min_leg * 100)} % ou plus "

@@ -22,9 +22,9 @@ def test_top3_and_tickets():
     doc = build_pronostic(LEGS, {}, None, NOW, "matin")
     assert [l["match"] for l in doc["top3"]] == ["g-h", "e-f", "a-b"]
     safe, semi, fun = (doc["tickets"][k] for k in ("safe", "semi_safe", "fun"))
-    # Safe: a combined bet above 1.50 at 50 % or more; none here, so the best single bet, a-b, and it says so.
+    # Safe: always a single bet above 1.65 (owner, 2026-10-15): a-b at 1.70.
     assert [l["match"] for l in safe["jambes"]] == ["a-b"] and safe["cote_totale"] == 1.7
-    assert safe["message"].startswith("Pas de combiné de 2 paris")
+    assert safe["message"] is None
     # A bet goes in one ticket only (owner, 2026-10-15): without a-b, no semi-safe pair reaches 1.90 at 30 %.
     assert semi["jambes"] == [] and semi["message"].startswith("Pas de ticket semi safe")
     # Fun: c-d and e-f (4.48); a third bet would have to be a-b again, so it says it is short.
@@ -104,7 +104,7 @@ def test_tickets_fixed_45_min_before_then_bonus():
     # the semi-safe ticket, still empty, is filled late; the bonus safe ticket takes other bets than every ticket
     assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"m-n", "o-p"}
     safe = doc["bonus"]["safe"]
-    assert {l["match"] for l in safe[-1]["jambes"]} == {"q-r", "s-t"} and not safe[-1]["fige"]
+    assert {l["match"] for l in safe[-1]["jambes"]} == {"q-r"} and not safe[-1]["fige"]
     assert safe[-1]["titre"] == "Ticket bonus safe" and all(b["fige"] for b in safe[:-1])
 
 
@@ -120,14 +120,14 @@ def test_match_odds_1x2_prefers_winamax():
 
 
 def test_empty_safe_filled_by_the_15_min_pass_when_odds_rise():
-    # 45 min before: Atalanta at 1.49, no safe ticket; 15 min before: 1.52, the safe ticket is made and fixed.
-    low = [leg("x-y", "Victoire x", 1.49, 0.74, 0.66, hours=1)]
+    # 45 min before: Atalanta at 1.64, no safe ticket; 15 min before: 1.67, the safe ticket is made and fixed.
+    low = [leg("x-y", "Victoire x", 1.64, 0.74, 0.66, hours=1)]
     m45 = build_pronostic(low, {}, None, NOW + timedelta(minutes=15), "m45")
     assert m45["tickets"]["safe"]["jambes"] == []
-    high = [leg("x-y", "Victoire x", 1.52, 0.74, 0.66, hours=1)]
+    high = [leg("x-y", "Victoire x", 1.67, 0.74, 0.66, hours=1)]
     m15 = build_pronostic(high, {}, m45, NOW + timedelta(minutes=45), "m15")
     safe = m15["tickets"]["safe"]
-    assert [l["cote"] for l in safe["jambes"]] == [1.52] and safe["fige"]
+    assert [l["cote"] for l in safe["jambes"]] == [1.67] and safe["fige"]
     assert safe["message"].startswith("Ticket ajouté au dernier passage")
 
 
@@ -140,10 +140,11 @@ def test_champions_league_bets_combine_half_stake():
     doc = build_pronostic([u1, u2, draw], {}, None, NOW, "h3")
     assert all(l["pari"] != "Match nul" for t in doc["tickets"].values() for l in t["jambes"])
     # several Champions League matches in one ticket since 2026-10-15 (owner: Liverpool with Aston Villa)
-    assert {l["match"] for l in doc["tickets"]["safe"]["jambes"]} == {"ucl1", "ucl2"}
+    assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"ucl1", "ucl2"}
+    assert doc["tickets"]["safe"]["jambes"] == [] and "pari simple" in doc["tickets"]["safe"]["message"]
     settings = {"mises": {"safe": 0.04, "semi_safe": 0.02, "fun": 0.01}}
     apply_stakes(doc, settings, 1000.0)
-    assert doc["tickets"]["safe"]["mise"] == 20.0
+    assert doc["tickets"]["semi_safe"]["mise"] == 10.0
 
 
 def test_safe_ticket_on_confidence_2026_10_14():
@@ -159,11 +160,15 @@ def test_safe_ticket_on_confidence_2026_10_14():
     over2 = {**over, "cote": 1.25, "valeur": round(0.8463 * 1.25 - 1, 4)}
     doc = build_pronostic([city, villa, pool, over2], {}, None, NOW, "h3")
     safe = doc["tickets"]["safe"]
-    assert {l["pari"] for l in safe["jambes"]} == {"Victoire Liverpool", "Plus de 1,5 buts"}
-    assert safe["cote_totale"] == 1.72 and safe["confiance"] >= 0.5
+    # a single above 1.65 since the same day: Aston Villa, the favourite of both (won 6-0)
+    assert {l["pari"] for l in safe["jambes"]} == {"Victoire Aston Villa"}
+    assert safe["cote_totale"] == 1.74 and safe["confiance"] >= 0.55
+    # a market on trial never makes the safe single, even above 1.65
+    trial = {**over, "pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.70, "proba_marche": 0.62, "valeur": 0.26}
+    assert build_pronostic([trial], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] == []
     assert "Victoire Manchester City" not in {l["pari"] for l in safe["jambes"]}
-    # Liverpool is in the safe ticket, so the semi-safe one may not take it again (owner, 2026-10-15)
-    assert "Victoire Liverpool" not in {l["pari"] for l in doc["tickets"]["semi_safe"]["jambes"]}
+    # Aston Villa is in the safe ticket, so the semi-safe one may not take it again (owner, 2026-10-15)
+    assert "Victoire Aston Villa" not in {l["pari"] for l in doc["tickets"]["semi_safe"]["jambes"]}
     # a coin flip the model rates far above the market is still left out
     far = leg("k-l", "Victoire k", 2.5, 0.60, 0.38)
     assert "k-l" not in str(build_pronostic([far], {}, None, NOW, "h3"))
