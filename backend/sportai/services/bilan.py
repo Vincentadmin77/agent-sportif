@@ -34,9 +34,11 @@ def _ticket_return(ticket: dict) -> float | None:
     return math.prod(l["cote"] for l in ticket["jambes"] if l.get("resultat") == "gagne") - 1
 
 
-def replay(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dict]]:
-    """Bankroll after every settled ticket, in day order; returns the current amount and its history."""
-    bank, history = float(settings["depart"]), []
+def replay(pronostics: dict[str, dict], settings: dict, depart: float | None = None,
+           restake: bool = False) -> tuple[float, list[dict]]:
+    """Bankroll after every settled ticket, in day order; returns the current amount and its history.
+    restake: each stake is the ticket's share (mise_pct) of this bankroll, not the amount it was published with."""
+    bank, history = float(settings["depart"] if depart is None else depart), []
     for day in sorted(pronostics):
         start = bank
         for key in TICKET_ORDER:
@@ -44,7 +46,8 @@ def replay(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dic
             r = _ticket_return(t) if t.get("jambes") else None
             if r is None:
                 continue
-            stake = t["mise"] if "mise" in t else round(start * settings["mises"][key], 2)
+            stake = (round(start * t.get("mise_pct", settings["mises"][key]), 2) if restake or "mise" not in t
+                     else t["mise"])
             bank = round(bank + stake * r, 2)
             history.append({"jour": day, "ticket": t.get("titre", key), "mise": stake,
                             "cote": t.get("cote_totale"), "resultat": t["resultat"], "gain": round(stake * r, 2),
@@ -52,13 +55,19 @@ def replay(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dic
     return bank, history
 
 
+def ticket_start(settings: dict) -> float:
+    """Start of each kind's bankroll: the page's start split in three (owner 2026-10-15: "divise par trois")."""
+    return round(settings["depart"] / len(TICKET_ORDER), 2)
+
+
 def replay_by_ticket(pronostics: dict[str, dict], settings: dict) -> dict[str, tuple[float, list[dict]]]:
     """One bankroll per kind of ticket (owner 2026-10-15: "une jauge par ticket, sinon les fun vont plomber les
-    safe"), each from the same start, replayed over the settled tickets of that kind only."""
+    safe"), a third of the start each, replayed over the settled tickets of that kind only, each staking its share
+    of its own bankroll (also for the days before, published with stakes on the combined one)."""
     out = {}
     for key in TICKET_ORDER:
         only = {d: {**doc, "tickets": {key: (doc.get("tickets") or {}).get(key) or {}}} for d, doc in pronostics.items()}
-        out[key] = replay(only, settings)
+        out[key] = replay(only, settings, ticket_start(settings), restake=True)
     return out
 
 
@@ -67,7 +76,7 @@ def apply_stakes(doc: dict, settings: dict, bank_at_start: float | dict[str, flo
     (bank_at_start per kind of ticket; a single amount for all, as before 2026-10-15)."""
     for key, t in (doc.get("tickets") or {}).items():
         if t.get("jambes") and "mise" not in t:
-            bank = bank_at_start.get(key, settings["depart"]) if isinstance(bank_at_start, dict) else bank_at_start
+            bank = bank_at_start.get(key, ticket_start(settings)) if isinstance(bank_at_start, dict) else bank_at_start
             pct = settings["mises"].get(key, 0.0)
             from sportai.services.pronostic import TRIAL_STAKE_FACTOR, UCL_STAKE_FACTOR
 
@@ -138,8 +147,8 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                      "progression": round(bank / settings["objectif"], 6), "mises": settings["mises"],
                      "historique": history,
                      # one gauge per kind of ticket (owner 2026-10-15): the fun tickets no longer drag the safe ones
-                     "par_ticket": {key: {"titre": title, "depart": settings["depart"], "actuelle": b,
-                                          "progression": round(b / settings["objectif"], 6),
+                     "par_ticket": {key: {"titre": title, "depart": ticket_start(settings), "actuelle": b,
+                                          "progression": round(b / (settings["objectif"] / len(TICKET_ORDER)), 6),
                                           "mise": settings["mises"][key], "historique": h}
                                     for (key, (b, h)), title in zip(replay_by_ticket(pronostics, settings).items(),
                                                                     ("Ticket safe", "Ticket semi safe", "Ticket fun"))}},

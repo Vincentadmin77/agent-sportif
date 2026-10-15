@@ -176,9 +176,10 @@ def test_one_bankroll_per_ticket_kind():
     days = {"2026-10-11": {"tickets": {"safe": won(1.5, 30.0), "fun": lost(10.0)}},
             "2026-10-12": {"tickets": {"safe": won(1.6, 30.45), "semi_safe": lost(20.0), "fun": lost(10.0)}}}
     banks = {k: b for k, (b, _) in replay_by_ticket(days, settings).items()}
-    assert banks == {"safe": 1033.27, "semi_safe": 980.0, "fun": 980.0}
+    # the start split in three (owner: "divise par trois"), stakes re-sized on each kind's own bankroll
+    assert banks == {"safe": 344.42, "semi_safe": 326.66, "fun": 326.7}
     doc = apply_stakes({"tickets": {"safe": {"jambes": [{"cote": 1.5}]}, "fun": {"jambes": [{"cote": 3.0}]}}},
                        settings, banks)
-    assert doc["tickets"]["safe"]["mise"] == 31.0 and doc["tickets"]["fun"]["mise"] == 9.8
+    assert doc["tickets"]["safe"]["mise"] == 10.33 and doc["tickets"]["fun"]["mise"] == 3.27
     per = build_bilan({}, days, settings, NOW)["bankroll"]["par_ticket"]
-    assert per["safe"]["actuelle"] == 1033.27 and per["fun"]["actuelle"] == 980.0 and per["safe"]["depart"] == 1000.0
+    assert per["safe"]["actuelle"] == 344.42 and per["safe"]["depart"] == 333.33
