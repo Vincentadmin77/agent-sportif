@@ -12,7 +12,7 @@ def leg(match, pari, cote, proba, marche_p, hours=4):
             "valeur": round(proba * cote - 1, 4), "valide": True, "_divergence_max": 0.10}
 
 
-LEGS = [leg("a-b", "Victoire a", 1.70, 0.66, 0.58), leg("c-d", "Victoire c", 1.60, 0.64, 0.60),
+LEGS = [leg("a-b", "Victoire a", 1.70, 0.66, 0.58), leg("c-d", "Victoire c", 1.60, 0.64, 0.56),
         leg("e-f", "Victoire f", 2.80, 0.42, 0.34), leg("g-h", "Victoire g", 3.0, 0.40, 0.31),
         leg("i-j", "Victoire i", 1.40, 0.70, 0.69),  # negative value: never proposed
         leg("k-l", "Victoire k", 2.5, 0.60, 0.38)]  # model and market too far apart: never proposed
@@ -126,17 +126,39 @@ def test_empty_safe_filled_by_the_15_min_pass_when_odds_rise():
     assert safe["message"].startswith("Ticket ajouté au dernier passage")
 
 
-def test_champions_league_one_bet_per_ticket_half_stake():
+def test_champions_league_bets_combine_half_stake():
     from sportai.services.bilan import apply_stakes
 
     u1 = {**leg("ucl1", "Victoire u", 1.60, 0.66, 0.62), "ucl": True}
     u2 = {**leg("ucl2", "Victoire w", 1.55, 0.68, 0.64), "ucl": True}
     draw = {**leg("ucl3", "Match nul", 3.4, 0.33, 0.29), "ucl": True, "valide": False}
     doc = build_pronostic([u1, u2, draw], {}, None, NOW, "h3")
-    for t in doc["tickets"].values():
-        assert sum(bool(l.get("ucl")) for l in t["jambes"]) <= 1
-        assert all(l["pari"] != "Match nul" for l in t["jambes"])
-    assert doc["tickets"]["safe"]["jambes"]  # a single Champions League bet is allowed
+    assert all(l["pari"] != "Match nul" for t in doc["tickets"].values() for l in t["jambes"])
+    # several Champions League matches in one ticket since 2026-10-15 (owner: Liverpool with Aston Villa)
+    assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"ucl1", "ucl2"}
     settings = {"mises": {"safe": 0.04, "semi_safe": 0.02, "fun": 0.01}}
     apply_stakes(doc, settings, 1000.0)
-    assert doc["tickets"]["safe"]["mise"] == 20.0
+    assert doc["tickets"]["semi_safe"]["mise"] == 10.0
+
+
+def test_safe_ticket_on_confidence_2026_10_14():
+    """City at 55 % for the model but 48 % for the market made the safe ticket of 2026-10-14 (lost 2-4); Liverpool
+    and Aston Villa, favourites for both but rated over 10 points higher by the model, were left out."""
+    ucl = lambda *a: {**leg(*a), "ucl": True, "competition": "Ligue des champions"}
+    city = ucl("city-psg", "Victoire Manchester City", 2.21, 0.553, 0.4773)
+    villa = ucl("villa-fen", "Victoire Aston Villa", 1.74, 0.7177, 0.5749)
+    pool = ucl("lask-liv", "Victoire Liverpool", 1.38, 0.8414, 0.6925)
+    over = {**ucl("villa-fen", "Plus de 1,5 buts", 1.20, 0.8463, 0.8228), "marche": "Nombre de buts",
+            "valide": False, "validation": "non validé"}
+    over["valeur"] = 0.0156  # below the 3 % asked of a bet on trial: not taken
+    over2 = {**over, "cote": 1.25, "valeur": round(0.8463 * 1.25 - 1, 4)}
+    doc = build_pronostic([city, villa, pool, over2], {}, None, NOW, "h3")
+    safe = doc["tickets"]["safe"]
+    assert {l["pari"] for l in safe["jambes"]} == {"Victoire Liverpool", "Plus de 1,5 buts"}
+    assert safe["cote_totale"] == 1.72 and safe["confiance"] >= 0.5
+    assert "Victoire Manchester City" not in {l["pari"] for t in ("safe", "semi_safe")
+                                              for l in doc["tickets"][t]["jambes"]}
+    assert {l["pari"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"Victoire Liverpool", "Victoire Aston Villa"}
+    # a coin flip the model rates far above the market is still left out
+    far = leg("k-l", "Victoire k", 2.5, 0.60, 0.38)
+    assert "k-l" not in str(build_pronostic([far], {}, None, NOW, "h3"))

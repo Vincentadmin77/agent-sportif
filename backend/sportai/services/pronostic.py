@@ -6,13 +6,17 @@ Champions League under its own rules; with the page's documents for the match st
 for the sake of it: a ticket with no correct bets stays empty and says why.
 
 - Top 3: the bets where the model sees the most value over the bookmaker, for reasonable odds.
-Tickets, by the owner's rules (2026-10-11), each the first that differs from the ones before it:
+Tickets, by the owner's rules (2026-10-11), each the first that differs from the ones before it (chances of the safe
+and semi-safe tickets: the more cautious of the model's and the market's, see below):
 - Safe: total odds above 1.50, the most likely combination (at least 50 %).
 - Semi-safe: at most 2 bets, total odds above 1.90, the most likely combination (at least 30 %).
 - Fun: at most 3 bets, total odds above 2.50, the most likely combination (at least 15 %).
 
-A leg must have model value >= 0 and agree with the market within the selection engine's divergence
-limit (a larger gap usually means missing information). A ticket is fixed at the pass 45 min before its
+A leg must have model value >= 0. The safe and semi-safe tickets are chosen on confidence: each bet counts for the
+more cautious of the model's and the bookmakers' chances (owner, 2026-10-15: City at 55 % for the model but 48 % for
+the market was the safe ticket of 2026-10-14, while Liverpool and Aston Villa, far more likely for both, were left out
+because the model rated them over 10 points above the market). A model far from the market still rules a bet out
+(it usually means information the model lacks), except above it on a bet the market makes the favourite. A ticket is fixed at the pass 45 min before its
 first match, when the line-ups are known, then settled from the page's scores. Once an official ticket
 is fixed, a later find of the same kind is a "bonus" ticket, shown apart (owner, 2026-10-11).
 """
@@ -65,8 +69,10 @@ def _aware(d: datetime) -> datetime:
 
 
 # Champions League in the tickets (owner, 2026-10-14), with care: the cross-league model is calibrated there but
-# has no record against the market yet (docs/04-backtest.md). Only a home or away win (the draw is over-predicted),
-# odds between 1.30 and 2.50, one Champions League bet per ticket at most, and the ticket's stake halved.
+# has no record against the market yet (docs/04-backtest.md). A home or away win (the draw is over-predicted) at odds
+# between 1.30 and 2.50, and the ticket's stake halved. Since 2026-10-15 (owner: Liverpool with Aston Villa, over 1.5
+# goals, both teams score), several Champions League matches may share a ticket and its other markets enter as
+# "non validé" bets, under the same care as elsewhere (TRIAL_* below).
 UCL_ODDS = (1.30, 2.50)
 UCL_STAKE_FACTOR = 0.5
 # Every other market the model prices (owner, 2026-10-14: any odds a bookmaker offers): a bet on a market the backtest
@@ -112,7 +118,7 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
         # Goal markets enter the tickets at the owner's request (2026-10-11). Validated (fragile): over/under
         # 1.5 and 3.5 when priced by the enriched goals model (docs/11-backtest-buts.md); btts and 2.5 stay
         # "non validé". Their odds exist only after a pass run with --goals (45 min before kick-off).
-        goals = () if paper else cfg.get("info_markets", ("totals", "btts"))
+        goals = cfg.get("info_markets", ("totals", "btts"))
         home, _, away = f["match"].partition(" - ")
         ko = datetime.fromisoformat(f["kickoff"])
         rows = list(db.scalars(select(CandidateRow).where(CandidateRow.run_id == run.id,
@@ -122,7 +128,7 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 CandidateRow.run_id == goals_run[match_id], CandidateRow.match_id == match_id,
                 CandidateRow.market.not_in(VALIDATED_MARKETS))))
         div = cfg.get("max_market_divergence", 0.10)
-        trial_ok = () if paper else cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
+        trial_ok = cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
         trials = []
         for c in rows:
             if c.market in enabled:
@@ -134,10 +140,12 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
             else:
                 continue
             valide = (c.market in enabled if c.market not in GOAL_MARKETS
-                      else goal_market_validated(c.market, c.line, f.get("goals_model")))
+                      else not paper and goal_market_validated(c.market, c.line, f.get("goals_model")))
+            if paper and c.market in enabled:  # Champions League result: a win within the odds limits only
+                valide = c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1]
             # A de-vigged two-way price estimates the chance of winning when the bet is not refunded.
             p_cmp = c.p_win / (1 - c.p_push) if c.p_push and c.p_push < 1 else c.p_win
-            if not paper and not valide:
+            if not valide and not (paper and c.market in enabled):
                 if (is_quarter(c.line) or c.ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
                         or c.p_win < TRIAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
                         or abs(p_cmp - c.market_fair_prob) > div):
@@ -152,10 +160,9 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
                 "valide": valide,
                 "_divergence_max": div, "_p_cmp": round(p_cmp, 4),
-                **({"valide": c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1], "ucl": True}
-                   if paper else {}),
+                **({"ucl": True} if paper else {}),
             }
-            if not leg["valide"] and not paper:
+            if not leg["valide"] and not (paper and c.market in enabled):
                 leg["validation"] = NON_VALIDE
                 trials.append(leg)
             else:
@@ -165,26 +172,63 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
     return legs
 
 
+def _ucl_result(leg: dict) -> bool:
+    return bool(leg.get("ucl")) and leg.get("marche") == MARKET_NAMES.get("1x2")
+
+
 def _trial(leg: dict) -> bool:
-    """A bet on a market the backtest has not validated (outside the Champions League's own rules)."""
-    return not leg.get("ucl") and not leg.get("valide", True)
+    """A bet on a market the backtest has not validated (the Champions League result has its own rules)."""
+    return not leg.get("valide", True) and not _ucl_result(leg)
+
+
+def confidence(leg: dict) -> float:
+    """The more cautious of the model's and the market's chances: what the safe tickets are chosen on."""
+    pm = leg.get("proba_marche")
+    return leg["proba"] if pm is None else min(leg.get("_p_cmp", leg["proba"]), pm)
+
+
+def cautious_proba(leg: dict) -> float:
+    """The model's chance, but never more than the selection engine's divergence limit above the market's: what a
+    stake is sized on, so a model far more confident than the bookmakers does not size it alone."""
+    pm = leg.get("proba_marche")
+    return leg["proba"] if pm is None else min(leg["proba"], pm + leg.get("_divergence_max", 0.10))
+
+
+# A model far above the market is trusted only on a bet the market itself makes the favourite: Aston Villa (72 % for the
+# model, 57 % for the market) or Liverpool (84 % / 69 %) on 2026-10-14; a 60 % / 45 % coin flip still means the model
+# lacks something.
+FAVOURITE = 0.50
+
+
+def agrees(leg: dict) -> bool:
+    """The model within the divergence limit of the market, or above it on a bet the market makes the favourite."""
+    pm = leg.get("proba_marche")
+    if pm is None:
+        return True
+    p, div = leg.get("_p_cmp", leg["proba"]), leg.get("_divergence_max", 0.10)
+    return pm - p <= div and (p - pm <= div or pm >= FAVOURITE)
 
 
 def _correct(leg: dict) -> bool:
-    if leg.get("ucl") and not leg["valide"]:  # Champions League: only within the limits above
+    if _ucl_result(leg) and not leg["valide"]:  # Champions League result: only within the limits above
         return False
     return (leg["valeur"] >= (TRIAL_MIN_VALUE if _trial(leg) else 0) and leg["proba_marche"] is not None
-            and abs(leg.get("_p_cmp", leg["proba"]) - leg["proba_marche"]) <= leg["_divergence_max"])
+            and agrees(leg))
 
 
 def _ticket(legs: list[dict], title: str, message: str | None = None) -> dict:
     if not legs:
         return {"titre": title, "jambes": [], "cote_totale": None, "proba_totale": None, "message": message}
     return {"titre": title, "jambes": legs, "cote_totale": round(math.prod(l["cote"] for l in legs), 2),
-            "proba_totale": round(math.prod(l["proba"] for l in legs), 4), "message": message}
+            "proba_totale": round(math.prod(l["proba"] for l in legs), 4),
+            "confiance": round(math.prod(confidence(l) for l in legs), 4), "message": message}
 
 
-def _front(legs: list[dict], keep: int = COMBO_PER_MATCH) -> list[dict]:
+def _model(leg: dict) -> float:
+    return leg["proba"]
+
+
+def _front(legs: list[dict], keep: int = COMBO_PER_MATCH, chance=confidence) -> list[dict]:
     """The bets of each match that no other bet of the same match beats on both chance and odds (a ticket never
     wants a dominated bet), at most `keep` per match spread along that front."""
     by_match: dict[str, list[dict]] = {}
@@ -192,7 +236,7 @@ def _front(legs: list[dict], keep: int = COMBO_PER_MATCH) -> list[dict]:
         by_match.setdefault(l["match_id"], []).append(l)
     out = []
     for group in by_match.values():
-        group = sorted(group, key=lambda l: (-l["proba"], -l["cote"]))
+        group = sorted(group, key=lambda l: (-chance(l), -l["cote"]))
         front, best_odds = [], 0.0
         for l in group:
             if l["cote"] > best_odds:
@@ -205,14 +249,14 @@ def _front(legs: list[dict], keep: int = COMBO_PER_MATCH) -> list[dict]:
     return out
 
 
-def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min_total: float, min_leg: float):
-    pool = _front([l for l in legs if l["proba"] >= min_leg])
+def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min_total: float, min_leg: float,
+            chance=confidence):
+    pool = _front([l for l in legs if chance(l) >= min_leg], chance=chance)
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
-            if (len({l["match_id"] for l in combo}) == n and sum(bool(l.get("ucl")) for l in combo) <= 1
-                    and sum(_trial(l) for l in combo) <= 1
+            if (len({l["match_id"] for l in combo}) == n and sum(_trial(l) for l in combo) <= 1
                     and math.prod(l["cote"] for l in combo) > min_odds
-                    and math.prod(l["proba"] for l in combo) >= min_total):
+                    and math.prod(chance(l) for l in combo) >= min_total):
                 yield list(combo)
 
 
@@ -250,8 +294,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
     kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]
-    fresh = sorted((l for l in open_legs if l["proba"] >= TOP_MIN_PROBA and l["cote"] <= TOP_MAX_ODDS),
-                   key=lambda l: -l["valeur"])
+    fresh = sorted((l for l in open_legs if confidence(l) >= TOP_MIN_PROBA and l["cote"] <= TOP_MAX_ODDS),
+                   key=lambda l: -(cautious_proba(l) * l["cote"] - 1))
     top3 = kept[:]
     for leg in fresh:
         if len(top3) == 3:
@@ -269,19 +313,22 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
 
     def build(rules: tuple, old: dict | None, taken: list[set], empty_message: bool,
               pool: list[dict] | None = None) -> dict | None:
-        _, title, min_legs, max_legs, min_odds, min_total, min_leg = rules
+        key, title, min_legs, max_legs, min_odds, min_total, min_leg = rules
+        # safe and semi-safe on confidence (owner, 2026-10-15); the fun ticket stays on the model's chances
+        chance = _model if key == "fun" else confidence
         if old and old.get("jambes") and (old.get("fige") or any(started(l) for l in old["jambes"])):
             frozen = {**old, "fige": True, "jambes": [{**l, "verrouille": True} if started(l) else l
                                                       for l in old["jambes"]]}
             return _settle_ticket(frozen, page)
         for fewest in range(min_legs, 0, -1):
-            combos = [c for c in _combos(open_legs if pool is None else pool, fewest, max_legs, min_odds, min_total, min_leg)
+            combos = [c for c in _combos(open_legs if pool is None else pool, fewest, max_legs, min_odds, min_total, min_leg,
+                                         chance)
                       if {(l["match_id"], l["pari"]) for l in c} not in taken]
             if combos:
                 break
         if combos:
             # The target odds reached with the best chance; the fewer bets the better on a tie.
-            best = sorted(max(combos, key=lambda c: (math.prod(l["proba"] for l in c), -len(c))),
+            best = sorted(max(combos, key=lambda c: (math.prod(chance(l) for l in c), -len(c))),
                           key=lambda l: l["coup_envoi"])
             short = None if len(best) >= min_legs else (
                 f"Pas de combiné de {min_legs} paris correct pour l'instant : "
@@ -301,7 +348,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         return _ticket([], title, (
             f"Pas de {title.lower()} correct : il faudrait une cote totale au-dessus de "
             f"{min_odds:.2f}".replace(".", ",") + f" avec {most}, chacun à {round(min_leg * 100)} % ou plus "
-            f"et de valeur positive, pour une chance combinée d'au moins {round(min_total * 100)} %."))
+            f"et de valeur positive, pour une chance combinée d'au moins {round(min_total * 100)} %"
+            + (" (la plus prudente du modèle et des bookmakers)." if key != "fun" else ".")))
 
     def bets(ticket: dict) -> set:
         return {(l["match_id"], l["pari"]) for l in ticket["jambes"]}

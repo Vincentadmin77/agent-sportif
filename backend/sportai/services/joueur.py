@@ -21,8 +21,10 @@ import numpy as np
 
 from sportai.services.prematch import LOCAL_TZ
 from sportai.services.dashboard import settle
-from sportai.services.pronostic import _settle_ticket
+from sportai.services.pronostic import _settle_ticket, agrees, cautious_proba
 
+# Probabilities: each bet is sized on the model's chance capped at the divergence limit above the market's
+# (pronostic.cautious_proba), never on a model far more confident than the bookmakers alone.
 # Fraction of the Kelly stake (on schedule, and at most when far behind the deadline), most of the bankroll on one
 # bet and on one day, least value and chance to play. Never above the full Kelly stake: beyond it the bankroll
 # grows more slowly on average and the risk of ruin soars.
@@ -72,11 +74,11 @@ def candidates(pronostic: dict, legs: list[dict] | None = None) -> list[dict]:
         t = (pronostic.get("tickets") or {}).get(key) or {}
         if t.get("jambes"):
             out.append({"id": f"ticket:{key}", "type": "ticket", "quoi": t.get("titre", key), "jambes": t["jambes"],
-                        "cote": t["cote_totale"], "proba": t["proba_totale"]})
+                        "cote": t["cote_totale"], "proba": round(math.prod(cautious_proba(l) for l in t["jambes"]), 4)})
     for leg in pronostic.get("top3") or []:
         out.append({"id": f"top3:{leg['match_id']}:{leg['pari']}", "type": "top3",
                     "quoi": f"{leg['pari']} ({leg['match']})", "jambes": [leg], "cote": leg["cote"],
-                    "proba": leg["proba"]})
+                    "proba": cautious_proba(leg)})
     seen = {(l["match_id"], l["pari"]) for c in out if c["type"] == "top3" for l in c["jambes"]}
     for leg in legs or []:
         if (leg["match_id"], leg["pari"]) in seen or not _leg_ok(leg):
@@ -85,7 +87,7 @@ def candidates(pronostic: dict, legs: list[dict] | None = None) -> list[dict]:
         clean = {k: v for k, v in leg.items() if not k.startswith("_")}
         out.append({"id": f"simple:{leg['match_id']}:{leg['pari']}", "type": "simple",
                     "quoi": f"{leg['pari']} ({leg['match']})", "jambes": [clean], "cote": leg["cote"],
-                    "proba": leg["proba"]})
+                    "proba": cautious_proba(leg)})
     for c in out:
         c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
         c["kelly"] = round(max(c["valeur"], 0) / (c["cote"] - 1), 4) if c["cote"] > 1 else 0.0
@@ -107,12 +109,11 @@ ESSAI_RULE = "{nom} : mes paris passés sur ce marché perdent trop, je ne mise 
 
 
 def _leg_ok(leg: dict) -> bool:
-    """A single the player may consider: value >= 0 (validated market or on trial), and the model within the selection engine's
-    limit of the market (a bigger gap usually means information the model lacks)."""
-    if leg.get("valeur", -1) < 0:
-        return False
-    pm = leg.get("proba_marche")
-    return pm is None or abs(leg["proba"] - pm) <= leg.get("_divergence_max", 0.10)
+    """A single the player may consider: value >= 0 (validated market or on trial), and the model within the limit of
+    the market (a bigger gap usually means information the model lacks), or above it on a market favourite, then
+    sized on the model's chance capped near the market's (pronostic.cautious_proba): Liverpool at LASK on 2026-10-14,
+    84 % for the model and 69 % for the market, was left out by the old limit and won 6-3 (owner, 2026-10-15)."""
+    return leg.get("valeur", -1) >= 0 and agrees(leg)
 
 
 def _ucl(d: dict) -> bool:
