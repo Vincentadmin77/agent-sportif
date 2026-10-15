@@ -250,3 +250,24 @@ def test_champions_league_singles_staked_at_half_then_back_to_paper_when_losing(
     assert lrn["essais_arret"] == ["Les deux équipes marquent"] and lrn["propositions"]["n"] == 0
     d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"essais_arret": lrn["essais_arret"]}, legs=[btts])[0]
     assert not d["joue"] and d["motif"] == "non_valide"
+
+def test_learns_whom_to_believe_from_the_evening_before():
+    # 2026-10-14: the model above the bookmakers on bets that lost (City 55 % / 48 %, Porto 38 % / 29 %...).
+    def lost(match, pari, p, pm, res="perdu"):
+        l = {**leg(match, pari, 2.2, p), "proba_marche": pm, "resultat": res}
+        return {"id": f"top3:{match}", "type": "top3", "quoi": pari, "jambes": [l], "cote": 2.2, "proba": p,
+                "joue": pari == "Victoire city", "mise": 10.0 if pari == "Victoire city" else 0.0, "resultat": res,
+                "gain": -10.0 if pari == "Victoire city" else None}
+    day = {"decisions": [lost("ci-ps", "Victoire city", 0.553, 0.477), lost("be-po", "Victoire po", 0.38, 0.286),
+                         lost("ro-re", "Victoire ro", 0.323, 0.262), lost("st-sl", "Victoire st", 0.73, 0.71, "gagne"),
+                         lost("bo-do", "Victoire bo", 0.372, 0.327, "gagne")]}
+    lrn = joueur.learn({"2026-10-14": day})
+    c = lrn["confiance"]
+    assert c["n"] == 5 and c["meilleur"] < 1 and 0.8 < c["poids_modele"] < 1 and "bookmakers" in c["raison"]
+    assert "modèle 55 %, bookmakers 48 %, j'ai suivi le plus optimiste" in lrn["examens"][0]["texte"]
+    # The next day the same disagreement gives a smaller chance, so a smaller stake.
+    x = {**leg("a-b", "Victoire a", 2.2, 0.55), "proba_marche": 0.48}
+    empty = {"jour": "2026-10-15", "top3": [], "tickets": {}}
+    before = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[x])[0]
+    after = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"confiance": c}, legs=[x])[0]
+    assert after["proba"] < before["proba"] and after["mise"] < before["mise"]

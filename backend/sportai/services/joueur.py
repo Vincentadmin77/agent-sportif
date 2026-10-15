@@ -217,7 +217,11 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
 
     fresh = [c for c in candidates(pronostic, legs) if c["id"] not in {d["id"] for d in frozen}
              and not any(_started(l, page, now) for l in c["jambes"])]
+    w = (ajust.get("confiance") or {}).get("poids_modele", 1.0)
     for c in fresh:  # the model's chance corrected by what the player has seen so far
+        if w < 1.0:  # mixed with the bookmakers' as much as the record says they saw better
+            c["proba"] = round(math.prod(_trust(l, w) for l in c["jambes"]), 4)
+            c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
         r = (ajust.get("ratio") or {}).get(_kind(c), 1.0)
         # The odds watched pass after pass, up to kick-off.
         hist = list((old.get(c["id"]) or {}).get("cotes") or [])
@@ -309,6 +313,55 @@ def _motif(d: dict) -> str | None:
     return None
 
 
+# Whom to believe when the model and the bookmakers disagree (owner 2026-10-15: learn from the errors of the evening
+# before). Each settled bet with a market price is a test: which of the model's chance, the market's, or a mix,
+# would have announced its result best (log loss). Thin evidence moves the player only part of the way.
+CONFIANCE_GRILLE = (0.0, 0.25, 0.5, 0.75, 1.0)
+CONFIANCE_PREUVES = 30
+
+
+def _trust(leg: dict, w: float) -> float:
+    """The leg's chance with weight w on the model (cautious) and 1 - w on the market."""
+    p, pm = cautious_proba(leg), leg.get("proba_marche")
+    return p if pm is None else w * p + (1 - w) * pm
+
+
+def _confiance(settled: list[dict]) -> dict:
+    tests = {}
+    for d in settled:
+        for l in d["jambes"]:
+            if l.get("proba_marche") is not None and l.get("resultat") in ("gagne", "perdu"):
+                tests[(l["match_id"], l["pari"])] = (cautious_proba(l), l["proba_marche"], l["resultat"] == "gagne")
+    n = len(tests)
+    if not n:
+        return {"poids_modele": 1.0, "n": 0, "raison": None}
+
+    def loss(w: float) -> float:
+        return sum(-math.log(min(max(w * p + (1 - w) * m if y else 1 - (w * p + (1 - w) * m), 1e-6), 1))
+                   for p, m, y in tests.values())
+    best = min(CONFIANCE_GRILLE, key=loss)
+    w = round(1 - (1 - best) * min(n / CONFIANCE_PREUVES, 1), 3)
+    if w >= 0.99:
+        why = f"Sur {n} pari(s) réglé(s), le modèle a vu au moins aussi juste que les bookmakers : je garde sa chance."
+    else:
+        why = (f"Sur {n} pari(s) réglé(s), les bookmakers ont vu plus juste que le modèle quand ils n'étaient pas "
+               f"d'accord : je ne crois le modèle qu'à {_pct(w, 0)} et les bookmakers pour le reste"
+               + (f" (il faudra {CONFIANCE_PREUVES} paris pour aller jusqu'au bout de cette leçon)" if n < CONFIANCE_PREUVES else "")
+               + ".")
+    return {"poids_modele": w, "n": n, "meilleur": best, "raison": why}
+
+
+def _lecon(d: dict) -> str:
+    """Why a lost bet was lost, as far as the numbers tell: whom the player believed."""
+    parts = []
+    for l in d["jambes"]:
+        pm = l.get("proba_marche")
+        if l.get("resultat") == "perdu" and pm is not None:
+            parts.append(f"{l['pari']} : modèle {_pct(l['proba'], 0)}, bookmakers {_pct(pm, 0)}"
+                         + (", j'ai suivi le plus optimiste" if l["proba"] > pm + 0.03 else ""))
+    return "; ".join(parts)
+
+
 def _unit_return(d: dict) -> float | None:
     """Gain for 1 € staked on a settled decision (played or not)."""
     if d.get("resultat") not in ("gagne", "perdu", "rembourse"):
@@ -383,6 +436,9 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
         dodged = [d for d in ds if not d["joue"] and d["resultat"] == "perdu"]
         text = (f"{len(j)} pari(s) joué(s), {sum(d['resultat'] == 'gagne' for d in j)} gagné(s), "
                 f"{'+' if sum(d.get('gain') or 0 for d in j) >= 0 else ''}{_fr(sum(d.get('gain') or 0 for d in j))} €. ")
+        lost = [d for d in j if d["resultat"] == "perdu" and _lecon(d)]
+        if lost:
+            text += "Perdus : " + " | ".join(f"{d['quoi']} ({_lecon(d)})" for d in lost) + ". "
         if missed:
             text += "Passés mais gagnés : " + ", ".join(f"{d['quoi']} ({MOTIFS.get(_motif(d), 'passé')})" for d in missed) + ". "
         if dodged:
@@ -407,6 +463,7 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
             f"{grp} : à l'essai, mises divisées par deux ({st['n']} réglé(s) ; j'arrête après {UCL_ARRET[0]} s'ils "
             f"perdent plus de {_pct(-UCL_ARRET[1], 0)} par euro).")}
     return {"joues": joues, "propositions": g, "passes_valeur": passed, "ucl_sur_papier": ucl, "ucl_arret": arret,
+            "confiance": _confiance([d for _, d in settled]),
             "essais": essais, "essais_arret": [k for k, v in essais.items() if v["mise"] == "papier"],
             "correction": ratio, "valeur_min": valeur_min,
             "valeur_min_raison": why_min, "profil_auto": auto, "profil_raison": why, "plafond": plafond,
@@ -799,7 +856,7 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
     rythme = pace(bank_start, depart, objectif, date.fromisoformat(day), echeance=echeance)
     kelly = kelly_fraction(PROFILS[profil], rythme["ecart"], bool(frein))
     ajust = {"ratio": lrn["correction"], "valeur_min": lrn["valeur_min"], "ucl_arret": lrn["ucl_arret"],
-             "essais_arret": lrn["essais_arret"]}
+             "essais_arret": lrn["essais_arret"], "confiance": lrn["confiance"]}
     decisions = decide(pronostic, previous_day, page, bank_start, profil, now, kelly, ajust, legs)
 
     journal = list((previous_day or {}).get("journal") or [])
@@ -813,6 +870,8 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
                                                  f"{lrn['profil_raison']}"})
         if lrn["valeur_min_raison"]:
             journal.append({"heure": heure, "texte": lrn["valeur_min_raison"]})
+        if lrn["confiance"]["raison"]:
+            journal.append({"heure": heure, "texte": lrn["confiance"]["raison"]})
     if any(_ucl(d) for d in decisions) and not any(x["texte"] == lrn["ucl_sur_papier"]["raison"] for x in journal):
         journal.append({"heure": heure, "texte": lrn["ucl_sur_papier"]["raison"]})
     if any(_essais(d) - {"ucl"} for d in decisions) and not any(x["texte"].startswith("À l'essai") for x in journal):
