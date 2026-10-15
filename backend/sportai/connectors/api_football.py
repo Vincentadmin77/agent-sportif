@@ -192,6 +192,7 @@ class ApiFootballProvider:
             kickoff=_ts(f["fixture"]["date"]), home=f["teams"]["home"]["name"], away=f["teams"]["away"]["name"],
             mode="real", status=_STATUS.get(f["fixture"]["status"]["short"], "scheduled"),
             home_goals=f["goals"]["home"], away_goals=f["goals"]["away"],
+            home_id=f["teams"]["home"].get("id"), away_id=f["teams"]["away"].get("id"),
         )
 
 

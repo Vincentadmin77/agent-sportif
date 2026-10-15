@@ -389,8 +389,15 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
             continue
         snap, raw_stats = api.live_details(fx)
         odds = None if fx["fixture"]["status"]["short"] in FINISHED else api.live_odds(fx["fixture"]["id"])
+        lineups = None
+        if not (current[key].get("feuille_de_match") or {}).get("titulaires"):  # once per match: settles scorer bets
+            try:
+                lineups = api.lineups(fx["fixture"]["id"], ttl=3600) or None
+            except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
+                print(f"line-ups unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
         doc = live_doc(current[key], fx, snap, stats_by_side(raw_stats, fx["teams"]["home"]["id"]),
-                       pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds)
+                       pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds,
+                       lineups)
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
     try:  # the "Joueur pro" player's bets followed live

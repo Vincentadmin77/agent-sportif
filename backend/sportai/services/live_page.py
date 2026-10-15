@@ -15,8 +15,10 @@ import numpy as np
 
 from sportai.connectors.base import LiveSnapshot
 from sportai.connectors.teams import same_team
-from sportai.engine.football.live import LiveState, final_score_matrix
-from sportai.services.dashboard import bet_label, goal_label, settle, settle_score
+from sportai.engine.football.live import LiveState, final_score_matrix, remaining_rates
+from sportai.engine.football.scorers import live_scorer_proba
+from sportai.services.buteurs import MARCHE as SCORER_MARKET, find_scorer_row, live_odds_by_player, match_sheet, player_state
+from sportai.services.dashboard import bet_label, goal_label, scorer_label, settle, settle_score
 
 LIVE_NOTE = ("Suivi en direct : probabilités recalculées avec le score, la minute, les cartons rouges et les "
              "occasions (xG) quand le flux les donne. Information seulement, pas une sélection.")
@@ -24,7 +26,8 @@ STAT_NAMES = {"Total Shots": "tirs", "Shots on Goal": "tirs_cadres", "Ball Posse
               "Corner Kicks": "corners", "expected_goals": "xg"}
 FINISHED = {"FT", "AET", "PEN"}
 ODDS_NOTE = ("Cotes en direct du flux API-Football (pas forcément un bookmaker français). Modèle du direct non "
-             "validé sur matchs passés : information, pas une sélection.")
+             "validé sur matchs passés : le joueur pro n'y mise qu'à l'essai (mise divisée par deux, un pari en direct "
+             "par match au plus), ce n'est pas une sélection.")
 MIN_VALUE, MAX_GAP = 0.05, 0.10
 # Checks before a live price is called an opportunity (owner, 2026-10-11: the model offered Roma to win at 10
 # while Roma played with ten and Como had the ball). A row that fails one is kept with statut "ecarte" and why.
@@ -156,11 +159,66 @@ def live_odds_rows(m, odds: list[dict], home: str, away: str, minute: float = 0,
     return sorted(rows, key=lambda r: -r["valeur"])
 
 
+def live_scorer_rows(doc: dict, odds: list[dict], remaining: tuple[float, float], minute: float,
+                     reds: list[int] | None = None, stats: dict[str, list] | None = None) -> list[dict]:
+    """In-play anytime goalscorer prices against the scorer model (owner, 2026-10-15: Haaland or Mbappé live).
+
+    Chance from now on = 1 - exp(-goals still expected for his side x his share x time he should stay on), 0 for a
+    player off the pitch (substituted, sent off, on the bench), and no row for one who already scored (the bet would
+    be on another goal). Only players priced before the match (their share is known) are offered; the market's
+    chance is 1/odds, margin included. Same checks as the other live prices (_against_the_match)."""
+    prices = live_odds_by_player(odds)
+    known = (doc.get("buteurs") or {}).get("cotes") or []
+    if not prices or not known:
+        return []
+    rows = []
+    for name, o in prices.items():
+        r = find_scorer_row(name, known)
+        if r is None or r.get("part") is None:
+            continue
+        scorer = {"id": r.get("joueur_id"), "nom": r["joueur"], "nom_api": r.get("nom_api"),
+                  "cote_equipe": r.get("cote_equipe")}
+        st = player_state(scorer, doc)
+        if st["buts"]:
+            continue
+        on_pitch = bool(st["titulaire"] or st["entre"]) and not st["sorti"]
+        side = 0 if r.get("cote_equipe") == "domicile" else 1
+        p = live_scorer_proba(remaining[side], r["part"], minute, r.get("minutes_par_titularisation"), on_pitch,
+                              came_on=bool(st["entre"]))
+        odd = o["cote"]
+        if not 0.001 < p < 0.999:
+            continue
+        pm, value = 1 / odd, p * odd - 1
+        if value < MIN_VALUE:
+            continue
+        gap = abs(p - pm)
+        row = {"pari": scorer_label(r["joueur"]), "marche": SCORER_MARKET, "cote": odd, "proba": round(p, 4),
+               "proba_marche": round(pm, 4), "proba_marche_brute": True, "valeur": round(value, 4),
+               "ecart": round(gap, 4), "statut": "opportunite" if gap <= MAX_GAP else "ecart_trop_grand",
+               "buteur": {**scorer, "part": r["part"], "minutes_par_titularisation": r.get("minutes_par_titularisation"),
+                          "apres_minute": int(minute)}}
+        why = row["statut"] == "opportunite" and _against_the_match(("home", "away")[side], odd, minute,
+                                                                    reds or [0, 0], stats or {})
+        if why:
+            row["statut"], row["raison"] = "ecarte", why
+        rows.append(row)
+    return rows
+
+
 def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pre: tuple | None, now: datetime,
-             odds: list[dict] | None = None) -> dict:
+             odds: list[dict] | None = None, lineups: list[dict] | None = None) -> dict:
+    """lineups: /fixtures/lineups, read once per match so the match sheet knows who started (a scorer bet is
+    refunded when its player did not play)."""
     doc = dict(doc)
     status = fx["fixture"]["status"]["short"]
     hg, ag = snap.home_goals, snap.away_goals
+    if snap.events or lineups:  # who scored (own goals apart), came on, left: follows and settles scorer bets
+        old = doc.get("feuille_de_match") or {}
+        sheet = match_sheet(snap.events, fx["teams"]["home"]["id"], lineups)
+        if "titulaires" not in sheet and old.get("titulaires"):
+            sheet["titulaires"] = old["titulaires"]
+        doc["feuille_de_match"] = {**sheet, "maj": now.isoformat()}
+        doc["buteurs"] = {**(doc.get("buteurs") or {}), "marques": sheet["buts"]}
     doc["score"] = f"{hg} - {ag}"
     doc["minute"] = int(snap.minute)
     doc["passages"] = {**(doc.get("passages") or {}), "direct": now.isoformat()}
@@ -179,6 +237,8 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
         state = LiveState(snap.minute, hg, ag, snap.home_red_cards, snap.away_red_cards, snap.home_xg, snap.away_xg,
                           snap.observed_at, snap.provider)
         m = final_score_matrix(lh, la, state)
+        rem = remaining_rates(lh, la, state)
+        direct["buts_restants"] = [round(rem[0], 4), round(rem[1], 4)]  # in-play expected goals still to come
         n = m.shape[0]
         p_home = float(sum(m[i, j] for i in range(n) for j in range(n) if i > j))
         p_draw = float(sum(m[i, i] for i in range(n)))
@@ -200,6 +260,9 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
         if odds and status not in FINISHED:
             rows = live_odds_rows(m, odds, doc["domicile"], doc["exterieur"], snap.minute,
                                   [snap.home_red_cards, snap.away_red_cards], stats)
+            rows = sorted(rows + live_scorer_rows(doc, odds, rem, snap.minute,
+                                                  [snap.home_red_cards, snap.away_red_cards], stats),
+                          key=lambda r: -r["valeur"])
             direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
             for r in rows:
                 if r["statut"] == "opportunite":

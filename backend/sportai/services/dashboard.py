@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session as DB
 
 from sportai.connectors.teams import normalise, same_team
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, Selection
+from sportai.engine.football.scorers import MARKET_NOTE as SCORER_MARKET_NOTE
 from sportai.services.lineups import scenario_with_squads
 from sportai.services.position import position
 from sportai.services.prematch import LOCAL_TZ, journee
@@ -47,8 +48,9 @@ ALL_MARKETS_NOTE = ("Toutes les cotes du fournisseur (API-Football, tous ses boo
                     "chaque pari qui se décide sur le score final est chiffré par le modèle. Seuls résultat du match, "
                     "double chance et remboursé si nul sont validés par le backtest ; les autres sont « non validés » : "
                     "estimation à manier avec prudence, retenue seulement avec des seuils relevés et des mises réduites. "
-                    "Les paris de mi-temps, corners, cartons, buteurs, minutes... ne se déduisent pas du score final : "
-                    "listés avec leurs cotes, « non analysés ».")
+                    "Buteur à tout moment : chiffré par le modèle buteur (non validé). Les paris de mi-temps, corners, "
+                    "cartons, premier buteur, minutes... ne se déduisent pas du score final : listés avec leurs cotes, "
+                    "« non analysés ».")
 MAX_MARKET_ROWS = 150
 MOVE_KIND = {"confirmation": "confirme", "against": "contre", "stable": "stable"}
 GOAL_WARNING = ("Marchés non validés pour ce match : probabilités du modèle Dixon-Coles seul, qui ne fait pas mieux "
@@ -66,8 +68,9 @@ def goal_market_validated(market: str, line: float | None, goals_model: str | No
     return (market == "totals" and line in VALIDATED_GOAL_LINES
             and bool(goals_model) and goals_model.startswith("goals-logit"))
 SCORER_NOTE = ("Compositions officielles et chances de marquer de chaque titulaire publiées au passage 45 min avant "
-               "le match (les compositions sortent environ 1 h avant). Aucun bookmaker français ne propose le marché "
-               "buteur chez notre fournisseur de cotes : pas de cote à comparer.")
+               "le match (les compositions sortent environ 1 h avant). Cotes « buteur à tout moment » des bookmakers "
+               "d'API-Football chiffrées par le modèle quand elles existent (marché non validé).")
+SCORER_MARKET = "Buteur"
 GOAL_ODDS_LATER = ("Cotes de ce marché chargées au passage 45 min avant le match seulement : chaque match coûte 2 crédits "
                    "sur notre forfait de cotes (500 par mois).")
 GOAL_ODDS_NONE = "Aucun bookmaker français ne propose ces cotes pour ce match chez notre fournisseur."
@@ -348,12 +351,16 @@ def goals_block(f: dict, cands: list[CandidateRow], info_markets, odds_asked: bo
     return block
 
 
+def scorer_label(player: str) -> str:
+    return f"{player} buteur"
+
+
 def all_markets_block(f: dict, cands: list[CandidateRow], home: str, away: str, cfg: dict) -> dict | None:
     """Every market of the odds feed for one match: those the model priced (with the best odds, its bookmaker, the
     model's chance and value, and "validé" / "non validé"), the best value first, and the bets it cannot price
     ("non analysé"), with their best odds."""
     others = f.get("non_analyses") or []
-    if not cands and not others:
+    if not cands and not others and not f.get("buteurs_cotes"):
         return None
     enabled = cfg.get("enabled_markets", ())
     rows = []
@@ -368,9 +375,20 @@ def all_markets_block(f: dict, cands: list[CandidateRow], home: str, away: str, 
         if c.market_fair_prob is not None:
             row["proba_marche"] = round(c.market_fair_prob, 4)
         rows.append(row)
-    return {"analyses": rows[:MAX_MARKET_ROWS], "n_analyses": len(rows),
-            "n_marches": len({c.market for c in cands}), "non_analyses": others,
-            "note": ALL_MARKETS_NOTE}
+    # Anytime goalscorer (owner, 2026-10-15): priced by the scorer model, never backtested, so "non validé"; the
+    # market's chance is 1/odds, margin included (a one-sided list cannot be de-vigged).
+    scorers = [{"pari": scorer_label(r["joueur"]), "marche": SCORER_MARKET, "cote": r["cote"], "bookmaker": r["bookmaker"],
+                "proba": r["proba"], "valeur": r["valeur"], "valide": False, "validation": NON_VALIDE, "retenu": False,
+                "proba_marche": r["proba_marche"], "proba_marche_brute": True, "equipe": r.get("equipe")}
+               for r in f.get("buteurs_cotes") or []]
+    if scorers:
+        rows = sorted(rows + scorers, key=lambda r: -r["valeur"])
+    block = {"analyses": rows[:MAX_MARKET_ROWS], "n_analyses": len(rows),
+             "n_marches": len({c.market for c in cands}) + bool(scorers), "non_analyses": others,
+             "note": ALL_MARKETS_NOTE}
+    if scorers:
+        block["note_buteurs"] = SCORER_MARKET_NOTE
+    return block
 
 
 def rejection_text(c: CandidateRow, home: str, away: str, cfg: dict) -> str | None:
@@ -495,8 +513,13 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         every = all_markets_block(f, mine, home, away, run.config or {})
         if every:
             doc["tous_marches"] = every
-        if not (doc.get("buteurs") or {}).get("joueurs"):  # keep the line-up estimates once published
-            doc["buteurs"] = {"raison": SCORER_NOTE}
+        buteurs = dict(doc.get("buteurs") or {})
+        if not buteurs.get("joueurs"):  # keep the line-up estimates once published
+            buteurs["raison"] = SCORER_NOTE
+        if f.get("buteurs_cotes"):  # the bookmakers' scorer prices, with the player's share (followed live)
+            buteurs.update(cotes=f["buteurs_cotes"], cotes_note=SCORER_MARKET_NOTE,
+                           ecartes=f.get("buteurs_ecartes") or [])
+        doc["buteurs"] = buteurs
         shots = shots_block(run.competition, doc["domicile"], doc["exterieur"])
         if shots:
             doc["tirs"] = shots

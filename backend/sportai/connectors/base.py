@@ -41,6 +41,8 @@ class Fixture:
     status: str = "scheduled"  # scheduled, live, finished, postponed, cancelled
     home_goals: int | None = None
     away_goals: int | None = None
+    home_id: int | None = None  # the provider's team ids, when it has them (API-Football: squads for the scorer market)
+    away_id: int | None = None
 
 
 @dataclass(frozen=True)

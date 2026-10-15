@@ -139,6 +139,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
 
     current = "configuration"
     unpriced: dict[str, list[dict]] = {}
+    raw_odds: list[dict] = []  # API-Football /odds items, for the scorer market priced after the match model
+    window: list = []
+    fixtures_p = None
     try:
         if mode == "simulation":
             sim = SimulationProvider(now=now)
@@ -177,7 +180,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             window = [f for f in fixtures or [] if _in_window(f, now, cfg)]
             if window:
                 try:
-                    quotes, unpriced = api_football_quotes(fixtures_p, competition, window)
+                    quotes, unpriced = api_football_quotes(fixtures_p, competition, window, raw_odds)
                     odds_source = fixtures_p.name
                 except ProviderUnavailable as e:
                     _mark(db, fixtures_p.name, f"odds: {e}")
@@ -238,6 +241,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      **({"non_analyses": unpriced[f.fixture.provider_event_id]}
                         if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}
                     for f in report.fixtures]
+    if raw_odds and fixtures_p is not None and run.data_sources.get("odds") == fixtures_p.name:
+        run.fixtures = scorer_markets(db, fixtures_p, competition, raw_odds, window, run.fixtures, now)
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)
     moves = {}
@@ -292,9 +297,11 @@ def _in_window(f, now: datetime, cfg: SelectionConfig) -> bool:
             and journee(f.kickoff) == journee(now))
 
 
-def api_football_quotes(api: ApiFootballProvider, competition: str, fixtures) -> tuple[list, dict[str, list[dict]]]:
+def api_football_quotes(api: ApiFootballProvider, competition: str, fixtures,
+                        raw_out: list | None = None) -> tuple[list, dict[str, list[dict]]]:
     """Odds of these fixtures from API-Football: one request per page of 10 fixtures per UTC date (usually one
-    per competition and pass), plus one per fixture the date listing missed. Every bookmaker, every bet type."""
+    per competition and pass), plus one per fixture the date listing missed. Every bookmaker, every bet type.
+    raw_out: receives the raw items (the scorer market is priced from them once the match model has run)."""
     teams = {f.provider_event_id: (f.home, f.away, f.kickoff) for f in fixtures}
     raw = []
     for day in sorted({f.kickoff.date() for f in fixtures}):
@@ -302,7 +309,40 @@ def api_football_quotes(api: ApiFootballProvider, competition: str, fixtures) ->
     seen = {str((r.get("fixture") or {}).get("id")) for r in raw}
     for fid in sorted(set(teams) - seen):
         raw += api.fixture_odds(fid)
+    if raw_out is not None:
+        raw_out += raw
     return parse_api_football_odds(raw, teams, API_FOOTBALL_ODDS_VALIDITY)
+
+
+def scorer_markets(db: DB, api: ApiFootballProvider, competition: str, raw: list[dict], window, fixtures: list[dict],
+                   now: datetime) -> list[dict]:
+    """The bookmakers' anytime goalscorer selections of each analysed fixture, priced by the scorer model
+    (services/buteurs.py, owner 2026-10-15): stored on the run's fixture as "buteurs_cotes" (and the names dropped as
+    "buteurs_ecartes"), the market then leaving the "non analysé" list. A failure costs this market only."""
+    from sportai.engine.football.scorers import SCORER_BETS
+    from sportai.services.buteurs import price_fixture
+
+    items = {str((r.get("fixture") or {}).get("id")): r for r in raw}
+    by_id = {f.provider_event_id: f for f in window}
+    season = now.year if competition in API_CALENDAR_YEAR else (now.year if now.month >= 7 else now.year - 1)
+    out = []
+    for f in fixtures:
+        fx, item = by_id.get(f["match_id"]), items.get(f["match_id"])
+        if fx is None or item is None or f.get("skipped_reason") or not f.get("expected_goals"):
+            out.append(f)
+            continue
+        try:
+            priced = price_fixture(api, item, fx, f["expected_goals"], now, season)
+        except ProviderUnavailable as e:
+            _mark(db, api.name, f"scorers {f['match']}: {e}")
+            priced = None
+        if not priced:
+            out.append(f)
+            continue
+        out.append({**f, "buteurs_cotes": priced["rows"], "buteurs_ecartes": priced["ecartes"],
+                    "buteurs_composition": priced["composition"],
+                    "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in SCORER_BETS]})
+    return out
 
 
 def _goal_quotes(odds_p: TheOddsApiProvider, competition: str, fixtures, now: datetime, cfg: SelectionConfig):

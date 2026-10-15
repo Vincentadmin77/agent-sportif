@@ -41,8 +41,11 @@ from sportai.services.dashboard import (
     goal_label,
     goal_market_validated,
     NON_VALIDE,
+    SCORER_MARKET,
+    scorer_label,
     settle,
 )
+from sportai.services.buteurs import scorer_leg_info, settle_scorer
 from sportai.services.prematch import LOCAL_TZ, journee
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
@@ -167,6 +170,20 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 trials.append(leg)
             else:
                 legs.append(leg)
+        # Anytime goalscorer (owner, 2026-10-15: "buteur Haaland ou Mbappé"): never backtested, so on trial with the
+        # same care; the market's chance is 1/odds, margin included (a scorer list has no "no" side to de-vig).
+        for r in f.get("buteurs_cotes") or []:
+            p, pm = r["proba"], r["proba_marche"]
+            if (r["valeur"] < TRIAL_MIN_VALUE or p < TRIAL_MIN_PROBA or r["cote"] > TRIAL_MAX_ODDS
+                    or abs(p - pm) > div):
+                continue
+            trials.append({
+                "match_id": doc_id(ko, home, away), "match": f["match"],
+                "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
+                "pari": scorer_label(r["joueur"]), "marche": SCORER_MARKET, "cote": r["cote"],
+                "bookmaker": r["bookmaker"], "proba": round(p, 4), "proba_marche": round(pm, 4),
+                "proba_marche_brute": True, "valeur": round(r["valeur"], 4), "valide": False,
+                "validation": NON_VALIDE, "buteur": scorer_leg_info(r), "_divergence_max": div, "_p_cmp": round(p, 4)})
         # the best few unvalidated bets of the match, by value
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
     return legs
@@ -263,6 +280,11 @@ def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min
 def _settle_leg(leg: dict, page: dict[str, dict]) -> dict:
     leg = dict(leg)
     doc = page.get(leg["match_id"]) or {}
+    if leg.get("buteur"):  # a scorer bet: from the match sheet, refunded when the player did not play
+        res = settle_scorer(leg, doc)
+        if res:
+            leg["resultat"] = res
+        return leg
     if doc.get("statut") == "termine" and doc.get("score"):
         hg, ag = (int(x) for x in doc["score"].split(" - "))
         leg["resultat"] = settle(leg["pari"], doc["domicile"], doc["exterieur"], hg, ag)

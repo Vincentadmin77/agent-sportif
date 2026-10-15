@@ -26,7 +26,8 @@ PRIOR_MATCHES = 6.0
 STARTER_SHARE = 0.85  # share of a side's goals scored by its starting XI (the rest by substitutes)
 SCORER_WARNING = ("Marché non validé : estimation à partir des buts par 90 minutes de chaque titulaire et des buts "
                   "attendus de son équipe. Ni pénaltys ni remplaçants pris en compte. Information seulement, jamais une sélection.")
-SCORER_NO_ODDS = "Aucun bookmaker français ne propose ce marché chez notre fournisseur de cotes : pas de cote à comparer."
+SCORER_NO_ODDS = "Aucun bookmaker ne propose ce marché chez notre fournisseur de cotes pour ce match : pas de cote à comparer."
+SCORER_WITH_ODDS = "Cotes des bookmakers chiffrées par le modèle buteur : voir « cotes » (marché non validé)."
 
 
 @dataclass
@@ -128,7 +129,9 @@ def fill_compositions(doc: dict, fx: dict, lineups: list[dict], pages_for, xg: t
         blocks[side] = block
     doc["compositions"] = blocks
     if scorers:
-        doc["buteurs"] = {"avertissement": SCORER_WARNING, "raison": SCORER_NO_ODDS,
+        # merged: the bookmakers' priced scorer odds ("cotes") and the live match sheet stay
+        doc["buteurs"] = {**(doc.get("buteurs") or {}), "avertissement": SCORER_WARNING,
+                          "raison": SCORER_NO_ODDS if not (doc.get("buteurs") or {}).get("cotes") else SCORER_WITH_ODDS,
                           "joueurs": sorted(scorers, key=lambda p: -p["proba"])[:8]}
     return True
 

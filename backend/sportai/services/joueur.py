@@ -4,7 +4,9 @@ It works on the page's virtual bankroll only and never places a real bet. Each p
 "Mon pronostic" document (the tickets and the three best odds), keeps what is already under way, and for
 the rest stakes a capped fraction of the Kelly stake (the stake that grows a bankroll fastest when the
 probabilities are right), by the profile chosen on the page (reglages/joueur). It passes when nothing is
-worth it, never bets a leg the backtest has not validated, and takes one position per match at most.
+worth it, plays the markets the backtest has not validated (anytime goalscorer included) only on trial, and takes one
+position per match at most before kick-off. During the matches (live) it may add one live bet per match, on trial
+too (LIVE_RULE).
 
 Documents written for the page:
 - joueur/<day>: the day's decisions (played or passed, and why), the stakes, the results, a journal.
@@ -19,8 +21,10 @@ from datetime import date, datetime
 
 import numpy as np
 
+from sportai.engine.football.scorers import live_scorer_proba
+from sportai.services.buteurs import player_state, settle_scorer
 from sportai.services.prematch import LOCAL_TZ
-from sportai.services.dashboard import settle
+from sportai.services.dashboard import NON_VALIDE, settle
 from sportai.services.pronostic import _settle_ticket, agrees, cautious_proba
 
 # Probabilities: each bet is sized on the model's chance capped at the divergence limit above the market's
@@ -121,9 +125,10 @@ def _ucl(d: dict) -> bool:
 
 
 def _essais(d: dict) -> set[str]:
-    """The trial groups a bet belongs to: the Champions League, and each market the backtest has not validated."""
-    return {"ucl" if l.get("ucl") else l.get("marche") or l.get("pari") for l in d["jambes"]
-            if l.get("ucl") or not l.get("valide", True)}
+    """The trial groups a bet belongs to: the Champions League, each market the backtest has not validated, and every
+    bet taken during a match ("Direct", whatever its market: the in-play model is its own trial)."""
+    return {DIRECT if l.get("en_direct") else "ucl" if l.get("ucl") else l.get("marche") or l.get("pari")
+            for l in d["jambes"] if l.get("en_direct") or l.get("ucl") or not l.get("valide", True)}
 
 
 def _essai_nom(g: str) -> str:
@@ -552,8 +557,21 @@ def ticket_stakes(pronostic: dict, day: dict) -> dict:
     return pronostic
 
 
-LIVE_ODDS_RULE = ("Je ne mise pas en direct : le modèle du direct n'est pas encore validé sur des matchs passés. "
-                  "Je note l'occasion pour mesurer plus tard si elle aurait payé.")
+# Live bets (owner, 2026-10-15: "le joueur pro, qui a l'occasion de jouer en direct, aurait pu saisir des cotes comme
+# buteur Haaland ou Mbappé ou, sur un match analysé confiance comme Liverpool, mettre un buteur"). The in-play model has
+# no record against the odds yet, so live bets are one more trial group, "Direct": half the stake, one more point of
+# value, their own record, back to paper after 20 settled bets losing more than 10 % per euro (UCL_ARRET). Only the
+# prices the live page calls "opportunite" (services/live_page.py: 5 % of value at least, within 10 points of the
+# market, never against the match: a side a man down or outplayed, after the 80th minute, odds above 6), at most one
+# live bet per match and per day, counted in the day's budget like any other decision. A live decision is taken once:
+# it keeps its odds and stake at every later 2-minute cycle and is never decided again.
+DIRECT = "Direct"
+LIVE_RULE = ("En direct, à l'essai : je ne mise que sur une cote que le modèle du direct juge sous-évaluée d'au moins "
+             "5 %, jamais contre le cours du match (infériorité numérique, adversaire qui domine, après la 80e minute, "
+             "cote au-dessus de 6), un seul pari en direct par match, mise divisée par deux et un point de valeur de plus. "
+             "J'arrête (retour sur papier) si, après 20 paris réglés, ils perdent plus de 10 % par euro.")
+LIVE_MAX_AGE = 300  # seconds: live data older than this is never bet on
+LIVE_ONE_PER_MATCH = "Déjà un pari en direct sur ce match : un seul par match."
 
 
 def leg_live_chance(leg: dict, m: dict) -> float | None:
@@ -561,6 +579,9 @@ def leg_live_chance(leg: dict, m: dict) -> float | None:
     if not m:
         return None
     hg, ag = (int(x) for x in m["score"].split(" - ")) if m.get("score") else (0, 0)
+    if m.get("statut") == "termine" and leg.get("buteur"):
+        res = settle_scorer(leg, m)
+        return None if res in (None, "rembourse") else 1.0 if res == "gagne" else 0.0
     if m.get("statut") == "termine" and m.get("score"):
         return 1.0 if settle(leg["pari"], m["domicile"], m["exterieur"], hg, ag) == "gagne" else 0.0
     pari, home, away = leg["pari"], m.get("domicile", ""), m.get("exterieur", "")
@@ -573,6 +594,8 @@ def leg_live_chance(leg: dict, m: dict) -> float | None:
         if hg and ag:
             return 1.0 if pari.endswith("oui") else 0.0
         return None
+    if leg.get("buteur"):
+        return _scorer_live_chance(leg, m)
     p = (m.get("direct") or {}).get("proba")
     if not p:
         return None
@@ -583,9 +606,116 @@ def leg_live_chance(leg: dict, m: dict) -> float | None:
     return table.get(pari)
 
 
-def live(day: dict, page: dict[str, dict], now: datetime) -> dict:
+def _scorer_live_chance(leg: dict, m: dict) -> float | None:
+    """A scorer bet during the match: 1 once he scored, 0 when he is off the pitch (substituted, sent off, not on),
+    else 1 - exp(-goals still expected for his side x his share x time left on the pitch)."""
+    b = leg["buteur"]
+    st = player_state(b, m)
+    if st["buts"]:
+        return 1.0
+    rem = (m.get("direct") or {}).get("buts_restants")
+    if st["titulaire"] is None and not st["entre"]:
+        return None
+    if not (st["titulaire"] or st["entre"]) or st["sorti"]:
+        return 0.0
+    if not rem or b.get("part") is None:
+        return None
+    side = 0 if b.get("cote_equipe") == "domicile" else 1
+    return live_scorer_proba(rem[side], b["part"], float(m.get("minute") or 0), b.get("minutes_par_titularisation"),
+                             True, came_on=bool(st["entre"]))
+
+
+def _fresh(m: dict, now: datetime) -> bool:
+    maj = (m.get("direct") or {}).get("maj")
+    try:
+        return bool(maj) and (now - datetime.fromisoformat(maj)).total_seconds() <= LIVE_MAX_AGE
+    except (TypeError, ValueError):
+        return False
+
+
+def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dict[str, dict] | None) -> list[dict]:
+    """The live bets of this cycle (decisions added to `day`), and the opportunities seen but left, with why."""
+    heure = f"{now.astimezone(LOCAL_TZ):%H:%M}"
+    p = PROFILS[day.get("profil") if day.get("profil") in PROFILS else DEFAUT]
+    bank = float(day.get("bankroll_du_jour") or 0.0)
+    kelly = float(day.get("kelly_du_jour") or p["kelly"])
+    lrn = learn({d: v for d, v in past_days.items() if d < day["jour"]}) if past_days is not None else {}
+    stopped = DIRECT in (lrn.get("essais_arret") or ())
+    ratio = (lrn.get("correction") or {}).get("essai", 1.0)
+    vmin = (lrn["valeur_min"] if lrn.get("valeur_min") is not None else p["valeur_min"]) + UCL_MARGE
+    budget = round(p["max_jour"] * bank - sum(d["mise"] for d in day["decisions"] if d.get("joue")), 2)
+    taken = {l["match_id"] for d in day["decisions"] if d.get("type") == "direct" for l in d["jambes"]}
+    left = []
+    for key, m in sorted(page.items()):
+        if m.get("jour") != day["jour"] or m.get("statut") != "en_direct":
+            continue
+        rows = [r for r in (m.get("direct") or {}).get("cotes_direct") or [] if r.get("statut") == "opportunite"]
+        match, minute, score = f"{m['domicile']} - {m['exterieur']}", m.get("minute"), m.get("score")
+        for r in sorted(rows, key=lambda r: -r["valeur"]):
+            proba = round(min(r["proba"] * ratio, 0.99), 4)
+            cote = r["cote"]
+            valeur = round(proba * cote - 1, 4)
+            k = round(max(valeur, 0) / (cote - 1), 4) if cote > 1 else 0.0
+            stake = round(min(min(kelly * UCL_MISE * k, p["max_pari"] * UCL_MISE) * bank, max(budget, 0.0)), 2)
+            why = None
+            if key in taken:
+                why = LIVE_ONE_PER_MATCH
+            elif not _fresh(m, now):
+                why = "Données du direct trop anciennes pour miser dessus."
+            elif not stopped and valeur < vmin:
+                why = (f"Valeur {_pct(valeur)} sous mon minimum de {_pct(vmin, 1)} (un point de plus en direct, à "
+                       "l'essai).")
+            elif not stopped and proba < p["proba_min"]:
+                why = f"Chance de {_pct(proba)} sous mon minimum de {_pct(p['proba_min'], 0)}."
+            elif not stopped and budget < MISE_MIN:
+                why = f"Budget du jour atteint ({_pct(p['max_jour'], 0)} de la bankroll au plus)."
+            elif not stopped and stake < MISE_MIN:
+                why = "La mise utile serait inférieure à 10 centimes."
+            if why:
+                left.append({"match_id": key, "match": match, "minute": minute, "score": score, "pari": r["pari"],
+                             "cote": cote, "proba": r["proba"], "valeur": r["valeur"], "joue": False, "raison": why})
+                continue
+            leg = {"match_id": key, "match": match, "competition": m.get("competition"),
+                   "coup_envoi": m.get("coup_envoi") or now.isoformat(), "pari": r["pari"],
+                   "marche": r.get("marche") or DIRECT, "cote": cote, "proba": r["proba"],
+                   "proba_marche": r.get("proba_marche"), "valeur": r["valeur"], "valide": False,
+                   "validation": NON_VALIDE, "verrouille": True,
+                   "en_direct": {"minute": minute, "score": score, "heure": now.isoformat()},
+                   **({"buteur": r["buteur"]} if r.get("buteur") else {})}
+            d = {"id": f"direct:{key}:{r['pari']}", "type": "direct", "quoi": f"{r['pari']} ({match}, en direct)",
+                 "jambes": [leg], "cote": cote, "proba": proba, "valeur": valeur, "kelly": k,
+                 "proba_modele": r["proba"], "valeur_modele": r["valeur"], "correction": ratio,
+                 "cotes": [{"heure": now.isoformat(), "cote": cote}], "fige": True}
+            where = f"En direct {minute}e, {score}"
+            if stopped:  # back to paper: the bet is noted, one per match, to keep measuring the live model
+                d.update(joue=False, mise=0.0, mise_pct=0.0, motif="non_valide", raison=ESSAI_RULE.format(nom=DIRECT))
+                text = f"{where} : j'aurais pris {r['pari']} ({match}) à {_fr(cote)}, noté sur papier. {d['raison']}"
+            else:
+                budget = round(budget - stake, 2)
+                d.update(joue=True, mise=stake, mise_pct=round(stake / bank, 4) if bank else 0.0, raison=(
+                    f"{where} : chance {_pct(proba, 0)} pour une cote de {_fr(cote)}, valeur {_pct(valeur)}. Kelly "
+                    f"conseille {_pct(k)} de la bankroll, j'en mise {_pct(stake / bank if bank else 0)} (profil "
+                    f"{p['titre'].lower()}, mise divisée par deux : direct à l'essai, pas encore éprouvé face aux cotes)."))
+                pm = r.get("proba_marche")
+                text = (f"{where} : je prends {r['pari']} ({match}) à {_fr(cote)} (modèle {_pct(proba, 0)}"
+                        + (f", marché {_pct(pm, 0)}" if pm is not None else "")
+                        + f", valeur {_pct(valeur)}) : {_fr(stake)} € misés, mise divisée par deux (direct à l'essai).")
+            day["decisions"].append(d)
+            if not any(x["texte"] == LIVE_RULE for x in day["journal"]):  # the rule once, before the first live bet
+                day["journal"].append({"heure": heure, "texte": LIVE_RULE})
+            day["journal"].append({"heure": heure, "texte": text})
+            taken.add(key)
+            left.append({"match_id": key, "match": match, "minute": minute, "score": score, "pari": r["pari"],
+                         "cote": cote, "proba": r["proba"], "valeur": r["valeur"], "joue": d["joue"],
+                         "raison": "Joué en direct : voir mes décisions." if d["joue"] else d["raison"]})
+    return left
+
+
+def live(day: dict, page: dict[str, dict], now: datetime, past_days: dict[str, dict] | None = None) -> dict:
     """The day's player document during the matches: where each bet played stands, minute by minute, what changed
-    (journal), and the in-play opportunities it saw and why it left them."""
+    (journal), the live bets it takes (LIVE_RULE) and the in-play opportunities it saw and why it left them.
+
+    past_days: the earlier days' documents, for the live trial's own record (back to paper when it loses)."""
     day = {**day, "decisions": [dict(d) for d in day.get("decisions") or []], "journal": list(day.get("journal") or [])}
     heure = f"{now.astimezone(LOCAL_TZ):%H:%M}"
     lines = []
@@ -618,17 +748,11 @@ def live(day: dict, page: dict[str, dict], now: datetime) -> dict:
 
     seen = {(o["match_id"], o["pari"]) for o in day.get("direct_vus") or []}
     vus = list(day.get("direct_vus") or [])
-    for key, m in page.items():
-        if m.get("jour") != day["jour"] or m.get("statut") != "en_direct":
+    for entry in _live_stakes(day, page, now, past_days):
+        if (entry["match_id"], entry["pari"]) in seen:
             continue
-        for r in (m.get("direct") or {}).get("cotes_direct") or []:
-            if r.get("statut") != "opportunite" or (key, r["pari"]) in seen:
-                continue
-            seen.add((key, r["pari"]))
-            entry = {"match_id": key, "match": f"{m['domicile']} - {m['exterieur']}", "minute": m.get("minute"),
-                     "score": m.get("score"), "pari": r["pari"], "cote": r["cote"], "proba": r["proba"],
-                     "valeur": r["valeur"], "joue": False, "raison": LIVE_ODDS_RULE}
-            vus.append(entry)  # listed apart (direct_vus), not in the journal: dozens a day would drown the decisions
+        seen.add((entry["match_id"], entry["pari"]))
+        vus.append(entry)  # listed apart (direct_vus), not in the journal: dozens a day would drown the decisions
     day["direct_vus"] = vus[-30:]
     day["journal"] = day["journal"][-60:]
     if lines:
@@ -644,8 +768,9 @@ def live_write(page_folder: str | None, out: str, page: dict[str, dict], now: da
     folder = Path(page_folder or "/nonexistent") / "joueur"
     days = {m.get("jour") for m in page.values() if m.get("statut") in ("en_direct", "termine")}
     written = []
+    past = {p.stem: json.loads(p.read_text()) for p in folder.glob("*.json") if p.stem != "etat"}
     for name in sorted(d for d in days if d and (folder / f"{d}.json").exists()):
-        doc = live(json.loads((folder / f"{name}.json").read_text()), page, now)
+        doc = live(json.loads((folder / f"{name}.json").read_text()), page, now, past)
         (Path(out) / "joueur").mkdir(parents=True, exist_ok=True)
         (Path(out) / "joueur" / f"{name}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
         written.append(name)
