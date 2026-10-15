@@ -1,0 +1,18 @@
+[Unit]
+Description=Agent sportif : passages du jour et direct
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agent
+EnvironmentFile=/etc/agent-sportif.env
+WorkingDirectory=/srv/agent-sportif/code/backend
+ExecStart=/srv/agent-sportif/venv/bin/python scripts/server_runner.py
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

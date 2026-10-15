@@ -1,0 +1,7 @@
+[Unit]
+Description=Agent sportif : récupère la dernière version du code
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/agent-sportif.env
+ExecStart=/srv/agent-sportif/code/deploy/update.sh

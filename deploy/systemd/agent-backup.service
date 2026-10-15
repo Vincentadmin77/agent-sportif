@@ -1,0 +1,6 @@
+[Unit]
+Description=Agent sportif : sauvegarde
+
+[Service]
+Type=oneshot
+ExecStart=/srv/agent-sportif/code/deploy/backup.sh
