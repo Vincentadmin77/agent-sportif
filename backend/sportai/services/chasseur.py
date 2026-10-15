@@ -48,7 +48,8 @@ AVERTISSEMENT = ("Défi virtuel à haut risque : le chasseur remise tout ce qu'i
                  "montante en cours. Ce n'est pas une méthode à copier ; le joueur pro montre la gestion prudente.")
 REGLES = [
     "Une seule cote par jour au maximum, en pari simple, jamais en combiné.",
-    "Cote entre 1,50 et 2,00, sur tous les marchés que le modèle sait chiffrer. Un marché pas encore validé demande "
+    "Cote entre 1,50 et 2,00, sur tous les marchés, mais seulement des cotes vérifiées : chiffrées par le modèle et "
+    "comparées aux bookmakers. Un marché pas encore validé demande "
     "3 % de valeur et il est arrêté si son bilan perd.",
     "Au moins 58 % de chances selon le plus prudent du modèle et des bookmakers, et favori des bookmakers.",
     "Pari figé 30 minutes avant le match, compositions connues ; il ne parie pas en direct, mais il suit son pari "
@@ -88,8 +89,8 @@ def eligible(leg: dict, seuil: float = SEUIL, arretes: set[str] | frozenset = fr
         return f"{fam} : mon bilan sur ce marché perd, je le note sans le jouer"
     if not COTE_MIN <= leg["cote"] <= COTE_MAX:
         return "cote hors de 1,50 à 2,00"
-    if leg.get("proba_marche") is None:
-        return "pas de cote des bookmakers à comparer"
+    if leg.get("proba") is None or leg.get("proba_marche") is None:  # owner 2026-10-15: "pas de cote non vérifiée"
+        return "cote non vérifiée : pas chiffrée par le modèle ou pas comparée aux bookmakers"
     if leg["proba_marche"] < FAVORI:
         return "les bookmakers n'en font pas le favori"
     if not agrees(leg):

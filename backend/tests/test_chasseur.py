@@ -28,6 +28,7 @@ def test_eligible_rules():
     assert eligible(leg("x-y", "Victoire x", 1.90, 0.60, 0.49)) == "les bookmakers n'en font pas le favori"
     trial = {**A, "valide": False, "marche": "Les deux équipes marquent"}
     assert eligible(trial) is None  # every market, like the joueur pro
+    assert eligible({**A, "proba_marche": None}).startswith("cote non vérifiée")
     assert eligible({**trial, "proba": 0.63, "proba_marche": 0.62}) == "pas assez de valeur"  # 3 % asked on trial
     assert "je le note" in eligible(trial, arretes={"Les deux équipes marquent"})
     assert "chances" in eligible(leg("x-y", "Victoire x", 1.80, 0.57, 0.53))
