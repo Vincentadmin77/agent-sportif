@@ -276,7 +276,10 @@ def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min
     pool = _front([l for l in legs if chance(l) >= min_leg and l["cote"] >= TICKET_MIN_LEG_ODDS], chance=chance)
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
-            if (len({l["match_id"] for l in combo}) == n and sum(_trial(l) for l in combo) <= 1
+            # one bet on trial per ticket at most; the match's goals do not count (owner, 2026-10-15: two "both teams
+            # score" make a good ticket)
+            if (len({l["match_id"] for l in combo}) == n
+                    and sum(_trial(l) and l.get("marche") not in GOAL_MARKETS.values() for l in combo) <= 1
                     and math.prod(l["cote"] for l in combo) > min_odds
                     and math.prod(chance(l) for l in combo) >= min_total):
                 yield list(combo)
@@ -349,10 +352,9 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             return _settle_ticket(frozen, page)
         # A bet goes in one ticket only: if it loses, it must not sink the other tickets too (owner, 2026-10-15).
         used = set().union(*taken)
+        # any market may make the safe single, if its value is positive and its chance strong (owner, 2026-10-15):
+        # 55 % at least on the more cautious of the model and the bookmakers
         candidates = open_legs if pool is None else pool
-        if key == "safe":  # a single carries the whole safe ticket: a validated market, or the match's goals (owner,
-            # 2026-10-15: goals are read from the form of both sides and the likely scenario); no scorer, handicap...
-            candidates = [l for l in candidates if not _trial(l) or l.get("marche") in GOAL_MARKETS.values()]
         for fewest in range(min_legs, 0, -1):
             combos = [c for c in _combos(candidates, fewest, max_legs, min_odds, min_total, min_leg, chance)
                       if not {(l["match_id"], l["pari"]) for l in c} & used]

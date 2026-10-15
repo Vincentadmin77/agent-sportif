@@ -163,11 +163,13 @@ def test_safe_ticket_on_confidence_2026_10_14():
     # a single above 1.65 since the same day: Aston Villa, the favourite of both (won 6-0)
     assert {l["pari"] for l in safe["jambes"]} == {"Victoire Aston Villa"}
     assert safe["cote_totale"] == 1.74 and safe["confiance"] >= 0.55
-    # the match's goals may make the safe single (owner, 2026-10-15); another market on trial may not
+    # any market may make the safe single with positive value and a strong chance (owner, 2026-10-15)
     goals = {**over, "pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.70, "proba_marche": 0.62, "valeur": 0.26}
     assert build_pronostic([goals], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] != []
     hcap = {**goals, "marche": "Handicap asiatique", "pari": "k handicap asiatique -1"}
-    assert build_pronostic([hcap], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] == []
+    assert build_pronostic([hcap], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] != []
+    weak = {**hcap, "proba": 0.54, "proba_marche": 0.52, "valeur": round(0.54 * 1.80 - 1, 4)}
+    assert build_pronostic([weak], {}, None, NOW, "h3")["tickets"]["safe"]["jambes"] == []
     assert "Victoire Manchester City" not in {l["pari"] for l in safe["jambes"]}
     # Aston Villa is in the safe ticket, so the semi-safe one may not take it again (owner, 2026-10-15)
     assert "Victoire Aston Villa" not in {l["pari"] for l in doc["tickets"]["semi_safe"]["jambes"]}
@@ -195,3 +197,13 @@ def test_one_bankroll_per_ticket_kind():
     assert doc["tickets"]["safe"]["mise"] == 10.33 and doc["tickets"]["fun"]["mise"] == 3.27
     per = build_bilan({}, days, settings, NOW)["bankroll"]["par_ticket"]
     assert per["safe"]["actuelle"] == 344.42 and per["safe"]["depart"] == 333.33
+
+
+def test_two_both_teams_score_make_a_ticket():
+    """Owner, 2026-10-15: two "both teams score" were enough for a good ticket on 2026-10-14; goal bets are not
+    limited to one per ticket like the other markets on trial."""
+    btts = lambda m, cote, p, pm: {**leg(m, "Les deux équipes marquent : oui", cote, p, pm), "valide": False,
+                                   "marche": "Les deux équipes marquent", "validation": "non validé"}
+    doc = build_pronostic([btts("roma-real", 1.44, 0.72, 0.67), btts("betis-porto", 1.62, 0.65, 0.60)], {}, None, NOW,
+                          "h3")
+    assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"roma-real", "betis-porto"}
