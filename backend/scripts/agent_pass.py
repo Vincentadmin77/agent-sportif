@@ -412,6 +412,12 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         live_write(page, out, {**current, **docs}, now)
     except Exception as e:
         print(f"joueur live unavailable ({str(e)[:160]})", file=sys.stderr)
+    try:  # "Le chasseur alpin": its bet followed live, settled at the final whistle, or one in-play price taken
+        from sportai.services.chasseur import live_write as chasseur_live
+
+        chasseur_live(page, out, {**current, **docs}, now)
+    except Exception as e:
+        print(f"chasseur live unavailable ({str(e)[:160]})", file=sys.stderr)
     n_done = sum(d["statut"] == "termine" for d in docs.values())
     _write(out, docs, f"Direct : {n_live} match(s) en cours, {n_done} terminé(s)", now)
 
