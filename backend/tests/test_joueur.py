@@ -271,3 +271,13 @@ def test_learns_whom_to_believe_from_the_evening_before():
     before = decide(empty, None, {}, 1000.0, "agressif", NOW, legs=[x])[0]
     after = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"confiance": c}, legs=[x])[0]
     assert after["proba"] < before["proba"] and after["mise"] < before["mise"]
+
+
+def test_favourites_not_crushed_and_trial_bets_need_the_bookmakers():
+    # 2026-10-15: a 0.8 record on singles made Rennes (82 % for the model) a 65 % bet, and the player's one bet was
+    # Dion Beljo to score at 2.25 (bookmakers 44 %), a trial market boosted by what goal bets had taught.
+    assert joueur._corrige(0.82, 0.8) > 0.78 and joueur._corrige(0.30, 0.8) < 0.26
+    beljo = {**leg("di-an", "Dion Beljo buteur", 2.25, 0.46), "valide": False, "marche": "Buteur", "proba_marche": 0.444}
+    empty = {"jour": "2026-10-15", "top3": [], "tickets": {}}
+    d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"ratio": {"essai:Nombre de buts": 1.074}}, legs=[beljo])[0]
+    assert not d["joue"] and "moins de 50 %" in d["raison"] and d["correction"] == 1.0

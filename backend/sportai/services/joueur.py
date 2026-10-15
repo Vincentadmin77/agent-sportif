@@ -136,9 +136,25 @@ def _essai_nom(g: str) -> str:
 
 
 def _kind(d: dict) -> str:
-    """Learning groups: combined tickets, single bets (top 3 or any other single), Champions League bets and bets on
-    markets on trial."""
-    return "ucl" if _ucl(d) else "essai" if _essais(d) else "ticket" if d["type"] == "ticket" else "top3"
+    """Learning groups: combined tickets, single bets (top 3 or any other single), Champions League bets, and each
+    family of markets on trial on its own ("essai:Buteur"...): what goal bets taught says nothing about scorers."""
+    if _ucl(d):
+        return "ucl"
+    e = sorted(_essais(d))
+    return f"essai:{e[0]}" if len(e) == 1 else "essai" if e else "ticket" if d["type"] == "ticket" else "top3"
+
+
+def _corrige(p: float, r: float) -> float:
+    """The chance corrected by the record r (wins seen / wins announced), applied to the odds p / (1 - p) rather than
+    to p itself: 0.8 x 82 % would make a clear favourite (Rennes on 2026-10-15) a 65 % bet, when such a record mostly
+    says the long shots were overrated."""
+    return round(min(p * r / (p * r + 1 - p), 0.99), 4) if 0 < p < 1 else p
+
+
+# A bet on trial (a market the backtest has not validated) is only a "confiance" when the bookmakers also make it more
+# likely than not (docs/13-lecons.md, rule 1): on 2026-10-15 the player's one bet was Dion Beljo to score at 2.25
+# (model 46 %, bookmakers 44 %) while it left every favourite around 1.50.
+ESSAI_MARCHE_MIN = 0.50
 
 
 def _result(decision: dict, page: dict[str, dict]) -> dict:
@@ -229,7 +245,7 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
             hist.append({"heure": now.isoformat(), "cote": c["cote"]})
         c["cotes"] = hist[-12:]
         c["proba_modele"], c["valeur_modele"] = c["proba"], c["valeur"]
-        c["proba"] = round(min(c["proba"] * r, 0.99), 4)
+        c["proba"] = _corrige(c["proba"], r)
         c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
         c["kelly"] = round(max(c["valeur"], 0) / (c["cote"] - 1), 4) if c["cote"] > 1 else 0.0
         c["correction"] = r
@@ -249,6 +265,10 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
         why, motif = None, None
         if stopped:
             why, motif = (UCL_RULE if stopped == ["ucl"] else ESSAI_RULE.format(nom=_essai_nom(stopped[0]))), "non_valide"
+        elif essais - {"ucl"} and any((l.get("proba_marche") or 1 / l["cote"]) < ESSAI_MARCHE_MIN for l in c["jambes"]
+                                      if not l.get("valide", True)):
+            why, motif = ("Pari à l'essai que les bookmakers donnent à moins de 50 % : ce n'est pas une vraie confiance, "
+                          "je ne le joue pas."), "proba"
         elif c["valeur"] < vmin:
             why, motif = (f"Valeur {_pct(c['valeur'])} sous mon minimum de {_pct(vmin, 1)}"
                           + (" (un point de plus sur un pari à l'essai)" if essais else "")
@@ -395,8 +415,8 @@ def learn(past_days: dict[str, dict], plafond: str = "agressif") -> dict:
     g = _stats([d for _, d in settled if _motif(d) != "non_valide" and not _essais(d)])
     # Correction of the model's chances: wins seen against wins announced, pulled towards 1 while evidence is thin.
     ratio = {}
-    for kind in ("ticket", "top3", "ucl", "essai"):
-        items = [d for _, d in settled if _kind(d) == kind and (kind in ("ucl", "essai") or _motif(d) != "non_valide")]
+    for kind in ("ticket", "top3", "ucl", "essai", *sorted({_kind(d) for _, d in settled} - {"ticket", "top3", "ucl", "essai"})):
+        items = [d for _, d in settled if _kind(d) == kind and (kind.startswith(("ucl", "essai")) or _motif(d) != "non_valide")]
         st = _stats(items)
         ratio[kind] = round(min(max((PRIOR_GAINS + st["gagnes"]) / (PRIOR_GAINS + st["attendus"]), 0.6), 1.3), 3)
     # Least value: lowered if the bets passed for too thin a value would have paid, raised if those played lose.
@@ -698,7 +718,7 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
     kelly = float(day.get("kelly_du_jour") or p["kelly"])
     lrn = learn({d: v for d, v in past_days.items() if d < day["jour"]}) if past_days is not None else {}
     stopped = DIRECT in (lrn.get("essais_arret") or ())
-    ratio = (lrn.get("correction") or {}).get("essai", 1.0)
+    ratio = (lrn.get("correction") or {}).get(f"essai:{DIRECT}", 1.0)
     vmin = (lrn["valeur_min"] if lrn.get("valeur_min") is not None else p["valeur_min"]) + UCL_MARGE
     budget = round(p["max_jour"] * bank - sum(d["mise"] for d in day["decisions"] if d.get("joue")), 2)
     taken = {l["match_id"] for d in day["decisions"] if d.get("type") == "direct" for l in d["jambes"]}
@@ -709,7 +729,7 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
         rows = [r for r in (m.get("direct") or {}).get("cotes_direct") or [] if r.get("statut") == "opportunite"]
         match, minute, score = f"{m['domicile']} - {m['exterieur']}", m.get("minute"), m.get("score")
         for r in sorted(rows, key=lambda r: -r["valeur"]):
-            proba = round(min(r["proba"] * ratio, 0.99), 4)
+            proba = _corrige(r["proba"], ratio)
             cote = r["cote"]
             valeur = round(proba * cote - 1, 4)
             k = round(max(valeur, 0) / (cote - 1), 4) if cote > 1 else 0.0
