@@ -645,11 +645,17 @@ def ticket_stakes(pronostic: dict, day: dict) -> dict:
 DIRECT = "Direct"
 LIVE_RULE = ("En direct, à l'essai : je ne mise que sur une cote que le modèle du direct juge sous-évaluée d'au moins "
              "5 %, jamais contre le cours du match (infériorité numérique, adversaire qui domine, après la 80e minute, "
-             "cote au-dessus de 6), un seul pari en direct par match, mise divisée par deux et un point de valeur de plus. "
+             "cote au-dessus de 6), un seul pari en direct par match, mise divisée par deux et un point de valeur de plus. Il faut du neuf "
+             "sur le terrain (un but, ou 15 minutes jouées) et des bookmakers qui donnent le pari à 50 % au moins. "
              "J'arrête (retour sur papier) si, après 20 paris réglés, ils perdent plus de 10 % par euro.")
 LIVE_MAX_AGE = 300  # seconds: live data older than this is never bet on
 LIVE_ONE_PER_MATCH = "Déjà un pari en direct sur ce match : un seul par match."
-
+# What the live bets of 2026-10-15 taught (5 bets, −3,14 €): all taken in the first 4 minutes at 0-0, all with the
+# in-play model 5 to 13 points above bookmakers who made them the underdog (34-47 %). Nothing had happened yet, so the
+# pre-match analysis, which had passed on them, still held. A live bet now needs something new on the pitch (a goal,
+# or 15 minutes played), the bookmakers at 50 % or more, the model within the usual limit of them, and the chance
+# mixed with theirs as much as the record says (same rules as before the match).
+LIVE_MINUTE_MIN = 15
 
 def leg_live_chance(leg: dict, m: dict) -> float | None:
     """Chance that a leg wins from the match document as it stands (None when the live model cannot say)."""
@@ -719,6 +725,7 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
     lrn = learn({d: v for d, v in past_days.items() if d < day["jour"]}) if past_days is not None else {}
     stopped = DIRECT in (lrn.get("essais_arret") or ())
     ratio = (lrn.get("correction") or {}).get(f"essai:{DIRECT}", 1.0)
+    w = (lrn.get("confiance") or {}).get("poids_modele", 1.0)
     vmin = (lrn["valeur_min"] if lrn.get("valeur_min") is not None else p["valeur_min"]) + UCL_MARGE
     budget = round(p["max_jour"] * bank - sum(d["mise"] for d in day["decisions"] if d.get("joue")), 2)
     taken = {l["match_id"] for d in day["decisions"] if d.get("type") == "direct" for l in d["jambes"]}
@@ -729,7 +736,9 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
         rows = [r for r in (m.get("direct") or {}).get("cotes_direct") or [] if r.get("statut") == "opportunite"]
         match, minute, score = f"{m['domicile']} - {m['exterieur']}", m.get("minute"), m.get("score")
         for r in sorted(rows, key=lambda r: -r["valeur"]):
-            proba = _corrige(r["proba"], ratio)
+            pm = r.get("proba_marche")
+            test = {"proba": r["proba"], "proba_marche": pm, "_divergence_max": r.get("_divergence_max", 0.10)}
+            proba = _corrige(_trust(test, w), ratio)
             cote = r["cote"]
             valeur = round(proba * cote - 1, 4)
             k = round(max(valeur, 0) / (cote - 1), 4) if cote > 1 else 0.0
@@ -739,6 +748,13 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
                 why = LIVE_ONE_PER_MATCH
             elif not _fresh(m, now):
                 why = "Données du direct trop anciennes pour miser dessus."
+            elif float(minute or 0) < LIVE_MINUTE_MIN and not any(c.isdigit() and c != "0" for c in str(score or "")):
+                why = (f"{minute or 0}e minute, toujours {score or '0 - 0'} : rien de neuf depuis l'avant-match, dont "
+                       "l'analyse tient toujours.")
+            elif (pm if pm is not None else 1 / cote) < ESSAI_MARCHE_MIN:
+                why = "Les bookmakers le donnent à moins de 50 % : ce n'est pas une vraie confiance."
+            elif not agrees(test):
+                why = "Le modèle du direct s'écarte trop des bookmakers : il lui manque sans doute une information."
             elif not stopped and valeur < vmin:
                 why = (f"Valeur {_pct(valeur)} sous mon minimum de {_pct(vmin, 1)} (un point de plus en direct, à "
                        "l'essai).")
@@ -773,7 +789,6 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
                     f"{where} : chance {_pct(proba, 0)} pour une cote de {_fr(cote)}, valeur {_pct(valeur)}. Kelly "
                     f"conseille {_pct(k)} de la bankroll, j'en mise {_pct(stake / bank if bank else 0)} (profil "
                     f"{p['titre'].lower()}, mise divisée par deux : direct à l'essai, pas encore éprouvé face aux cotes)."))
-                pm = r.get("proba_marche")
                 text = (f"{where} : je prends {r['pari']} ({match}) à {_fr(cote)} (modèle {_pct(proba, 0)}"
                         + (f", marché {_pct(pm, 0)}" if pm is not None else "")
                         + f", valeur {_pct(valeur)}) : {_fr(stake)} € misés, mise divisée par deux (direct à l'essai).")

@@ -220,11 +220,12 @@ def live_page(rows, minute=63, score="1 - 0", maj=NOW):
                    "buts_restants": [0.9, 0.5], "cotes_direct": rows}}}
 
 
-HAALAND = {"pari": "Erling Haaland buteur", "marche": "Buteur", "cote": 2.10, "proba": 0.55, "proba_marche": 0.4762,
-           "valeur": round(0.55 * 2.1 - 1, 4), "statut": "opportunite",
+# Both priced at 50 % or more by the bookmakers: a live bet needs that since 2026-10-16.
+HAALAND = {"pari": "Erling Haaland buteur", "marche": "Buteur", "cote": 1.85, "proba": 0.62, "proba_marche": 0.52,
+           "valeur": round(0.62 * 1.85 - 1, 4), "statut": "opportunite",
            "buteur": {"id": 1100, "nom": "Erling Haaland", "cote_equipe": "domicile", "part": 0.45,
                       "minutes_par_titularisation": 88.0, "apres_minute": 63}}
-OVER = {"pari": "Plus de 2,5 buts", "cote": 2.4, "proba": 0.5, "proba_marche": 0.41, "valeur": 0.2,
+OVER = {"pari": "Plus de 2,5 buts", "cote": 1.9, "proba": 0.62, "proba_marche": 0.50, "valeur": round(0.62 * 1.9 - 1, 4),
         "statut": "opportunite"}
 
 
@@ -253,7 +254,7 @@ def test_joueur_stakes_live_once_per_match_half_stake_idempotent():
     moved = live_page([{**OVER, "cote": 3.0, "valeur": 0.5}, HAALAND], minute=65)
     again = joueur.live(day, moved, later + timedelta(minutes=2), {})
     live2 = [d for d in again["decisions"] if d["type"] == "direct"]
-    assert len(live2) == 1 and live2[0]["cote"] == 2.4 and live2[0]["mise"] == d["mise"]
+    assert len(live2) == 1 and live2[0]["cote"] == 1.9 and live2[0]["mise"] == d["mise"]
     assert sum(e["texte"].startswith("En direct 6") for e in again["journal"]) == 1
 
 
@@ -262,7 +263,7 @@ def test_live_scorer_bet_followed_and_settled_and_counted_in_budget(monkeypatch)
     day = joueur.live(player_day(), live_page([HAALAND]), later, {})
     d = next(d for d in day["decisions"] if d["type"] == "direct")
     assert d["joue"] and d["jambes"][0]["buteur"]["apres_minute"] == 63
-    assert "je prends Erling Haaland buteur (Man City - Real Madrid) à 2,10 (modèle 55 %" in day["journal"][-1]["texte"]
+    assert "je prends Erling Haaland buteur (Man City - Real Madrid) à 1,85 (modèle 62 %" in day["journal"][-1]["texte"]
     # followed: on the pitch -> the in-play formula; substituted -> 0; scored -> 1
     page = live_page([HAALAND], minute=70)
     page["2026-10-14-man-city-real"]["statut"] = "en_direct"
@@ -287,7 +288,7 @@ def test_live_scorer_bet_followed_and_settled_and_counted_in_budget(monkeypatch)
     doc, etat = joueur.run({"jour": "2026-10-14", "top3": [], "tickets": {}}, day, {}, scored,
                            {"depart": 100.0, "objectif": 1e5}, {"profil": "prudent"}, None, NOW + timedelta(hours=3))
     settled = next(x for x in doc["decisions"] if x["type"] == "direct")
-    assert settled["resultat"] == "gagne" and settled["gain"] == round(d["mise"] * 1.1, 2)
+    assert settled["resultat"] == "gagne" and settled["gain"] == round(d["mise"] * 0.85, 2)
     assert etat["bankroll"]["actuelle"] == round(100 + settled["gain"], 2)
 
 

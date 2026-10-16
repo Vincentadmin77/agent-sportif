@@ -281,3 +281,25 @@ def test_favourites_not_crushed_and_trial_bets_need_the_bookmakers():
     empty = {"jour": "2026-10-15", "top3": [], "tickets": {}}
     d = decide(empty, None, {}, 1000.0, "agressif", NOW, ajust={"ratio": {"essai:Nombre de buts": 1.074}}, legs=[beljo])[0]
     assert not d["joue"] and "moins de 50 %" in d["raison"] and d["correction"] == 1.0
+
+
+def test_live_bets_need_news_and_the_bookmakers():
+    # 2026-10-15: five live bets at 0-0 in the first minutes, each an underdog for the bookmakers (34-47 %).
+    def page(minute, score, pm, proba=0.55, cote=2.2):
+        return {"m1": {"jour": "2026-10-15", "statut": "en_direct", "domicile": "Celje", "exterieur": "Omonia",
+                       "minute": minute, "score": score, "coup_envoi": NOW.isoformat(),
+                       "direct": {"maj": NOW.isoformat(), "cotes_direct": [
+                           {"statut": "opportunite", "pari": "Victoire Omonia", "cote": cote, "proba": proba,
+                            "valeur": round(proba * cote - 1, 4), "proba_marche": pm}]}}}
+
+    def day():
+        return {"jour": "2026-10-15", "profil": "prudent", "bankroll_du_jour": 1000.0, "kelly_du_jour": 0.125,
+                "decisions": [], "journal": []}
+    for minute, score, pm, word in ((3, "0 - 0", 0.52, "rien de neuf"), (30, "0 - 0", 0.42, "moins de 50 %"),
+                                    (30, "0 - 0", 0.40, "moins de 50 %")):
+        d = day()
+        left = joueur._live_stakes(d, page(minute, score, pm), NOW, {})
+        assert not d["decisions"] and word in left[0]["raison"]
+    d = day()  # a goal, the bookmakers agree it is likely: played
+    joueur._live_stakes(d, page(20, "1 - 0", 0.50), NOW, {})
+    assert d["decisions"] and d["decisions"][0]["joue"]
