@@ -656,6 +656,43 @@ LIVE_ONE_PER_MATCH = "Déjà un pari en direct sur ce match : un seul par match.
 # or 15 minutes played), the bookmakers at 50 % or more, the model within the usual limit of them, and the chance
 # mixed with theirs as much as the record says (same rules as before the match).
 LIVE_MINUTE_MIN = 15
+# The owner's way with a scorer (2026-10-16): "Mbappé buteur à 1,50 ou 1,60, je le cible ; s'il n'a pas marqué, sa cote
+# monte ; une fois passée à 1,90-2, je la joue". A target is a scorer the bookmakers rated strongly before the match
+# (odds at CIBLE_COTE_MAX or less); he is played live, on trial at half stake, once his odds reach CIBLE_DECLENCHEUR,
+# if he is still on the pitch with time left and the live model still sees value at that price. The bookmakers' live
+# chance is then under 50 % by design: their pre-match price is what made him a confiance.
+CIBLE_COTE_MAX = 1.70
+CIBLE_DECLENCHEUR = 1.90
+CIBLE_MINUTE_MAX = 75
+# ... and only if he is in his match (owner, 2026-10-16: Beljo had not shot once at half-time; "personnellement, je
+# ne l'aurais pas joué"). From the 30th minute: at least one shot of his own and a rating of 6.5 or more when the feed
+# gives them (buteur.forme), else at least one shot on target for his side.
+CIBLE_FORME_MINUTE = 30
+CIBLE_NOTE_MIN = 6.5
+
+
+def _hors_du_match(r: dict, m: dict, minute: float) -> str | None:
+    """Why a targeted scorer is not in his match yet, or None."""
+    if minute < CIBLE_FORME_MINUTE:
+        return None
+    b = r.get("buteur") or {}
+    forme = b.get("forme") or {}
+    if forme.get("tirs") is not None and forme["tirs"] == 0:
+        return f"Buteur ciblé, mais pas un seul tir à la {int(minute)}e minute : il n'est pas dans son match."
+    if forme.get("note") is not None and forme["note"] < CIBLE_NOTE_MIN:
+        return f"Buteur ciblé, mais noté {_fr(forme['note'], 1)} : il n'est pas dans son match."
+    if not forme:
+        side = 0 if b.get("cote_equipe") == "domicile" else 1
+        cadres = ((m.get("direct") or {}).get("stats") or {}).get("tirs_cadres")
+        if cadres and cadres[side] == 0:
+            return f"Buteur ciblé, mais son équipe n'a pas cadré un tir à la {int(minute)}e minute."
+    return None
+
+
+def cibles(m: dict) -> dict[str, float]:
+    """The match's targeted scorers: name -> pre-match odds."""
+    return {r["joueur"]: r["cote"] for r in (m.get("buteurs") or {}).get("cotes") or []
+            if r.get("joueur") and r.get("cote") and r["cote"] <= CIBLE_COTE_MAX}
 
 def leg_live_chance(leg: dict, m: dict) -> float | None:
     """Chance that a leg wins from the match document as it stands (None when the live model cannot say)."""
@@ -733,12 +770,20 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
     for key, m in sorted(page.items()):
         if m.get("jour") != day["jour"] or m.get("statut") != "en_direct":
             continue
-        rows = [r for r in (m.get("direct") or {}).get("cotes_direct") or [] if r.get("statut") == "opportunite"]
+        tgt = cibles(m)
         match, minute, score = f"{m['domicile']} - {m['exterieur']}", m.get("minute"), m.get("score")
-        for r in sorted(rows, key=lambda r: -r["valeur"]):
+
+        def target(r: dict) -> float | None:  # pre-match odds of a targeted scorer whose live odds reached the trigger
+            nom = (r.get("buteur") or {}).get("nom")
+            return tgt.get(nom) if nom in tgt and r["cote"] >= CIBLE_DECLENCHEUR else None
+        rows = [r for r in (m.get("direct") or {}).get("cotes_direct") or [] if r.get("statut") == "opportunite"
+                or (r.get("statut") == "ecart_trop_grand" and target(r))]
+        for r in sorted(rows, key=lambda r: (not target(r), -r["valeur"])):
             pm = r.get("proba_marche")
+            avant = target(r)
             test = {"proba": r["proba"], "proba_marche": pm, "_divergence_max": r.get("_divergence_max", 0.10)}
-            proba = _corrige(_trust(test, w), ratio)
+            # a target is judged on the live model alone: the bookmakers' live price is low on purpose
+            proba = _corrige(r["proba"] if avant else _trust(test, w), ratio)
             cote = r["cote"]
             valeur = round(proba * cote - 1, 4)
             k = round(max(valeur, 0) / (cote - 1), 4) if cote > 1 else 0.0
@@ -748,12 +793,16 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
                 why = LIVE_ONE_PER_MATCH
             elif not _fresh(m, now):
                 why = "Données du direct trop anciennes pour miser dessus."
-            elif float(minute or 0) < LIVE_MINUTE_MIN and not any(c.isdigit() and c != "0" for c in str(score or "")):
+            elif avant and float(minute or 0) > CIBLE_MINUTE_MAX:
+                why = f"Buteur ciblé, mais {minute}e minute : trop peu de temps pour qu'il marque."
+            elif avant and _hors_du_match(r, m, float(minute or 0)):
+                why = _hors_du_match(r, m, float(minute or 0))
+            elif not avant and float(minute or 0) < LIVE_MINUTE_MIN and not any(c.isdigit() and c != "0" for c in str(score or "")):
                 why = (f"{minute or 0}e minute, toujours {score or '0 - 0'} : rien de neuf depuis l'avant-match, dont "
                        "l'analyse tient toujours.")
-            elif (pm if pm is not None else 1 / cote) < ESSAI_MARCHE_MIN:
+            elif not avant and (pm if pm is not None else 1 / cote) < ESSAI_MARCHE_MIN:
                 why = "Les bookmakers le donnent à moins de 50 % : ce n'est pas une vraie confiance."
-            elif not agrees(test):
+            elif not avant and not agrees(test):
                 why = "Le modèle du direct s'écarte trop des bookmakers : il lui manque sans doute une information."
             elif not stopped and valeur < vmin:
                 why = (f"Valeur {_pct(valeur)} sous mon minimum de {_pct(vmin, 1)} (un point de plus en direct, à "
@@ -779,7 +828,8 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
                  "jambes": [leg], "cote": cote, "proba": proba, "valeur": valeur, "kelly": k,
                  "proba_modele": r["proba"], "valeur_modele": r["valeur"], "correction": ratio,
                  "cotes": [{"heure": now.isoformat(), "cote": cote}], "fige": True}
-            where = f"En direct {minute}e, {score}"
+            where = f"En direct {minute}e, {score}" + (
+                f", buteur ciblé avant le match à {_fr(avant)}, sa cote est passée à {_fr(cote)}" if avant else "")
             if stopped:  # back to paper: the bet is noted, one per match, to keep measuring the live model
                 d.update(joue=False, mise=0.0, mise_pct=0.0, motif="non_valide", raison=ESSAI_RULE.format(nom=DIRECT))
                 text = f"{where} : j'aurais pris {r['pari']} ({match}) à {_fr(cote)}, noté sur papier. {d['raison']}"
@@ -913,6 +963,12 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
         journal.append({"heure": heure, "texte": "À l'essai : je mise aussi sur les marchés que le backtest n'a pas "
                                                  "validés, avec des mises divisées par deux, et j'arrête chaque marché "
                                                  "dont le bilan perd."})
+    cible = [f"{nom} à {_fr(c)} ({m['domicile']} - {m['exterieur']})" for m in page.values()
+             if m.get("jour") == day and m.get("statut", "a_venir") == "a_venir" for nom, c in cibles(m).items()]
+    if cible and not any(x["texte"].startswith("Je cible") for x in journal):
+        journal.append({"heure": heure, "texte": "Je cible " + ", ".join(sorted(cible)) + " : je ne les joue pas "
+                        f"avant le match ; s'ils n'ont pas marqué et que leur cote passe {_fr(CIBLE_DECLENCHEUR)} en "
+                        "direct, je les prends (à l'essai, mise divisée par deux)."})
     if frein and not any(e["texte"] == frein for e in journal):
         journal.append({"heure": heure, "texte": frein})
     if not journal or (previous_day or {}).get("resume") != resume:

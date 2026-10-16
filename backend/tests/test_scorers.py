@@ -375,3 +375,26 @@ def test_run_fixture_gets_scorer_prices_and_leaves_non_analyse(monkeypatch, tmp_
     out = runs.scorer_markets(None, Api(), "UCL", raw, [fx], fixtures, NOW)
     assert [r["joueur"] for r in out[0]["buteurs_cotes"]] == ["Mohamed Salah"]
     assert out[0]["non_analyses"] == [{"marche": "Corners"}] and out[1] == fixtures[1]
+
+
+def test_targeted_scorer_played_live_once_his_odds_reach_the_trigger():
+    # Owner, 2026-10-16: target a strong scorer before the match (1.50-1.60), play him live once his odds pass 1.90.
+    later = NOW + timedelta(seconds=30)
+    late = {**HAALAND, "cote": 2.0, "proba": 0.58, "proba_marche": 0.5, "valeur": round(0.58 * 2.0 - 1, 4),
+            "statut": "ecart_trop_grand"}
+
+    def page(row, minute=40, pre=1.55):
+        pg = live_page([row], minute=minute, score="0 - 0")
+        pg["2026-10-14-man-city-real"]["buteurs"]["cotes"] = [{"joueur": "Erling Haaland", "cote": pre}]
+        return pg
+    day = joueur.live(player_day(), page({**late, "proba_marche": 0.45}), later, {})
+    d = next(d for d in day["decisions"] if d["type"] == "direct")
+    assert d["joue"] and "buteur ciblé avant le match à 1,55" in d["raison"]
+    # Not a target (2.40 before the match), or too late, or odds not yet at the trigger: left.
+    # In his match? No shot of his own at the 45th, or his side without a shot on target: left.
+    quiet = {**late, "buteur": {**late["buteur"], "forme": {"tirs": 0, "note": 6.4}}}
+    blank = page({**late, "proba_marche": 0.45}, minute=45)
+    blank["2026-10-14-man-city-real"]["direct"]["stats"] = {"tirs_cadres": [0, 3]}
+    for pg in (page({**late, "proba_marche": 0.45}, pre=2.4), page(late, minute=80), page(quiet, minute=45), blank,
+               page({**late, "cote": 1.8, "valeur": round(0.58 * 1.8 - 1, 4), "proba_marche": 0.55})):
+        assert not any(x["type"] == "direct" and x["joue"] for x in joueur.live(player_day(), pg, later, {})["decisions"])
