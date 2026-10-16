@@ -410,3 +410,18 @@ def test_live_scorer_rows_carry_the_targeted_scorers_form():
     assert f["7"] == {"tirs": 0, "note": 6.4} and f["K. Mbappe"] == f["7"]
     assert f["9"] == {"tirs": 3, "note": None}
     assert player_form(None) == {}
+
+
+def test_live_bets_follow_the_run_of_the_match():
+    # Owner, 2026-10-16: 20 shots against 2, the other side defends: that gives the match its trend.
+    m = {"domicile": "Lyon", "exterieur": "Lens", "direct": {"stats": {
+        "tirs": [20, 2], "tirs_cadres": [7, 0], "possession": [68, 32], "xg": [1.9, 0.1]}}}
+    assert "Lens subit" in joueur._contre_tendance("Les deux équipes marquent : oui", m, 40)
+    assert "Match ouvert" in joueur._contre_tendance("Moins de 2,5 buts", m, 40)
+    assert "Lyon domine" in joueur._contre_tendance("Match nul", m, 40)
+    assert joueur._contre_tendance("Plus de 1,5 buts", m, 40) is None
+    assert "subit" in joueur._contre_tendance("X buteur", m, 40, {"cote_equipe": "exterieur"})
+    assert joueur._contre_tendance("X buteur", m, 40, {"cote_equipe": "domicile"}) is None
+    closed = {"domicile": "A", "exterieur": "B", "direct": {"stats": {"tirs": [4, 3], "tirs_cadres": [1, 0], "xg": [0.3, 0.2]}}}
+    assert "Match fermé" in joueur._contre_tendance("Plus de 2,5 buts", closed, 35)
+    assert joueur._contre_tendance("Plus de 2,5 buts", closed, 10) is None  # too early to read a trend

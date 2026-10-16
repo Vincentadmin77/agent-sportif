@@ -647,6 +647,7 @@ LIVE_RULE = ("En direct, à l'essai : je ne mise que sur une cote que le modèle
              "5 %, jamais contre le cours du match (infériorité numérique, adversaire qui domine, après la 80e minute, "
              "cote au-dessus de 6), un seul pari en direct par match, mise divisée par deux et un point de valeur de plus. Il faut du neuf "
              "sur le terrain (un but, ou 15 minutes jouées) et des bookmakers qui donnent le pari à 50 % au moins. "
+             "Dès la 20e minute, le pari doit suivre la tendance du match (tirs, tirs cadrés, possession, occasions). "
              "J'arrête (retour sur papier) si, après 20 paris réglés, ils perdent plus de 10 % par euro.")
 LIVE_MAX_AGE = 300  # seconds: live data older than this is never bet on
 LIVE_ONE_PER_MATCH = "Déjà un pari en direct sur ce match : un seul par match."
@@ -669,6 +670,50 @@ CIBLE_MINUTE_MAX = 75
 # gives them (buteur.forme), else at least one shot on target for his side.
 CIBLE_FORME_MINUTE = 30
 CIBLE_NOTE_MIN = 6.5
+
+
+# The run of the match (owner, 2026-10-16: "s'il veut choisir un plus d'1,5 but ou n'importe quelle cote, il doit
+# analyser l'état de forme de l'équipe en direct"): from the 20th minute, a live bet must agree with what the team
+# statistics show. A win against a side that is a man down or outplayed is already left by the live page
+# (live_page._against_the_match); the player adds the other markets.
+TENDANCE_MINUTE = 20
+
+
+def _contre_tendance(pari: str, m: dict, minute: float, buteur: dict | None = None) -> str | None:
+    """Why a live bet goes against the run of the match, or None."""
+    if minute < TENDANCE_MINUTE:
+        return None
+    st = (m.get("direct") or {}).get("stats") or {}
+    tirs, cadres, poss, xg = st.get("tirs"), st.get("tirs_cadres"), st.get("possession"), st.get("xg")
+    if not any((tirs, cadres, poss, xg)):
+        return None
+    tot = lambda v: sum(v) if v else None  # noqa: E731
+    dom = None  # the side that crushes the other: 3 times the shots, 10 at least
+    if tirs and max(tirs) >= 10 and max(tirs) >= 3 * max(min(tirs), 1):
+        dom = 0 if tirs[0] > tirs[1] else 1
+    names = (m.get("domicile", "domicile"), m.get("exterieur", "extérieur"))
+    if pari.startswith("Plus de"):
+        if minute >= 30 and cadres and tot(cadres) <= 1 and (not xg or tot(xg) < 0.8):
+            return f"Match fermé : {tot(cadres)} tir cadré en {int(minute)} minutes, pas une tendance à buts."
+    elif pari.startswith("Moins de"):
+        if (cadres and tot(cadres) >= 6) or (xg and tot(xg) >= 1.5):
+            return "Match ouvert (beaucoup de tirs cadrés ou d'occasions) : pas une tendance à peu de buts."
+    elif pari == "Les deux équipes marquent : oui":
+        if dom is not None:
+            return f"{names[1 - dom]} subit ({tirs[1 - dom]} tirs contre {tirs[dom]}) : peu de chances qu'elle marque."
+        if minute >= 30 and cadres and min(cadres) == 0:
+            return f"{names[cadres.index(0)]} n'a pas cadré un tir : peu de chances qu'elle marque."
+    elif pari == "Les deux équipes marquent : non":
+        if cadres and min(cadres) >= 3:
+            return "Les deux équipes cadrent (3 tirs ou plus chacune) : elles peuvent toutes deux marquer."
+    elif pari == "Match nul":
+        if dom is not None:
+            return f"{names[dom]} domine nettement ({tirs[dom]} tirs contre {tirs[1 - dom]}) : pas une tendance au nul."
+    elif buteur is not None:
+        side = 0 if buteur.get("cote_equipe") == "domicile" else 1
+        if dom == 1 - side or (poss and poss[side] <= 35):
+            return f"{names[side]} subit le match : son buteur aura peu de ballons."
+    return None
 
 
 def _hors_du_match(r: dict, m: dict, minute: float) -> str | None:
@@ -797,6 +842,8 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
                 why = f"Buteur ciblé, mais {minute}e minute : trop peu de temps pour qu'il marque."
             elif avant and _hors_du_match(r, m, float(minute or 0)):
                 why = _hors_du_match(r, m, float(minute or 0))
+            elif _contre_tendance(r["pari"], m, float(minute or 0), r.get("buteur")):
+                why = _contre_tendance(r["pari"], m, float(minute or 0), r.get("buteur"))
             elif not avant and float(minute or 0) < LIVE_MINUTE_MIN and not any(c.isdigit() and c != "0" for c in str(score or "")):
                 why = (f"{minute or 0}e minute, toujours {score or '0 - 0'} : rien de neuf depuis l'avant-match, dont "
                        "l'analyse tient toujours.")
