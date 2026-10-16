@@ -647,7 +647,7 @@ LIVE_RULE = ("En direct, à l'essai : je ne mise que sur une cote que le modèle
              "5 %, jamais contre le cours du match (infériorité numérique, adversaire qui domine, après la 80e minute, "
              "cote au-dessus de 6), un seul pari en direct par match, mise divisée par deux et un point de valeur de plus. Il faut du neuf "
              "sur le terrain (un but, ou 15 minutes jouées) et des bookmakers qui donnent le pari à 50 % au moins. "
-             "Dès la 20e minute, le pari doit suivre la tendance du match (tirs, tirs cadrés, possession, occasions). "
+             "Dès la 15e minute, le pari doit suivre la tendance du match (tirs, tirs cadrés, possession, occasions). "
              "J'arrête (retour sur papier) si, après 20 paris réglés, ils perdent plus de 10 % par euro.")
 LIVE_MAX_AGE = 300  # seconds: live data older than this is never bet on
 LIVE_ONE_PER_MATCH = "Déjà un pari en direct sur ce match : un seul par match."
@@ -673,10 +673,10 @@ CIBLE_NOTE_MIN = 6.5
 
 
 # The run of the match (owner, 2026-10-16: "s'il veut choisir un plus d'1,5 but ou n'importe quelle cote, il doit
-# analyser l'état de forme de l'équipe en direct"): from the 20th minute, a live bet must agree with what the team
+# analyser l'état de forme de l'équipe en direct"): from the 15th minute (owner lowered it from 20, 2026-10-16), a live bet must agree with what the team
 # statistics show. A win against a side that is a man down or outplayed is already left by the live page
 # (live_page._against_the_match); the player adds the other markets.
-TENDANCE_MINUTE = 20
+TENDANCE_MINUTE = 15
 
 
 def _contre_tendance(pari: str, m: dict, minute: float, buteur: dict | None = None) -> str | None:
