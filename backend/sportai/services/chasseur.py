@@ -1,9 +1,11 @@
-"""Le chasseur alpin: a montante (all winnings re-staked) on one coherent single at 1.50 or more.
+"""Le chasseur alpin: a climb (montante) on one coherent single a day at 1.50 or more, staking a share of its bankroll.
 
-Owner, 2026-10-14 and 2026-10-15: a separate agent with its own gauge, aiming at 100 000 like the others. It starts a
-climb with 100 EUR and stakes the whole climb on one bet; every win is re-staked. As soon as the climb reaches 600 EUR,
-it reaches a "refuge": everything above 100 EUR goes into its gauge (the vault) and it starts again with 100 EUR. When
-it judges the day too risky it does not bet ("il reste au chalet").
+Owner, 2026-10-14 to 2026-10-16: a separate agent with its own gauge, aiming at 100 000 like the others. Each climb
+starts with a bankroll of 100 EUR. It stakes MISE_PCT of the bankroll (10 %, 15 % on a strong validated bet), so
+every win is re-staked through a bigger bankroll and one loss never ends the climb (owner 2026-10-16: "les 100 euros,
+c'est sa bankroll de départ ... des mises par exemple à 10, 15 euros"). As soon as the bankroll reaches 600 EUR it
+reaches a "refuge": everything above 100 EUR goes into its gauge (the vault) and it starts again with 100 EUR. When it
+judges the day too risky it does not bet ("il reste au chalet").
 
 Rules (docs/chasseur-alpin-avis.md, docs/13-lecons.md):
 - one single bet a day at most, never a combined ticket, and never before the previous bet is settled (a montante
@@ -17,8 +19,10 @@ Rules (docs/chasseur-alpin-avis.md, docs/13-lecons.md):
 - chosen on confidence, not on value (lesson of 2026-10-14): the more cautious of the model's and the bookmakers'
   chances must reach SEUIL (58 %), the bookmakers must make it the favourite (>= 50 %), the model must agree with
   the market (pronostic.agrees), and the value on the cautious chance must be >= VALEUR_MIN;
-- after a fall the climb restarts with 100 EUR taken from the vault, or a new 100 EUR (counted in `apports`) when the
-  vault holds less;
+- a fall is the bankroll under PLANCHER (20 EUR): it is topped up to 100 EUR from the vault, or by a new contribution
+  (counted in `apports`) when the vault holds less;
+- the bets of 2026-10-15, staked all-in under the first rule, are kept for the record but left out of the climb
+  (owner 2026-10-16: "remets-lui les 100 euros");
 - it learns: after 10 settled bets winning clearly less often than their chances said, it asks for 62 %.
 
 Virtual only: no real bet is placed. Documents: chasseur/<day> (the day's pick or why none) and chasseur/etat.
@@ -35,6 +39,8 @@ from sportai.services.pronostic import TRIAL_MIN_VALUE, _settle_ticket, agrees, 
 
 DEPART = 100.0  # each climb starts with 100 EUR
 REFUGE = 600.0  # at 600 EUR the climb reaches a refuge: everything above DEPART goes into the vault
+MISE_PCT, MISE_PCT_FORTE, FORTE = 0.10, 0.15, 0.65  # share of the bankroll staked; 15 % from 65 % on a validated bet
+PLANCHER = 20.0  # under 20 EUR the climb has fallen: back to 100 EUR
 OBJECTIF = 100_000.0
 COTE_MIN, COTE_MAX = 1.50, 2.00
 SEUIL, SEUIL_PRUDENT = 0.58, 0.62
@@ -44,8 +50,9 @@ FIGE_AVANT = timedelta(minutes=30)  # owner 2026-10-15: its ticket is frozen 30 
 PREUVES = 10  # settled bets before it judges its own record
 ESSAI_ARRET = (8, 0.8)  # a market on trial: back to paper after 8 settled bets winning under 80 % of the announced
 DIRECT = "Direct"
-AVERTISSEMENT = ("Défi virtuel à haut risque : le chasseur remise tout ce qu'il gagne, une seule défaite efface la "
-                 "montante en cours. Ce n'est pas une méthode à copier ; le joueur pro montre la gestion prudente.")
+AVERTISSEMENT = ("Défi virtuel : le chasseur remise ce qu'il gagne en misant 10 à 15 % de sa bankroll à chaque pari. "
+                 "C'est plus risqué que le joueur pro, qui montre la gestion prudente ; ce n'est pas une méthode à "
+                 "copier.")
 REGLES = [
     "Une seule cote par jour au maximum, en pari simple, jamais en combiné.",
     "Cote entre 1,50 et 2,00, sur tous les marchés, mais seulement des cotes vérifiées : chiffrées par le modèle et "
@@ -54,8 +61,10 @@ REGLES = [
     "Au moins 58 % de chances selon le plus prudent du modèle et des bookmakers, et favori des bookmakers.",
     "Pari figé 30 minutes avant le match, compositions connues ; il ne parie pas en direct, mais il suit son pari "
     "minute par minute.",
-    "Il remise tout ce qu'il gagne. À 600 €, il dépose tout ce qui dépasse 100 € dans sa jauge et repart avec 100 €.",
-    "Après une chute, il repart avec 100 € pris dans sa jauge.",
+    "Sa bankroll de départ est de 100 €. Il mise 10 % de sa bankroll, 15 % sur un pari validé à 65 % de chances ou "
+    "plus : ce qu'il gagne grossit la bankroll, donc ses mises suivantes.",
+    "À 600 €, il dépose tout ce qui dépasse 100 € dans sa jauge et repart avec 100 €.",
+    "Si sa bankroll tombe sous 20 €, il la remonte à 100 € avec sa jauge.",
     "Si rien n'est assez sûr, il ne joue pas et il dit pourquoi.",
 ]
 
@@ -122,6 +131,11 @@ def choose(legs: list[dict], page: dict[str, dict], now: datetime, seuil: float 
                    "chances selon le plus prudent du modèle et des bookmakers.")
 
 
+def stake_pct(leg: dict) -> float:
+    """MISE_PCT of the bankroll, MISE_PCT_FORTE on a validated bet with FORTE chances or more."""
+    return MISE_PCT_FORTE if family(leg) is None and confidence(leg) >= FORTE else MISE_PCT
+
+
 def replay(days: dict[str, dict]) -> dict:
     """The climb, the vault and the record after each settled bet, from the first day on."""
     s = {"montante": DEPART, "coffre": 0.0, "apports": DEPART, "serie": 0, "record": DEPART, "refuges": [],
@@ -129,7 +143,7 @@ def replay(days: dict[str, dict]) -> dict:
          "essais": {}}
     for day in sorted(days):
         p = (days[day] or {}).get("pari")
-        if not p or not p.get("fige"):
+        if not p or not p.get("fige") or p.get("annule") or "mise_pct" not in p:  # first all-in rule: left out
             continue
         if p.get("resultat") not in ("gagne", "perdu", "rembourse"):
             s["en_attente"] = day
@@ -141,8 +155,9 @@ def replay(days: dict[str, dict]) -> dict:
             e["joues"] += 1
             e["gagnes"] += p["resultat"] == "gagne"
             e["attendus"] = round(e["attendus"] + (p.get("confiance") or 0), 4)
+        mise = round(min(p["mise_pct"] * s["montante"], s["montante"]), 2)  # its share of the bankroll as it stands
         if p["resultat"] == "gagne":
-            s["montante"] = round(s["montante"] * p["cote"], 2)
+            s["montante"] = round(s["montante"] + mise * (p["cote"] - 1), 2)
             s["serie"] += 1
             s["gagnes"] += 1
             s["record"] = max(s["record"], s["montante"])
@@ -153,13 +168,16 @@ def replay(days: dict[str, dict]) -> dict:
                 s["montante"], s["serie"] = DEPART, 0
         elif p["resultat"] == "perdu":
             s["perdus"] += 1
-            s["chutes"] += 1
             s["serie"] = 0
-            if s["coffre"] >= DEPART:
-                s["coffre"] = round(s["coffre"] - DEPART, 2)
-            else:
-                s["apports"] += DEPART
-            s["montante"] = DEPART
+            s["montante"] = round(s["montante"] - mise, 2)
+            if s["montante"] < PLANCHER:  # a fall: topped up to 100 EUR from the vault, or a new contribution
+                s["chutes"] += 1
+                top = round(DEPART - s["montante"], 2)
+                if s["coffre"] >= top:
+                    s["coffre"] = round(s["coffre"] - top, 2)
+                else:
+                    s["apports"] = round(s["apports"] + top, 2)
+                s["montante"] = DEPART
         s["historique"].append({"jour": day, "jauge": round(s["coffre"] + s["montante"], 2),
                                 "montante": s["montante"], "coffre": s["coffre"]})
     return s
@@ -215,8 +233,10 @@ def run(legs: list[dict], page: dict[str, dict], previous_day: dict | None, past
             cotes = list((old or {}).get("cotes") or []) if same else []
             if not cotes or cotes[-1]["cote"] != pari["cote"]:  # the price watched across passes
                 cotes.append({"heure": now.isoformat(), "cote": pari["cote"]})
-            pari = {**pari, "confiance": round(confidence(pari), 4), "mise": state["montante"],
-                    "gain_possible": round(state["montante"] * (pari["cote"] - 1), 2),
+            pct = stake_pct(pari)
+            mise = round(pct * state["montante"], 2)
+            pari = {**pari, "confiance": round(confidence(pari), 4), "mise_pct": pct, "mise": mise,
+                    "bankroll": state["montante"], "gain_possible": round(mise * (pari["cote"] - 1), 2),
                     "fige": now >= ko - FIGE_AVANT, "cotes": cotes[-20:]}
         elif old:  # an unfrozen pick no longer qualifies: dropped
             raison = f"Je retire {old['pari']} ({old['match']}) : il ne passe plus mes règles. " + raison
