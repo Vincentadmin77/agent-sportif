@@ -18,8 +18,12 @@ A = leg("a-b", "Victoire a", 1.60, 0.66, 0.60)
 B = leg("c-d", "Victoire c", 1.75, 0.62, 0.55)
 
 
-def pari(cote, res):
-    return {"pari": {"cote": cote, "fige": True, "resultat": res, "confiance": 0.6}}
+def pari(cote, res, pct=0.10):
+    return {"pari": {"cote": cote, "fige": True, "resultat": res, "confiance": 0.6, "mise_pct": pct}}
+
+
+def days_of(*paris):
+    return {f"2026-11-{i + 1:02d}" if i < 30 else f"2026-12-{i - 29:02d}": p for i, p in enumerate(paris)}
 
 
 def test_eligible_rules():
@@ -34,19 +38,22 @@ def test_eligible_rules():
     assert "chances" in eligible(leg("x-y", "Victoire x", 1.80, 0.57, 0.53))
 
 
-def test_climb_refuge_and_fall():
-    days = {f"2026-10-{d:02d}": pari(1.6, "gagne") for d in range(1, 5)}  # 100 -> 655.36: refuge
-    s = replay(days)
-    assert s["coffre"] == 555.36 and s["montante"] == 100 and len(s["refuges"]) == 1
-    s = replay({**days, "2026-10-05": pari(1.6, "perdu")})  # fall: 100 taken from the vault
-    assert s["coffre"] == 455.36 and s["montante"] == 100 and s["apports"] == 100
-    s = replay({"2026-10-01": pari(1.6, "perdu")})  # empty vault: a new 100 counted as a contribution
-    assert s["apports"] == 200 and s["montante"] == 100
+def test_bankroll_stakes_refuge_and_fall():
+    s = replay(days_of(pari(1.6, "gagne")))  # 10 % of 100 at 1.60: +6
+    assert s["montante"] == 106
+    s = replay(days_of(pari(1.6, "perdu")))  # one loss costs 10 €, the climb goes on
+    assert s["montante"] == 90 and s["chutes"] == 0 and s["apports"] == 100
+    s = replay(days_of(*[pari(2.0, "gagne", 0.15)] * 13))  # 100 x 1.15^13 = 615: refuge
+    assert len(s["refuges"]) == 1 and s["montante"] == 100 and s["coffre"] == round(s["refuges"][0]["montante"] - 100, 2)
+    s = replay(days_of(*[pari(1.6, "perdu")] * 16))  # 100 x 0.9^16 = 18.5 < 20: a fall, topped up to 100
+    assert s["chutes"] == 1 and s["montante"] == 100 and 180 < s["apports"] < 182
+    old = {"pari": {"cote": 1.57, "fige": True, "resultat": "perdu", "confiance": 0.65, "mise": 100}}
+    assert replay({"2026-10-15": old})["montante"] == 100  # all-in bet of the first rule: left out
 
 
 def test_day_pick_freeze_and_wait():
     doc, etat, _ = run([A, B], {}, None, {}, NOW, "2026-10-15")
-    assert doc["statut"] == "vise" and doc["pari"]["pari"] == "Victoire a" and doc["pari"]["mise"] == 100
+    assert doc["statut"] == "vise" and doc["pari"]["pari"] == "Victoire a" and doc["pari"]["mise"] == 10 and doc["pari"]["mise_pct"] == 0.10
     late = NOW + timedelta(hours=5, minutes=35)
     doc2, _, _ = run([A, B], {}, doc, {"2026-10-15": doc}, late, "2026-10-15")
     assert doc2["statut"] == "joue" and doc2["pari"]["fige"]
@@ -54,7 +61,7 @@ def test_day_pick_freeze_and_wait():
     tomorrow = leg("c-d", "Victoire c", 1.60, 0.66, 0.60, hours=30)
     nxt, etat, changed = run([tomorrow], page, None, {"2026-10-15": doc2}, NOW + timedelta(days=1), "2026-10-16")
     assert changed["2026-10-15"]["pari"]["resultat"] == "gagne"
-    assert etat["montante"] == 160 and nxt["pari"]["mise"] == 160
+    assert etat["montante"] == 106 and nxt["pari"]["mise"] == 10.6
     pending, _, _ = run([tomorrow], {}, None, {"2026-10-15": doc2}, NOW + timedelta(days=1), "2026-10-16")
     assert pending["statut"] == "en_attente" and pending["pari"] is None
 
@@ -66,7 +73,7 @@ def test_stays_at_the_chalet():
 
 def test_trial_market_back_to_paper():
     bad = {"pari": {"cote": 1.6, "fige": True, "resultat": "perdu", "confiance": 0.6, "valide": False,
-                    "marche": "Handicap"}}
+                    "marche": "Handicap", "mise_pct": 0.10}}
     days = {f"2026-10-{d:02d}": bad for d in range(1, 9)}
     assert stopped(replay(days)) == {"Handicap"}
 
@@ -95,4 +102,4 @@ def test_frozen_30_min_before_then_followed_never_bets_live():
     d = live(frozen, {A["match_id"]: live_match()}, NOW + timedelta(hours=6, minutes=30), {})
     assert d["pari"]["direct"]["chance"] == 0.7 and d["en_direct"]["resume"].startswith("En direct : Victoire a")
     d2 = live(d, {A["match_id"]: live_match("2 - 0", 90, "termine")}, NOW + timedelta(hours=8), {})
-    assert d2["pari"]["resultat"] == "gagne" and replay({"2026-10-15": d2})["montante"] == 160
+    assert d2["pari"]["resultat"] == "gagne" and replay({"2026-10-15": d2})["montante"] == 106
