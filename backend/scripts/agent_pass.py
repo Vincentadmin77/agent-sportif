@@ -347,6 +347,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
 
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.joueur import cibles
     from sportai.services.live_page import (FINISHED, find_doc, fixture_identity, head_to_head_rows, live_doc,
                                              pre_match_rates, recent_form, stats_by_side)
     from sportai.services.prematch import journee
@@ -402,9 +403,15 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
                 lineups = api.lineups(fx["fixture"]["id"], ttl=3600) or None
             except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
                 print(f"line-ups unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
+        players = None
+        if odds and snap.minute >= 30 and cibles(current[key]):
+            try:  # a targeted scorer: is he in his match? (owner 2026-10-16), one request per match and cycle
+                players = api.fixture_players(fx["fixture"]["id"])
+            except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
+                print(f"players unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
         doc = live_doc(current[key], fx, snap, stats_by_side(raw_stats, fx["teams"]["home"]["id"]),
                        pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds,
-                       lineups)
+                       lineups, players)
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
     try:  # the "Joueur pro" player's bets followed live

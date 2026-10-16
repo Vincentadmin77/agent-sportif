@@ -159,8 +159,27 @@ def live_odds_rows(m, odds: list[dict], home: str, away: str, minute: float = 0,
     return sorted(rows, key=lambda r: -r["valeur"])
 
 
+def player_form(players: list[dict] | None) -> dict[str, dict]:
+    """/fixtures/players -> by player id and by name: {"tirs": shots so far, "note": rating or None}."""
+    out = {}
+    for team in players or []:
+        for it in team.get("players") or []:
+            st = (it.get("statistics") or [{}])[0]
+            try:
+                note = float((st.get("games") or {}).get("rating") or "")
+            except ValueError:
+                note = None
+            forme = {"tirs": int((st.get("shots") or {}).get("total") or 0), "note": note}
+            pl = it.get("player") or {}
+            for k in (pl.get("id"), pl.get("name")):
+                if k:
+                    out[str(k)] = forme
+    return out
+
+
 def live_scorer_rows(doc: dict, odds: list[dict], remaining: tuple[float, float], minute: float,
-                     reds: list[int] | None = None, stats: dict[str, list] | None = None) -> list[dict]:
+                     reds: list[int] | None = None, stats: dict[str, list] | None = None,
+                     forms: dict[str, dict] | None = None) -> list[dict]:
     """In-play anytime goalscorer prices against the scorer model (owner, 2026-10-15: Haaland or Mbappé live).
 
     Chance from now on = 1 - exp(-goals still expected for his side x his share x time he should stay on), 0 for a
@@ -197,6 +216,9 @@ def live_scorer_rows(doc: dict, odds: list[dict], remaining: tuple[float, float]
                "ecart": round(gap, 4), "statut": "opportunite" if gap <= MAX_GAP else "ecart_trop_grand",
                "buteur": {**scorer, "part": r["part"], "minutes_par_titularisation": r.get("minutes_par_titularisation"),
                           "apres_minute": int(minute)}}
+        f = (forms or {}).get(str(r.get("joueur_id"))) or (forms or {}).get(r.get("nom_api") or "")
+        if f:  # owner 2026-10-16: is he in his match? (shots, rating), read by the player's scorer targets
+            row["buteur"]["forme"] = f
         why = row["statut"] == "opportunite" and _against_the_match(("home", "away")[side], odd, minute,
                                                                     reds or [0, 0], stats or {})
         if why:
@@ -206,7 +228,8 @@ def live_scorer_rows(doc: dict, odds: list[dict], remaining: tuple[float, float]
 
 
 def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pre: tuple | None, now: datetime,
-             odds: list[dict] | None = None, lineups: list[dict] | None = None) -> dict:
+             odds: list[dict] | None = None, lineups: list[dict] | None = None,
+             players: list[dict] | None = None) -> dict:
     """lineups: /fixtures/lineups, read once per match so the match sheet knows who started (a scorer bet is
     refunded when its player did not play)."""
     doc = dict(doc)
@@ -261,7 +284,8 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
             rows = live_odds_rows(m, odds, doc["domicile"], doc["exterieur"], snap.minute,
                                   [snap.home_red_cards, snap.away_red_cards], stats)
             rows = sorted(rows + live_scorer_rows(doc, odds, rem, snap.minute,
-                                                  [snap.home_red_cards, snap.away_red_cards], stats),
+                                                  [snap.home_red_cards, snap.away_red_cards], stats,
+                                                  player_form(players)),
                           key=lambda r: -r["valeur"])
             direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
             for r in rows:

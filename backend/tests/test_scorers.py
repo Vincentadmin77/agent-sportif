@@ -398,3 +398,15 @@ def test_targeted_scorer_played_live_once_his_odds_reach_the_trigger():
     for pg in (page({**late, "proba_marche": 0.45}, pre=2.4), page(late, minute=80), page(quiet, minute=45), blank,
                page({**late, "cote": 1.8, "valeur": round(0.58 * 1.8 - 1, 4), "proba_marche": 0.55})):
         assert not any(x["type"] == "direct" and x["joue"] for x in joueur.live(player_day(), pg, later, {})["decisions"])
+
+
+def test_live_scorer_rows_carry_the_targeted_scorers_form():
+    from sportai.services.live_page import player_form
+
+    raw = [{"team": {"id": 1}, "players": [
+        {"player": {"id": 7, "name": "K. Mbappe"}, "statistics": [{"games": {"rating": "6.4"}, "shots": {"total": None}}]},
+        {"player": {"id": 9, "name": "X"}, "statistics": [{"games": {"rating": None}, "shots": {"total": 3}}]}]}]
+    f = player_form(raw)
+    assert f["7"] == {"tirs": 0, "note": 6.4} and f["K. Mbappe"] == f["7"]
+    assert f["9"] == {"tirs": 3, "note": None}
+    assert player_form(None) == {}

@@ -115,6 +115,10 @@ class ApiFootballProvider:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
         return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=ttl).get("response", [])
 
+    def fixture_players(self, fixture_id: int | str, ttl: float = 120) -> list[dict]:
+        """Each player's match statistics so far (raw: per team, players [{player, statistics}])."""
+        return self._get("/fixtures/players", {"fixture": fixture_id}, ttl=ttl).get("response", [])
+
     def injuries(self, fixture_id: int | str) -> list[dict]:
         """Players out or doubtful for one fixture (raw: player {id, name, type, reason}, team)."""
         return self._get("/injuries", {"fixture": fixture_id}, ttl=3600).get("response", [])
