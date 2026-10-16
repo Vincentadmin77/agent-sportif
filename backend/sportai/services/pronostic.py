@@ -393,10 +393,15 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     def bets(ticket: dict) -> set:
         return {(l["match_id"], l["pari"]) for l in ticket["jambes"]}
 
+    # A ticket fixed at an earlier pass keeps its bets: the tickets built before it in this pass must not take
+    # them again (2026-10-16: the fun ticket, fixed first, and the semi safe shared "Plus de 1,5 buts").
+    locked = {k: bets(t) for k, t in (previous.get("tickets") or {}).items()
+              if t and t.get("jambes") and (t.get("fige") or any(started(l) for l in t["jambes"]))}
     tickets: dict[str, dict] = {}
     for rules in TICKETS:
         tickets[rules[0]] = build(rules, (previous.get("tickets") or {}).get(rules[0]),
-                                [bets(t) for t in tickets.values()], True)
+                                [bets(t) for t in tickets.values()]
+                                + [b for k, b in locked.items() if k != rules[0]], True)
     # Once an official ticket is fixed, later finds of the same kind are bonus tickets, shown apart: the ones
     # already fixed stay, plus the best new one, until the next pass 45 min before its first match fixes it.
     bonus: dict[str, list[dict]] = {}

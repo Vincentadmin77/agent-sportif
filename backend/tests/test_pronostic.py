@@ -207,3 +207,14 @@ def test_two_both_teams_score_make_a_ticket():
     doc = build_pronostic([btts("roma-real", 1.44, 0.72, 0.67), btts("betis-porto", 1.62, 0.65, 0.60)], {}, None, NOW,
                           "h3")
     assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"roma-real", "betis-porto"}
+
+
+def test_a_ticket_fixed_earlier_keeps_its_bets_out_of_the_others():
+    # 2026-10-16: the fun ticket, fixed first, and the semi safe built after it shared a bet.
+    first = build_pronostic(LEGS, {}, None, NOW, "matin")
+    prev = {**first, "tickets": {**first["tickets"], "safe": {"jambes": []},
+                                 "fun": {**first["tickets"]["fun"], "fige": True, "jambes": [LEGS[0], LEGS[1]]}}}
+    doc = build_pronostic(LEGS, {}, prev, NOW, "h3")
+    assert [l["match"] for l in doc["tickets"]["fun"]["jambes"]] == ["a-b", "c-d"]
+    picked = [(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]]
+    assert len(picked) == len(set(picked))
