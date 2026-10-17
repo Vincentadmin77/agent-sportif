@@ -199,6 +199,33 @@ def test_one_bankroll_per_ticket_kind():
     assert per["safe"]["actuelle"] == 344.42 and per["safe"]["depart"] == 333.33
 
 
+def test_bonus_tickets_have_their_own_bankroll():
+    """Owner 2026-10-17: the bonus tickets get a gauge apart, with the ones won and lost, and never touch the others."""
+    from sportai.services.bilan import build_bilan
+
+    settings = {"depart": 1000.0, "objectif": 100000.0, "mises": {"safe": 0.03, "semi_safe": 0.02, "fun": 0.01}}
+    ticket = lambda res, cote, **kw: {"titre": "t", "jambes": [{"cote": cote, "resultat": res, "pari": "p", "match": "m",
+                                                                **kw}], "resultat": res, "cote_totale": cote, "mise": 10.0}
+    bonus = lambda res, cote, fige=True, **kw: {**ticket(res, cote, **kw), "titre": "Ticket bonus x", "fige": fige}
+    days = {"2026-10-11": {"tickets": {"safe": ticket("gagne", 1.5)},
+                           "bonus": {"safe": [bonus("gagne", 2.0)], "fun": [bonus("perdu", 4.0)]}},
+            "2026-10-12": {"tickets": {"safe": ticket("perdu", 1.5)},
+                           "bonus": {"semi_safe": [bonus("gagne", 2.0, valide=False), bonus("perdu", 2.0, fige=False)],
+                                     "fun": [{**bonus("en_cours", 3.0), "resultat": "en_cours"}]}}}
+    without = build_bilan({}, {d: {k: v for k, v in doc.items() if k != "bonus"} for d, doc in days.items()}, settings,
+                          NOW)
+    out = build_bilan({}, days, settings, NOW)
+    bonus_bank = out["bankroll"].pop("bonus")
+    # safe +30 and fun -10 on 1000; then semi safe on trial at half its 2 % of 1020, won at 2.0: +10.2
+    assert bonus_bank["actuelle"] == 1030.2 and bonus_bank["depart"] == 1000.0 and bonus_bank["titre"] == "Tickets bonus"
+    assert [(h["jour"], h["type"], h["mise"], h["resultat"]) for h in bonus_bank["historique"]] == [
+        ("2026-10-11", "safe", 30.0, "gagne"), ("2026-10-11", "fun", 10.0, "perdu"),
+        ("2026-10-12", "semi_safe", 10.2, "gagne")]
+    # the official bankrolls and the totals are the same with or without the bonus tickets
+    without["bankroll"].pop("bonus")
+    assert {k: v for k, v in out.items() if k != "maj"} == {k: v for k, v in without.items() if k != "maj"}
+
+
 def test_two_both_teams_score_make_a_ticket():
     """Owner, 2026-10-15: two "both teams score" were enough for a good ticket on 2026-10-14; goal bets are not
     limited to one per ticket like the other markets on trial."""

@@ -4,7 +4,8 @@ Every settled forecast of every day: the tickets and the three best odds of "Mon
 selections and the estimated final score of each match, each marked right or wrong, with the hit rate
 overall and per kind. The bankroll starts from the page's setting (reglages/bankroll) and follows the
 tickets; since 2026-10-15 each kind of ticket (safe, semi-safe, fun) has its own bankroll from that start, and stakes
-a fixed share of it as it stood at the start of its day. The combined one is kept for reference.
+a fixed share of it as it stood at the start of its day. The combined one is kept for reference. The bonus tickets
+(later finds once an official ticket is fixed) have a gauge of their own since 2026-10-17, which never touches the others.
 """
 
 from __future__ import annotations
@@ -71,20 +72,45 @@ def replay_by_ticket(pronostics: dict[str, dict], settings: dict) -> dict[str, t
     return out
 
 
+def replay_bonus(pronostics: dict[str, dict], settings: dict) -> tuple[float, list[dict]]:
+    """The bonus tickets' own bankroll (owner 2026-10-17: "une jauge à part"), from the page's start, over every
+    settled bonus ticket that was fixed, each staking its kind's share of this bankroll at the start of its day."""
+    bank, history = float(settings["depart"]), []
+    for day in sorted(pronostics):
+        start, bonus = bank, pronostics[day].get("bonus") or {}
+        for key in TICKET_ORDER:
+            for t in bonus.get(key) or []:
+                if not (t.get("jambes") and t.get("fige") and t.get("resultat") in ("gagne", "perdu", "rembourse")):
+                    continue
+                stake, r = round(start * stake_pct(t, key, settings)[0], 2), _ticket_return(t)
+                bank = round(bank + stake * r, 2)
+                history.append({"jour": day, "ticket": t.get("titre", f"Ticket bonus {key}"), "type": key,
+                                "mise": stake, "cote": t.get("cote_totale"), "resultat": t["resultat"],
+                                "gain": round(stake * r, 2), "bankroll": bank})
+    return bank, history
+
+
+def stake_pct(t: dict, key: str, settings: dict) -> tuple[float, str | None]:
+    """Share of its bankroll a ticket stakes, and why it was cut if it was."""
+    from sportai.services.pronostic import TRIAL_STAKE_FACTOR, UCL_STAKE_FACTOR
+
+    pct = settings["mises"].get(key, 0.0)
+    if any(l.get("ucl") for l in t["jambes"]):  # Champions League bet inside: half the stake
+        return round(pct * UCL_STAKE_FACTOR, 4), None
+    if any(not l.get("valide", True) for l in t["jambes"]):  # a "non validé" market inside: half the stake
+        return round(pct * TRIAL_STAKE_FACTOR, 4), "pari non validé dans le ticket : mise divisée par deux"
+    return pct, None
+
+
 def apply_stakes(doc: dict, settings: dict, bank_at_start: float | dict[str, float]) -> dict:
     """Stake of each ticket of a day not yet frozen, a fixed share of its own bankroll at the start of the day
     (bank_at_start per kind of ticket; a single amount for all, as before 2026-10-15)."""
     for key, t in (doc.get("tickets") or {}).items():
         if t.get("jambes") and "mise" not in t:
             bank = bank_at_start.get(key, ticket_start(settings)) if isinstance(bank_at_start, dict) else bank_at_start
-            pct = settings["mises"].get(key, 0.0)
-            from sportai.services.pronostic import TRIAL_STAKE_FACTOR, UCL_STAKE_FACTOR
-
-            if any(l.get("ucl") for l in t["jambes"]):  # Champions League bet inside: half the stake
-                pct = round(pct * UCL_STAKE_FACTOR, 4)
-            elif any(not l.get("valide", True) for l in t["jambes"]):  # a "non validé" market inside: half the stake
-                pct = round(pct * TRIAL_STAKE_FACTOR, 4)
-                t["mise_reduite"] = "pari non validé dans le ticket : mise divisée par deux"
+            pct, reduced = stake_pct(t, key, settings)
+            if reduced:
+                t["mise_reduite"] = reduced
             t["mise_pct"] = pct
             t["mise"] = round(bank * pct, 2)
     if isinstance(bank_at_start, dict):
@@ -136,6 +162,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                                          + (", score exact trouvé." if est.get("score_exact") else ".")})
     items.sort(key=lambda i: (i["jour"] or "", i["type"]), reverse=True)
     bank, history = replay(pronostics, settings)
+    bonus_bank, bonus_history = replay_bonus(pronostics, settings)
     kinds = {}
     for key, label in (("safe", "Ticket safe"), ("semi_safe", "Ticket semi safe"), ("fun", "Ticket fun"),
                        ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés")):
@@ -151,6 +178,10 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                                           "progression": round(b / (settings["objectif"] / len(TICKET_ORDER)), 6),
                                           "mise": settings["mises"][key], "historique": h}
                                     for (key, (b, h)), title in zip(replay_by_ticket(pronostics, settings).items(),
-                                                                    ("Ticket safe", "Ticket semi safe", "Ticket fun"))}},
+                                                                    ("Ticket safe", "Ticket semi safe", "Ticket fun"))},
+                     # the bonus tickets apart (owner 2026-10-17): kept as a trace, never in the gauges above
+                     "bonus": {"titre": "Tickets bonus", "depart": settings["depart"], "actuelle": bonus_bank,
+                               "progression": round(bonus_bank / settings["objectif"], 6), "mise": settings["mises"],
+                               "historique": bonus_history}},
         "note": NOTE,
     }
