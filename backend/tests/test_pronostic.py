@@ -245,3 +245,14 @@ def test_a_ticket_fixed_earlier_keeps_its_bets_out_of_the_others():
     assert [l["match"] for l in doc["tickets"]["fun"]["jambes"]] == ["a-b", "c-d"]
     picked = [(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]]
     assert len(picked) == len(set(picked))
+
+
+def test_a_bonus_fixed_earlier_keeps_its_bets_out_of_the_official_tickets():
+    # 2026-10-17: the semi safe, still open, took the bet of a fixed bonus fun ticket.
+    first = build_pronostic(LEGS, {}, None, NOW, "matin")
+    taken = [{**l} for t in first["tickets"].values() for l in t["jambes"]]
+    prev = {**first, "tickets": {k: {"jambes": []} for k in first["tickets"]},
+            "bonus": {"fun": [{"titre": "Ticket bonus fun", "fige": True, "jambes": taken}]}}
+    doc = build_pronostic(LEGS, {}, prev, NOW, "h3")
+    official = {(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]}
+    assert not official & {(l["match"], l["pari"]) for l in taken}

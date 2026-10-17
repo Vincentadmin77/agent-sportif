@@ -397,11 +397,15 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     # them again (2026-10-16: the fun ticket, fixed first, and the semi safe shared "Plus de 1,5 buts").
     locked = {k: bets(t) for k, t in (previous.get("tickets") or {}).items()
               if t and t.get("jambes") and (t.get("fige") or any(started(l) for l in t["jambes"]))}
+    # a bonus fixed earlier keeps its bets too: 2026-10-17 the semi safe, still open, took the Lens bet of a fixed
+    # bonus fun ticket
+    locked_bonus = [bets(b) for group in (previous.get("bonus") or {}).values() for b in group or []
+                    if b.get("jambes") and (b.get("fige") or any(started(l) for l in b["jambes"]))]
     tickets: dict[str, dict] = {}
     for rules in TICKETS:
         tickets[rules[0]] = build(rules, (previous.get("tickets") or {}).get(rules[0]),
                                 [bets(t) for t in tickets.values()]
-                                + [b for k, b in locked.items() if k != rules[0]], True)
+                                + [b for k, b in locked.items() if k != rules[0]] + locked_bonus, True)
     # Once an official ticket is fixed, later finds of the same kind are bonus tickets, shown apart: the ones
     # already fixed stay, plus the best new one, until the next pass 45 min before its first match fixes it.
     bonus: dict[str, list[dict]] = {}
