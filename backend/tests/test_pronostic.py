@@ -256,3 +256,15 @@ def test_a_bonus_fixed_earlier_keeps_its_bets_out_of_the_official_tickets():
     doc = build_pronostic(LEGS, {}, prev, NOW, "h3")
     official = {(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]}
     assert not official & {(l["match"], l["pari"]) for l in taken}
+
+
+def test_a_new_bonus_shares_no_bet_with_a_bonus_of_another_kind_fixed_earlier():
+    # 2026-10-17: a new bonus semi safe took the bet of a bonus fun ticket fixed earlier.
+    other = leg("x-y", "Victoire x", 1.75, 0.66, 0.58)
+    first = build_pronostic(LEGS, {}, None, NOW, "matin")
+    prev = {**first, "tickets": {**first["tickets"], "safe": {**first["tickets"]["safe"], "fige": True,
+                                                             "jambes": [other]}},
+            "bonus": {"fun": [{"titre": "Ticket bonus fun", "fige": True, "jambes": [LEGS[0]]}]}}
+    doc = build_pronostic(LEGS, {}, prev, NOW, "h3")
+    assert all(("a-b", "Victoire a") not in {(l["match"], l["pari"]) for l in t["jambes"]}
+               for t in doc["bonus"].get("safe", []))

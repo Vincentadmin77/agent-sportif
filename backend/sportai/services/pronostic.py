@@ -418,7 +418,10 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         official = bets(tickets[key])
         kept = [build(rules, b, [], False) for b in (previous.get("bonus") or {}).get(key) or []
                 if (b.get("fige") or any(started(l) for l in b["jambes"])) and not bets(b) & official]
+        # bonus tickets of the kinds built later in this loop count too (2026-10-17: a new bonus semi safe took
+        # "Victoire AS Roma" from a fixed bonus fun ticket)
         taken = [bets(t) for t in [*tickets.values(), *kept, *(b for group in bonus.values() for b in group)]]
+        taken += locked_bonus
         new = build(rules, None, taken, False,
                     [l for l in open_legs if (l["match_id"], l["pari"]) not in official])
         bonus[key] = kept + ([new] if new and len(kept) < MAX_BONUS else [])
