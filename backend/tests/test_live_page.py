@@ -79,7 +79,8 @@ def test_live_odds_flag_value_against_the_in_play_model():
     assert all(r["valeur"] >= 0.05 for r in rows.values())
     assert not any("0,5" in p for p in rows)  # one side suspended: no fair price for that line
     n_opp = sum(r["statut"] == "opportunite" for r in rows.values())
-    assert sum("Cote en direct" in a for a in d["alertes"]) == n_opp
+    # the live prices feed the joueur pro only: no live suggestion shown to the public (owner 2026-10-17)
+    assert not any("Cote en direct" in a for a in d["alertes"]) and d["cotes_direct_public"] is False
     assert doc["selections"] == []
 
 

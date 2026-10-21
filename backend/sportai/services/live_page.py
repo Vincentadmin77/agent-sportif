@@ -287,11 +287,10 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
                                                   [snap.home_red_cards, snap.away_red_cards], stats,
                                                   player_form(players)),
                           key=lambda r: -r["valeur"])
+            # the live prices feed the joueur pro only, who decides alone and learns from his errors: no more live
+            # suggestions shown to the public (owner 2026-10-17: "0-0 entre Inter et Bologne à 8 min, n'importe quoi")
             direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
-            for r in rows:
-                if r["statut"] == "opportunite":
-                    alerts.append(f"Cote en direct intéressante : {r['pari']} à {str(r['cote']).replace('.', ',')} (modèle "
-                                  f"{r['proba']:.0%}, marché {r['proba_marche']:.0%}, valeur {r['valeur']:+.0%}).")
+            direct["cotes_direct_public"] = False
     else:
         direct["sans_modele"] = "Pas d'analyse d'avant-match pour ce match : score et statistiques seulement."
     doc["direct"] = direct

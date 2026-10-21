@@ -105,7 +105,7 @@ def test_tickets_fixed_45_min_before_then_bonus():
     assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"m-n", "o-p"}
     safe = doc["bonus"]["safe"]
     assert {l["match"] for l in safe[-1]["jambes"]} == {"q-r"} and not safe[-1]["fige"]
-    assert safe[-1]["titre"] == "Ticket bonus safe" and all(b["fige"] for b in safe[:-1])
+    assert safe[-1]["titre"] == "Idée safe" and all(b["fige"] for b in safe[:-1])
 
 
 def test_match_odds_1x2_prefers_winamax():
@@ -217,12 +217,17 @@ def test_bonus_tickets_have_their_own_bankroll():
     out = build_bilan({}, days, settings, NOW)
     bonus_bank = out["bankroll"].pop("bonus")
     # safe +30 and fun -10 on 1000; then semi safe on trial at half its 2 % of 1020, won at 2.0: +10.2
-    assert bonus_bank["actuelle"] == 1030.2 and bonus_bank["depart"] == 1000.0 and bonus_bank["titre"] == "Tickets bonus"
+    assert bonus_bank["actuelle"] == 1030.2 and bonus_bank["depart"] == 1000.0 and bonus_bank["titre"] == "La boîte à idées"
     assert [(h["jour"], h["type"], h["mise"], h["resultat"]) for h in bonus_bank["historique"]] == [
         ("2026-10-11", "safe", 30.0, "gagne"), ("2026-10-11", "fun", 10.0, "perdu"),
         ("2026-10-12", "semi_safe", 10.2, "gagne")]
     # the official bankrolls and the totals are the same with or without the bonus tickets
     without["bankroll"].pop("bonus")
+    # "La boîte à idées" (owner 2026-10-17): 2 ideas won, 1 lost; the open and unfixed ones are not counted
+    ideas = out.pop("boite_a_idees")
+    assert (ideas["gagnees"], ideas["perdues"], ideas["taux_reussite"]) == (2, 1, 0.6667)
+    assert ideas["par_type"]["fun"]["perdues"] == 1 and ideas["par_type"]["safe"]["taux_reussite"] == 1.0
+    assert without.pop("boite_a_idees")["taux_reussite"] is None
     assert {k: v for k, v in out.items() if k != "maj"} == {k: v for k, v in without.items() if k != "maj"}
 
 

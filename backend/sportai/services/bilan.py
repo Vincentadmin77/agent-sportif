@@ -84,7 +84,7 @@ def replay_bonus(pronostics: dict[str, dict], settings: dict) -> tuple[float, li
                     continue
                 stake, r = round(start * stake_pct(t, key, settings)[0], 2), _ticket_return(t)
                 bank = round(bank + stake * r, 2)
-                history.append({"jour": day, "ticket": t.get("titre", f"Ticket bonus {key}"), "type": key,
+                history.append({"jour": day, "ticket": t.get("titre", f"Idée {key}"), "type": key,
                                 "mise": stake, "cote": t.get("cote_totale"), "resultat": t["resultat"],
                                 "gain": round(stake * r, 2), "bankroll": bank})
     return bank, history
@@ -180,8 +180,20 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                                     for (key, (b, h)), title in zip(replay_by_ticket(pronostics, settings).items(),
                                                                     ("Ticket safe", "Ticket semi safe", "Ticket fun"))},
                      # the bonus tickets apart (owner 2026-10-17): kept as a trace, never in the gauges above
-                     "bonus": {"titre": "Tickets bonus", "depart": settings["depart"], "actuelle": bonus_bank,
+                     "bonus": {"titre": "La boîte à idées", "depart": settings["depart"], "actuelle": bonus_bank,
                                "progression": round(bonus_bank / settings["objectif"], 6), "mise": settings["mises"],
                                "historique": bonus_history}},
+        # "La boîte à idées" (owner 2026-10-17): the bonus tickets as ideas, their success and loss ratio
+        "boite_a_idees": ideas_ratio(bonus_history),
         "note": NOTE,
     }
+
+
+def ideas_ratio(history: list[dict]) -> dict:
+    """Success and loss ratio of the ideas, overall and by kind; a refunded idea counts in neither."""
+    def count(rows: list[dict]) -> dict:
+        won, lost = (sum(r["resultat"] == k for r in rows) for k in ("gagne", "perdu"))
+        return {"gagnees": won, "perdues": lost, "remboursees": len(rows) - won - lost,
+                "taux_reussite": round(won / (won + lost), 4) if won + lost else None}
+    return {"titre": "La boîte à idées", **count(history),
+            "par_type": {k: count([r for r in history if r.get("type") == k]) for k in TICKET_ORDER}}

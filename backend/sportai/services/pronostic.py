@@ -18,7 +18,8 @@ the market was the safe ticket of 2026-10-14, while Liverpool and Aston Villa, f
 because the model rated them over 10 points above the market). A model far from the market still rules a bet out
 (it usually means information the model lacks), except above it on a bet the market makes the favourite. A ticket is fixed at the pass 45 min before its
 first match, when the line-ups are known, then settled from the page's scores. Once an official ticket
-is fixed, a later find of the same kind is a "bonus" ticket, shown apart (owner, 2026-10-11).
+is fixed, a later find of the same kind is a "bonus" ticket, shown apart (owner, 2026-10-11): since 2026-10-17 an
+"idée" of "La boîte à idées" tab, with its own success rate, never with the three official tickets of the day.
 """
 
 from __future__ import annotations
@@ -62,6 +63,9 @@ MAX_BONUS = 3  # bonus tickets of each kind in a day
 FIXED_NOTE = "Ticket figé au passage 45 min avant son premier match (compositions connues)."
 LATE_NOTE = ("Ticket ajouté au dernier passage, 15 min avant son premier match : la cote a passé le seuil après le "
              "passage de 45 min.")
+IDEAS_NOTE = ("La boîte à idées : les autres positions possibles du jour, trouvées après les trois tickets officiels. "
+              "Tout le monde vient y piocher des idées. Elles restent ici, ne comptent pas dans les tickets "
+              "officiels et ont leur propre taux de réussite. Jamais de pari en direct.")
 GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
@@ -413,7 +417,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         # only from the pass after the official ticket was fixed: a bonus is a later find, not a near copy
         if not (tickets[key].get("fige") and ((previous.get("tickets") or {}).get(key) or {}).get("fige")):
             continue
-        rules = (key, title.replace("Ticket", "Ticket bonus"), *rest)
+        # bonus tickets are "idées" for "La boîte à idées" tab, never with the official tickets (owner, 2026-10-17)
+        rules = (key, title.replace("Ticket", "Idée"), *rest)
         # a bonus shares no bet with the official ticket of its kind: other bets, not a variant of it
         official = bets(tickets[key])
         kept = [build(rules, b, [], False) for b in (previous.get("bonus") or {}).get(key) or []
@@ -435,4 +440,5 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     for t in [*tickets.values(), *(b for group in bonus.values() for b in group)]:
         t["jambes"] = [clean(l) for l in t["jambes"]]
     return {"jour": f"{day:%Y-%m-%d}", "maj": now.isoformat(), "passage": passage, "message": " ".join(notes),
-            "top3": [clean(l) for l in top3], "tickets": tickets, "bonus": bonus, "avertissement": WARNING}
+            "top3": [clean(l) for l in top3], "tickets": tickets, "bonus": bonus, "boite_a_idees": IDEAS_NOTE,
+            "avertissement": WARNING}
