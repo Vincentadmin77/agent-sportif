@@ -53,7 +53,7 @@ def test_montante_25_whole_return_refuge_and_restart():
     assert replay({"2026-10-15": old})["montante"] == 25  # all-in bet of the first rule: left out
     ten = {"pari": {"cote": 1.53, "fige": True, "resultat": "gagne", "confiance": 0.64, "mise": 10, "mise_pct": 0.1}}
     s = replay({"2026-10-17": ten})  # a 10 % stake of the second rule: its 5.30 € gain rides on the first climb
-    assert (s["banque"], s["montante"], jauge(s)) == (75, 30.3, 105.3)
+    assert (s["banque"], s["montante"], jauge(s)) == (75, 30.3, 105.3) and s["serie"] == 1
 
 
 def test_day_pick_freeze_and_wait():

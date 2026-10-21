@@ -173,6 +173,7 @@ def replay(days: dict[str, dict]) -> dict:
         s["perdus"] += lost
         if p.get("regle") != REGLE:  # a 10 % stake of the second rule: into the bankroll with its own stake
             s["banque"] = round(s["banque"] + (p["mise"] * (p["cote"] - 1) if won else -p["mise"] if lost else 0), 2)
+            s["serie"] = s["serie"] + 1 if won else 0 if lost else s["serie"]  # its gain rides on: the run goes on
         else:
             if s["montante"] is None:
                 start(max(0.0, s["banque"] - DEPART))
