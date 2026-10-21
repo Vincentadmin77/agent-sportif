@@ -107,7 +107,7 @@ class ApiFootballProvider:
         return self._get("/fixtures/headtohead", {"h2h": f"{team_a}-{team_b}", "last": last},
                          ttl=86400).get("response", [])
 
-    def team_last(self, team_id: int, last: int = 5) -> list[dict]:
+    def team_last(self, team_id: int, last: int = 10) -> list[dict]:
         """A team's last played matches (raw fixtures), all competitions."""
         return self._get("/fixtures", {"team": team_id, "last": last}, ttl=86400).get("response", [])
 
@@ -118,6 +118,10 @@ class ApiFootballProvider:
     def fixture_players(self, fixture_id: int | str, ttl: float = 120) -> list[dict]:
         """Each player's match statistics so far (raw: per team, players [{player, statistics}])."""
         return self._get("/fixtures/players", {"fixture": fixture_id}, ttl=ttl).get("response", [])
+
+    def standings(self, league_id: int, season: int, ttl: float = 6 * 3600) -> list[dict]:
+        """League table(s) of a competition's season (raw: league {standings: [[rows]]}), one request."""
+        return self._get("/standings", {"league": league_id, "season": season}, ttl=ttl).get("response", [])
 
     def injuries(self, fixture_id: int | str) -> list[dict]:
         """Players out or doubtful for one fixture (raw: player {id, name, type, reason}, team)."""

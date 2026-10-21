@@ -213,6 +213,10 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         _form(comps, docs, current, now)
     except Exception as e:  # form is a bonus: never lose the pass for it
         notes.append(f"forme unavailable ({str(e)[:120]})")
+    try:
+        _context(comps, docs, current, now)
+    except Exception as e:  # context is a bonus: never lose the pass for it
+        notes.append(f"contexte unavailable ({str(e)[:120]})")
     STATE_DB.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(work, STATE_DB)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
@@ -247,6 +251,44 @@ def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now
             docs[key]["face_a_face"] = head_to_head_rows(api.head_to_head(h, a))
             docs[key]["forme"] = {"domicile": recent_form(api.team_last(h), h),
                                   "exterieur": recent_form(api.team_last(a), a)}
+
+
+def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
+    """Referee, standings, streaks and weather of the pass's matches still to play (sportai/services/contexte.py).
+    Each pass refreshes them (the referee is often named late, the forecast improves); the streaks are fetched
+    once a day per match. Context only: no probability uses it yet."""
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.contexte import ContextSources, build_context
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+
+    for key, d in docs.items():  # a pass rebuilds the document: keep what an earlier pass found
+        if "contexte" not in d and "contexte" in (current.get(key) or {}):
+            d["contexte"] = current[key]["contexte"]
+    days = {journee(datetime.fromisoformat(d["coup_envoi"])) for d in docs.values()
+            if d.get("coup_envoi") and datetime.fromisoformat(d["coup_envoi"]) > now}
+    if not days:
+        return
+    api = ApiFootballProvider(get_settings().api_football_key)
+    src = ContextSources(api, now)
+    for day in sorted(days):
+        for fx in api.fixtures_on(comps, day):
+            if fx["fixture"]["status"]["short"] not in ("NS", "TBD"):
+                continue
+            key = find_doc(docs, f"{day:%Y-%m-%d}", fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
+            if not key:
+                continue
+            prev = docs[key].get("contexte") or (current.get(key) or {}).get("contexte") or {}
+            last_h = last_a = None
+            if not prev.get("series") or journee(datetime.fromisoformat(prev["maj"])) != journee(now):
+                try:
+                    last_h, last_a = api.team_last(fx["teams"]["home"]["id"]), api.team_last(fx["teams"]["away"]["id"])
+                except Exception as e:  # noqa: BLE001 - keep yesterday's streaks
+                    print(f"séries unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
+            docs[key]["contexte"] = build_context(src, fx, prev, last_h, last_a)
+    if src.weather_down:
+        print("météo unavailable (Open-Meteo unreachable)", file=sys.stderr)
 
 
 def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now: datetime,
@@ -442,6 +484,12 @@ def goals_refresh(now: datetime, max_requests: int, download: bool = True) -> No
     from sportai.services.goals_refresh import run_refresh
 
     report = run_refresh(now, get_settings().api_football_key, max_requests=max_requests, download=download)
+    try:  # referees' card profiles from the same cached matches (no request), read by every pass of the day
+        from sportai.services.contexte import refresh_referee_index
+
+        report["arbitres"] = refresh_referee_index(now)
+    except Exception as e:  # noqa: BLE001 - context only, never lose the goals model for it
+        report["arbitres"] = f"unavailable ({str(e)[:120]})"
     print(json.dumps(report, ensure_ascii=False, indent=1))
 
 
