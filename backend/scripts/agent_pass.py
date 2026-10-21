@@ -365,7 +365,15 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     # Today, plus the day of any page match still open (a late match runs past midnight in Paris).
     days = {journee(now)} | {_date.fromisoformat(d["jour"]) for d in current.values()
                                                  if d.get("jour") and d.get("statut") != "termine"}
-    raw = [(day, fx) for day in sorted(days) for fx in api.fixtures_on(comps, day)]
+    from sportai.connectors.base import ProviderUnavailable
+    raw = []
+    for day in sorted(days):  # one day failing upstream (2026-10-21: HTTP 500 on today's dates) must not block the others
+        try:
+            raw += [(day, fx) for fx in api.fixtures_on(comps, day)]
+        except ProviderUnavailable as e:
+            print(f"fixtures {day}: {str(e)[:120]}", file=sys.stderr)
+    if not raw and days:
+        raise ProviderUnavailable("no day of fixtures could be read")
     for day, fx in raw:
         short = fx["fixture"]["status"]["short"]
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
