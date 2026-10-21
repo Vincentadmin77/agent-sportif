@@ -201,3 +201,22 @@ def test_admin_cannot_demote_self(client):
     login(client, "admin@example.com", "admin-password-1")
     me = client.get("/me").json()
     assert client.put(f"/admin/users/{me['id']}", json={"role": "user"}).status_code == 400
+
+
+def test_carnet_counts_people_per_proposition(client):
+    client.cookies.clear()
+    assert client.post("/carnet", json={"item_id": "ticket:2026-10-21:safe", "kind": "ticket"}).status_code == 401
+    for n, email in enumerate(("carnet1@example.com", "carnet2@example.com"), start=1):
+        client.cookies.clear()
+        client.post("/auth/register", json={"email": email, "password": "carnet-password-1"})
+        r = client.post("/carnet", json={"item_id": "ticket:2026-10-21:safe", "kind": "ticket", "label": "Top idée safe"})
+        assert r.status_code == 201 and r.json()["personnes"] == n
+    # adding twice counts once
+    assert client.post("/carnet", json={"item_id": "ticket:2026-10-21:safe", "kind": "ticket"}).json()["personnes"] == 2
+    client.post("/carnet", json={"item_id": "joueur:2026-10-21:3", "kind": "joueur"})
+    assert client.post("/carnet", json={"item_id": "x:1", "kind": "autre"}).status_code == 422
+    counts = client.get("/carnet/compteurs", params={"ids": "ticket:2026-10-21:safe,joueur:2026-10-21:3,idee:none"}).json()
+    assert counts == {"ticket:2026-10-21:safe": 2, "joueur:2026-10-21:3": 1, "idee:none": 0}
+    mine = client.get("/carnet").json()
+    assert {e["item_id"] for e in mine} == {"ticket:2026-10-21:safe", "joueur:2026-10-21:3"}
+    assert client.request("DELETE", "/carnet/ticket:2026-10-21:safe", json={}).json()["personnes"] == 1

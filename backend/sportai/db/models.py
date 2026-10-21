@@ -249,6 +249,20 @@ class ProviderStatus(Base):
     quota: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class CarnetEntry(Base):
+    """A proposition (official ticket, idea, match position, joueur pro bet) a subscriber put in their notebook.
+    ``item_id`` is the page's id of the proposition, e.g. "ticket:2026-10-21:safe"; the page shows how many
+    subscribers hold each one."""
+    __tablename__ = "carnet_entries"
+    __table_args__ = (UniqueConstraint("user_id", "item_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(String(160), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # ticket | idee | position | joueur
+    label: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

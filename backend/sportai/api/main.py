@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 from sportai.api.deps import COOKIE, current_user, login_limiter, require_admin, require_feature, require_user
 from sportai.config import get_settings
 from sportai.db.models import (
-    AlertRow, AnalysisRun, AuditLog, CandidateRow, Competition, Entitlement, PaymentEvent, Plan, ProviderStatus,
+    AlertRow, AnalysisRun, AuditLog, CandidateRow, CarnetEntry, Competition, Entitlement, PaymentEvent, Plan, ProviderStatus,
     Selection, SelectionCorrection, User,
 )
 from sportai.db.session import get_db
@@ -138,6 +138,55 @@ def update_prefs(body: Prefs, user: User = Depends(require_user), db: DB = Depen
     user.notification_prefs = body.model_dump()
     db.commit()
     return user.notification_prefs
+
+
+# ---------- carnet: what subscribers put in their notebook ----------
+
+CARNET_KINDS = ("ticket", "idee", "position", "joueur")
+
+
+class CarnetItem(BaseModel):
+    item_id: str = Field(min_length=3, max_length=160)
+    kind: str = Field(pattern="^(" + "|".join(CARNET_KINDS) + ")$")
+    label: str = Field(default="", max_length=255)
+
+
+def _carnet_counts(db: DB, ids: list[str]) -> dict[str, int]:
+    rows = db.execute(select(CarnetEntry.item_id, func.count()).where(CarnetEntry.item_id.in_(ids))
+                      .group_by(CarnetEntry.item_id))
+    return {i: 0 for i in ids} | {i: n for i, n in rows}
+
+
+@app.get("/carnet")
+def my_carnet(user: User = Depends(require_user), db: DB = Depends(get_db)):
+    rows = list(db.scalars(select(CarnetEntry).where(CarnetEntry.user_id == user.id)
+                           .order_by(CarnetEntry.created_at.desc())))
+    counts = _carnet_counts(db, [r.item_id for r in rows])
+    return [{**_row(r, ("item_id", "kind", "label", "created_at")), "personnes": counts[r.item_id]} for r in rows]
+
+
+@app.post("/carnet", status_code=201)
+def add_to_carnet(body: CarnetItem, user: User = Depends(require_user), db: DB = Depends(get_db)):
+    if db.scalar(select(CarnetEntry).where(CarnetEntry.user_id == user.id, CarnetEntry.item_id == body.item_id)) is None:
+        db.add(CarnetEntry(user_id=user.id, **body.model_dump()))
+        db.commit()
+    return {"item_id": body.item_id, "personnes": _carnet_counts(db, [body.item_id])[body.item_id]}
+
+
+@app.delete("/carnet/{item_id}")
+def remove_from_carnet(item_id: str, user: User = Depends(require_user), db: DB = Depends(get_db)):
+    entry = db.scalar(select(CarnetEntry).where(CarnetEntry.user_id == user.id, CarnetEntry.item_id == item_id))
+    if entry is not None:
+        db.delete(entry)
+        db.commit()
+    return {"item_id": item_id, "personnes": _carnet_counts(db, [item_id])[item_id]}
+
+
+@app.get("/carnet/compteurs")
+def carnet_counts(ids: str, user: User = Depends(require_user), db: DB = Depends(get_db)):
+    """How many subscribers hold each proposition: ``ids`` is a comma-separated list of item ids."""
+    wanted = [i for i in dict.fromkeys(ids.split(",")) if i][:200]
+    return _carnet_counts(db, wanted)
 
 
 # ---------- subscriber content ----------
