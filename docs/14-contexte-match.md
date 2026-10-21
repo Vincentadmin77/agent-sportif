@@ -27,7 +27,7 @@ Rien de ce contexte ne change une probabilité ni une sélection tant qu'un test
 L'effet est réel et assez net : c'est la base d'un futur marché « cartons » (pas encore proposé).
 Les arbitres de Coupe d'Europe qui n'arbitrent pas dans un championnat suivi sortent « inconnu ».
 
-## Météo : en attente
-Open-Meteo est bloqué par le réseau de l'environnement cloud (`api.open-meteo.com`, `geocoding-api.open-meteo.com`).
-Tant qu'il l'est, `meteo` est absent et le passage continue normalement. Licence commerciale Open-Meteo à prendre
-avant la mise en vente.
+## Météo
+Open-Meteo est autorisé dans le réseau de l'environnement depuis le 21/10/2026 (le premier appel de géocodage est
+parfois lent, d'où un délai de 20 s). S'il ne répond pas, `meteo` garde la dernière prévision et le passage continue.
+Licence commerciale Open-Meteo à prendre avant la mise en vente.

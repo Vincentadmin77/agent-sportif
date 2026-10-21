@@ -464,8 +464,8 @@ class ContextSources:
         self.referees = referees if referees is not None else load_referee_index()
         if geo is None or meteo is None:
             from sportai.connectors.http import CachedClient
-            geo = geo or CachedClient("https://geocoding-api.open-meteo.com", timeout=8.0)
-            meteo = meteo or CachedClient("https://api.open-meteo.com", timeout=8.0)
+            geo = geo or CachedClient("https://geocoding-api.open-meteo.com", timeout=20.0)
+            meteo = meteo or CachedClient("https://api.open-meteo.com", timeout=15.0)
         self.geo, self.meteo = geo, meteo
         self._standings: dict[tuple[int, int], list | None] = {}
         self.weather_down = False
