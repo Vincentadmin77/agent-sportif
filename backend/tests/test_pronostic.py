@@ -26,7 +26,7 @@ def test_top3_and_tickets():
     assert [l["match"] for l in safe["jambes"]] == ["a-b"] and safe["cote_totale"] == 1.7
     assert safe["message"] is None
     # A bet goes in one ticket only (owner, 2026-10-15): without a-b, no semi-safe pair reaches 1.90 at 30 %.
-    assert semi["jambes"] == [] and semi["message"].startswith("Pas de ticket semi safe")
+    assert semi["jambes"] == [] and semi["message"].startswith("Pas de top idée semi safe")
     # Fun: c-d and e-f (4.48); a third bet would have to be a-b again, so it says it is short.
     assert {l["match"] for l in fun["jambes"]} == {"c-d", "e-f"} and fun["cote_totale"] == 4.48
     assert fun["message"].startswith("Pas de combiné de 3 paris") and "2 paris atteignent" in fun["message"]
@@ -40,7 +40,7 @@ def test_nothing_correct_says_so():
     doc = build_pronostic([LEGS[4], LEGS[5]], {}, None, NOW, "matin")
     assert doc["top3"] == [] and "Aucune cote correcte" in doc["message"]
     for t in doc["tickets"].values():
-        assert t["jambes"] == [] and t["cote_totale"] is None and t["message"].startswith("Pas de ticket")
+        assert t["jambes"] == [] and t["cote_totale"] is None and t["message"].startswith("Pas de top idée")
 
 
 def test_ticket_frozen_after_first_kickoff_then_settled():
@@ -95,7 +95,7 @@ def test_tickets_fixed_45_min_before_then_bonus():
     first = build_pronostic(LEGS, {}, None, NOW, "matin")
     assert not any(t.get("fige") for t in first["tickets"].values())
     m45 = build_pronostic(LEGS, {}, first, NOW + timedelta(hours=3, minutes=15), "m45")
-    assert all(t["fige"] for t in m45["tickets"].values() if t["jambes"]) and m45["tickets"]["safe"]["message"].startswith("Ticket figé")
+    assert all(t["fige"] for t in m45["tickets"].values() if t["jambes"]) and m45["tickets"]["safe"]["message"].startswith("Figée")
     # Better bets found later do not change the fixed tickets: they make bonus tickets, apart.
     later = [*LEGS, leg("m-n", "Victoire m", 1.95, 0.80, 0.75, hours=8), leg("o-p", "Victoire o", 1.60, 0.78, 0.74, hours=8),
              leg("q-r", "Victoire q", 1.90, 0.79, 0.74, hours=8), leg("s-t", "Victoire s", 1.62, 0.77, 0.73, hours=8)]
@@ -128,7 +128,7 @@ def test_empty_safe_filled_by_the_15_min_pass_when_odds_rise():
     m15 = build_pronostic(high, {}, m45, NOW + timedelta(minutes=45), "m15")
     safe = m15["tickets"]["safe"]
     assert [l["cote"] for l in safe["jambes"]] == [1.67] and safe["fige"]
-    assert safe["message"].startswith("Ticket ajouté au dernier passage")
+    assert safe["message"].startswith("Ajoutée au dernier passage")
 
 
 def test_champions_league_bets_combine_half_stake():

@@ -164,7 +164,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     bank, history = replay(pronostics, settings)
     bonus_bank, bonus_history = replay_bonus(pronostics, settings)
     kinds = {}
-    for key, label in (("safe", "Ticket safe"), ("semi_safe", "Ticket semi safe"), ("fun", "Ticket fun"),
+    for key, label in (("safe", "Top idée safe"), ("semi_safe", "Top idée semi safe"), ("fun", "Top idée fun"),
                        ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés")):
         kinds[key] = {"titre": label, **_rate([i for i in items if i["categorie"] == key])}
     return {
@@ -178,7 +178,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                                           "progression": round(b / (settings["objectif"] / len(TICKET_ORDER)), 6),
                                           "mise": settings["mises"][key], "historique": h}
                                     for (key, (b, h)), title in zip(replay_by_ticket(pronostics, settings).items(),
-                                                                    ("Ticket safe", "Ticket semi safe", "Ticket fun"))},
+                                                                    ("Top idée safe", "Top idée semi safe", "Top idée fun"))},
                      # the bonus tickets apart (owner 2026-10-17): kept as a trace, never in the gauges above
                      "bonus": {"titre": "La boîte à idées", "depart": settings["depart"], "actuelle": bonus_bank,
                                "progression": round(bonus_bank / settings["objectif"], 6), "mise": settings["mises"],

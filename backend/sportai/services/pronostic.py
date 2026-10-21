@@ -55,17 +55,20 @@ TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
 # The safe ticket is always a single bet above 1.65 (owner, 2026-10-15); the others are combined bets ("combinés",
 # owner 2026-10-11): two bets, three for the fun one; when no such combination is correct, the ticket falls back to
 # fewer bets and says so.
-TICKETS = (("safe", "Ticket safe", 1, 1, 1.65, 0.50, 0.55),
-           ("semi_safe", "Ticket semi safe", 2, 2, 1.90, 0.30, 0.35),
-           ("fun", "Ticket fun", 3, 3, 2.50, 0.15, 0.30))
+# Since 2026-10-21 the three official tickets are shown as the "top idées" of the day (owner: "les meilleures
+# confiances de toutes les idées prises pour la journée, et figées"), in the same tab as the other ideas.
+TICKETS = (("safe", "Top idée safe", 1, 1, 1.65, 0.50, 0.55),
+           ("semi_safe", "Top idée semi safe", 2, 2, 1.90, 0.30, 0.35),
+           ("fun", "Top idée fun", 3, 3, 2.50, 0.15, 0.30))
 FIX_BEFORE, FIX_SLACK = timedelta(minutes=45), timedelta(minutes=5)
 MAX_BONUS = 3  # bonus tickets of each kind in a day
-FIXED_NOTE = "Ticket figé au passage 45 min avant son premier match (compositions connues)."
-LATE_NOTE = ("Ticket ajouté au dernier passage, 15 min avant son premier match : la cote a passé le seuil après le "
+FIXED_NOTE = "Figée au passage 45 min avant son premier match (compositions connues)."
+LATE_NOTE = ("Ajoutée au dernier passage, 15 min avant son premier match : la cote a passé le seuil après le "
              "passage de 45 min.")
-IDEAS_NOTE = ("La boîte à idées : les autres positions possibles du jour, trouvées après les trois tickets officiels. "
-              "Tout le monde vient y piocher des idées. Elles restent ici, ne comptent pas dans les tickets "
-              "officiels et ont leur propre taux de réussite. Jamais de pari en direct.")
+IDEAS_NOTE = ("La boîte à idées : en tête, les trois top idées du jour (safe, semi safe, fun), celles de meilleure "
+              "confiance, figées avant leur premier match ; puis les autres positions possibles trouvées ensuite. "
+              "Tout le monde vient y piocher des idées. Les autres idées ne comptent pas dans le bilan des top idées "
+              "et ont leur propre taux de réussite. Jamais de pari en direct.")
 GOAL_MARKETS = {"btts": "Les deux équipes marquent", "totals": "Nombre de buts"}
 WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie celles de ses paris, comme si les "
            "matchs étaient indépendants. Seules les « sélections » des fiches matchs passent tous les contrôles "
@@ -384,12 +387,12 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
             return None
         if max_legs == 1:
             return _ticket([], title, (
-                f"Pas de {title.lower()} correct : il faudrait un pari simple à une cote au-dessus de "
+                f"Pas de {title.lower()} correcte : il faudrait un pari simple à une cote au-dessus de "
                 f"{min_odds:.2f}".replace(".", ",") + f", avec au moins {round(max(min_leg, min_total) * 100)} % de "
                 "chances et de la valeur" + (" (le plus prudent du modèle et des bookmakers)." if key != "fun" else ".")))
         most = f"{max_legs} paris au plus"
         return _ticket([], title, (
-            f"Pas de {title.lower()} correct : il faudrait une cote totale au-dessus de "
+            f"Pas de {title.lower()} correcte : il faudrait une cote totale au-dessus de "
             f"{min_odds:.2f}".replace(".", ",") + f" avec {most}, chacun à {round(min_leg * 100)} % ou plus "
             f"et de valeur positive, pour une chance combinée d'au moins {round(min_total * 100)} %"
             + (" (la plus prudente du modèle et des bookmakers)." if key != "fun" else ".")))
@@ -418,7 +421,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         if not (tickets[key].get("fige") and ((previous.get("tickets") or {}).get(key) or {}).get("fige")):
             continue
         # bonus tickets are "idées" for "La boîte à idées" tab, never with the official tickets (owner, 2026-10-17)
-        rules = (key, title.replace("Ticket", "Idée"), *rest)
+        rules = (key, title.replace("Top idée", "Idée"), *rest)
         # a bonus shares no bet with the official ticket of its kind: other bets, not a variant of it
         official = bets(tickets[key])
         kept = [build(rules, b, [], False) for b in (previous.get("bonus") or {}).get(key) or []
