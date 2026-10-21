@@ -142,7 +142,7 @@ def update_prefs(body: Prefs, user: User = Depends(require_user), db: DB = Depen
 
 # ---------- carnet: what subscribers put in their notebook ----------
 
-CARNET_KINDS = ("ticket", "idee", "position", "joueur")
+CARNET_KINDS = ("ticket", "idee", "position", "joueur", "pari", "chasseur")
 
 
 class CarnetItem(BaseModel):

@@ -8,9 +8,11 @@ et pari du joueur pro le nombre de personnes qui l'ont mis dans leur carnet.
 | Proposition | item_id | kind |
 |---|---|---|
 | Top idée officielle (safe, semi safe, fun) | `ticket:<jour>:<type>` | ticket |
-| Idée de la boîte à idées | `idee:<jour>:<type>:<n>` | idee |
+| Idée de la boîte à idées | `idee:<jour>:<type>:<n>` (n à partir de 0, rang dans pronostic/<jour>.bonus.<type>) | idee |
 | Position d'un match | `position:<id du document match>` | position |
-| Pari du joueur pro | `joueur:<jour>:<n° de décision>` | joueur |
+| Pari du joueur pro | `joueur:<jour>:<n>` (n à partir de 0, rang dans joueur/<jour>.decisions) | joueur |
+| Pari retenu d'un match | `pari:<id du document match>:<n>` | pari |
+| Pari du chasseur alpin | `chasseur:<jour>` | chasseur |
 
 ## Site (backend)
 
@@ -20,5 +22,6 @@ Table `carnet_entries` (un abonné ne compte qu'une fois par proposition), route
 
 ## Page actuelle (Artifact)
 
-Bouton « Ajouter à mon carnet » et compteur « N personnes » gérés par la page elle-même (base partagée de la page).
+Icône 📒 et compteur « 👥 N » (caché à 0) depuis la v80 : chaque visiteur écrit sa liste d'ids dans
+`carnet_compte/<id visiteur>`, la page compte toute la collection ; le carnet complet reste privé.
 Tant que le service n'est pas en ligne, seul Vincent voit la page : les compteurs resteront à 0 ou 1.

@@ -258,7 +258,7 @@ class CarnetEntry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     item_id: Mapped[str] = mapped_column(String(160), index=True)
-    kind: Mapped[str] = mapped_column(String(16))  # ticket | idee | position | joueur
+    kind: Mapped[str] = mapped_column(String(16))  # ticket | idee | position | joueur | pari | chasseur
     label: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
