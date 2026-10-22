@@ -13,6 +13,8 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
+from sportai.selection.engine import COTE_MIN
+
 BANKROLL_DEFAULTS = {"depart": 100.0, "objectif": 100000.0, "mises": {"safe": 0.03, "semi_safe": 0.02, "fun": 0.01}}
 TICKET_ORDER = ("safe", "semi_safe", "fun")
 NOTE = ("Seuls les pronostics dont le match est terminé comptent. Un score exact est rarement trouvé (environ une fois "
@@ -35,6 +37,11 @@ def _ticket_return(ticket: dict) -> float | None:
     return math.prod(l["cote"] for l in ticket["jambes"] if l.get("resultat") == "gagne") - 1
 
 
+def under_floor(legs: list[dict]) -> bool:
+    """A bet under the odds floor (owner 2026-10-22: never below 1.50, removed from the history too)."""
+    return any((l.get("cote") or 0) < COTE_MIN for l in legs)
+
+
 def replay(pronostics: dict[str, dict], settings: dict, depart: float | None = None,
            restake: bool = False) -> tuple[float, list[dict]]:
     """Bankroll after every settled ticket, in day order; returns the current amount and its history.
@@ -44,7 +51,7 @@ def replay(pronostics: dict[str, dict], settings: dict, depart: float | None = N
         start = bank
         for key in TICKET_ORDER:
             t = (pronostics[day].get("tickets") or {}).get(key) or {}
-            r = _ticket_return(t) if t.get("jambes") else None
+            r = _ticket_return(t) if t.get("jambes") and not under_floor(t["jambes"]) else None
             if r is None:
                 continue
             stake = (round(start * t.get("mise_pct", settings["mises"][key]), 2) if restake or "mise" not in t
@@ -80,7 +87,8 @@ def replay_bonus(pronostics: dict[str, dict], settings: dict) -> tuple[float, li
         start, bonus = bank, pronostics[day].get("bonus") or {}
         for key in TICKET_ORDER:
             for t in bonus.get(key) or []:
-                if not (t.get("jambes") and t.get("fige") and t.get("resultat") in ("gagne", "perdu", "rembourse")):
+                if not (t.get("jambes") and t.get("fige") and t.get("resultat") in ("gagne", "perdu", "rembourse")) \
+                        or under_floor(t["jambes"]):
                     continue
                 stake, r = round(start * stake_pct(t, key, settings)[0], 2), _ticket_return(t)
                 bank = round(bank + stake * r, 2)
@@ -131,13 +139,13 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
         doc = pronostics[day]
         for key in TICKET_ORDER:
             t = (doc.get("tickets") or {}).get(key) or {}
-            if t.get("jambes") and t.get("resultat") in ("gagne", "perdu"):
+            if t.get("jambes") and t.get("resultat") in ("gagne", "perdu") and not under_floor(t["jambes"]):
                 items.append({"jour": day, "type": t.get("titre", key), "categorie": key,
                               "libelle": " + ".join(f"{l['pari']} ({l['match']})" for l in t["jambes"]),
                               "cote": t.get("cote_totale"), "proba": t.get("proba_totale"),
                               "jambes": t["jambes"], "valide": t["resultat"] == "gagne"})
         for leg in doc.get("top3") or []:
-            if leg.get("resultat") in ("gagne", "perdu"):
+            if leg.get("resultat") in ("gagne", "perdu") and not under_floor([leg]):
                 items.append({"jour": day, "type": "Top 3 des cotes", "categorie": "top3",
                               "libelle": f"{leg['pari']} ({leg['match']})", "cote": leg["cote"], "proba": leg["proba"],
                               "match_id": leg["match_id"], "valide": leg["resultat"] == "gagne"})
@@ -147,7 +155,8 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
             continue
         match = f"{m.get('domicile')} - {m.get('exterieur')}"
         for s in m.get("selections") or []:
-            if s.get("resultat") in ("gagne", "perdu"):
+            cote = s.get("cote_45") or s.get("cote_3h") or s.get("cote_matin")
+            if s.get("resultat") in ("gagne", "perdu") and not (cote and cote < COTE_MIN):
                 items.append({"jour": m.get("jour"), "type": "Sélection", "categorie": "selection",
                               "libelle": f"{s['pari']} ({match})", "cote": s.get("cote_45") or s.get("cote_3h")
                               or s.get("cote_matin"), "proba": s.get("proba"), "match_id": key,
