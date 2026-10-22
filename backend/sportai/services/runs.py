@@ -22,7 +22,7 @@ from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
 from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
-from sportai.selection.engine import SelectionConfig
+from sportai.selection.engine import COTE_MIN, SelectionConfig
 from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import MarketKey
 from sportai.services.goals_refresh import load_book_safely
@@ -39,6 +39,7 @@ def selection_config(db: DB) -> SelectionConfig:
         for k, v in row.value.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, tuple(v) if isinstance(getattr(cfg, k), tuple) else v)
+    cfg.min_odds = max(cfg.min_odds, COTE_MIN)  # a stored setting never goes under the owner's floor
     return cfg
 
 

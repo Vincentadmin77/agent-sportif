@@ -21,10 +21,14 @@ from sportai.engine.value import Outcome, expected_value, fair_odds
 TRIAL_MARKETS = tuple(m for m in SUPPORTED_MARKETS if m not in VALIDATED_MARKETS)
 
 
+# No proposal under these odds anywhere: selections, tickets, ideas, the player's bets, live too (owner, 2026-10-22).
+COTE_MIN = 1.50
+
+
 @dataclass
 class SelectionConfig:
     max_selections: int = 4
-    min_odds: float = 1.30
+    min_odds: float = COTE_MIN
     max_odds: float = 4.00
     preferred_min_odds: float = 1.50
     preferred_max_odds: float = 2.00

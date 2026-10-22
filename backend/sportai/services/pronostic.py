@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session as DB
 
 from sportai.db.models import AnalysisRun, CandidateRow
 from sportai.engine.football.markets import VALIDATED_MARKETS, is_quarter
-from sportai.selection.engine import TRIAL_MARKETS as TRIAL_MARKETS_DEFAULT
+from sportai.selection.engine import COTE_MIN, TRIAL_MARKETS as TRIAL_MARKETS_DEFAULT
 from sportai.services.dashboard import (
     COMPETITION_NAMES,
     MARKET_NAMES,
@@ -85,10 +85,10 @@ def _aware(d: datetime) -> datetime:
 # between 1.15 and 2.50, and the ticket's stake halved. Since 2026-10-15 (owner: Liverpool with Aston Villa, over 1.5
 # goals, both teams score), several Champions League matches may share a ticket and its other markets enter as
 # "non validé" bets, under the same care as elsewhere (TRIAL_* below).
-UCL_ODDS = (1.15, 2.50)  # floor 1.30 until 2026-10-15: it kept Benfica (1.24) and Bournemouth (1.21) out of the safe ticket
+UCL_ODDS = (COTE_MIN, 2.50)  # 1.15 until 2026-10-22  # floor 1.30 until 2026-10-15: it kept Benfica (1.24) and Bournemouth (1.21) out of the safe ticket
 # A bet under these odds adds next to nothing to a ticket's odds but still its own risk (under 5.5 goals at 1.07 padding the
 # 2026-10-15 morning tickets): never a ticket leg.
-TICKET_MIN_LEG_ODDS = 1.15
+TICKET_MIN_LEG_ODDS = COTE_MIN  # 1.15 until 2026-10-22
 UCL_STAKE_FACTOR = 0.5
 # Every other market the model prices (owner, 2026-10-14: any odds a bookmaker offers): a bet on a market the backtest
 # has not validated is labelled "non validé" and enters with care: 3 % of value at least, a complete market to compare
@@ -146,6 +146,8 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
         trial_ok = cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
         trials = []
         for c in rows:
+            if c.odds < COTE_MIN:  # never proposed (owner, 2026-10-22)
+                continue
             if c.market in enabled:
                 pari, marche = bet_label(c.market, c.selection, home, away), MARKET_NAMES.get(c.market, c.market)
             elif c.market in goals and c.market in GOAL_MARKETS:

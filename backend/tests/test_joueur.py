@@ -195,24 +195,25 @@ def test_learning_corrects_an_overconfident_model_and_thin_value_threshold():
 
 def test_singles_beyond_the_tickets_and_odds_watch():
     # Atalanta case (2026-10-12): not in any ticket nor the top 3, but a validated single with value.
-    ata = {**leg("at-ve", "Victoire at", 1.45, 0.736), "proba_marche": 0.68, "_divergence_max": 0.10}
+    ata = {**leg("at-ve", "Victoire at", 1.60, 0.68), "proba_marche": 0.63, "_divergence_max": 0.10}
     far = {**leg("x-y", "Victoire x", 2.0, 0.60), "proba_marche": 0.45, "_divergence_max": 0.10}  # gap too big
     goals = {**leg("g-h", "Plus de 2,5 buts", 1.9, 0.6), "valide": False}
     empty = {"jour": "2026-10-11", "top3": [], "tickets": {}}
     first = decide(empty, None, {}, 1000.0, "prudent", NOW, legs=[ata, far, goals])
-    assert [d["id"] for d in first] == ["simple:2026-10-11-g-h:Plus de 2,5 buts", "simple:2026-10-11-at-ve:Victoire at"]
+    assert sorted(d["id"] for d in first) == ["simple:2026-10-11-at-ve:Victoire at", "simple:2026-10-11-g-h:Plus de 2,5 buts"]
     # Any market the model prices is played, an unvalidated one on trial at half the stake.
-    assert first[0]["joue"] and "à l'essai" in first[0]["raison"]
-    first = first[1:]
-    assert first[0]["joue"] and first[0]["type"] == "simple" and first[0]["cotes"][0]["cote"] == 1.45
-    # The odds drift down to 1.38: value 1.6 %, under the prudent 3 %: the player withdraws, and says why.
+    g = next(d for d in first if d["id"].endswith("buts"))
+    assert g["joue"] and "à l'essai" in g["raison"]
+    first = [d for d in first if d is not g]
+    assert first[0]["joue"] and first[0]["type"] == "simple" and first[0]["cotes"][0]["cote"] == 1.60
+    # The odds drift down to 1.51: value 2.7 %, under the prudent 3 %: the player withdraws, and says why.
     day, _ = run(empty, None, {}, {}, {"depart": 1000.0, "objectif": 1e5}, None,
                  {"simulation": fake_simulation()}, NOW, [ata])
     later = NOW + timedelta(hours=1)
     day2, _ = run(empty, day, {}, {}, {"depart": 1000.0, "objectif": 1e5}, None,
-                  {"simulation": fake_simulation()}, later, [{**ata, "cote": 1.38, "valeur": round(0.736 * 1.38 - 1, 4)}])
+                  {"simulation": fake_simulation()}, later, [{**ata, "cote": 1.51, "valeur": round(0.68 * 1.51 - 1, 4)}])
     d = day2["decisions"][0]
-    assert not d["joue"] and [c["cote"] for c in d["cotes"]] == [1.45, 1.38]
+    assert not d["joue"] and [c["cote"] for c in d["cotes"]] == [1.60, 1.51]
     assert any(e["texte"].startswith("La cote de Victoire at") and "Je retire" in e["texte"] for e in day2["journal"])
 
 

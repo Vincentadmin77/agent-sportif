@@ -236,7 +236,7 @@ def test_two_both_teams_score_make_a_ticket():
     limited to one per ticket like the other markets on trial."""
     btts = lambda m, cote, p, pm: {**leg(m, "Les deux équipes marquent : oui", cote, p, pm), "valide": False,
                                    "marche": "Les deux équipes marquent", "validation": "non validé"}
-    doc = build_pronostic([btts("roma-real", 1.44, 0.72, 0.67), btts("betis-porto", 1.62, 0.65, 0.60)], {}, None, NOW,
+    doc = build_pronostic([btts("roma-real", 1.52, 0.70, 0.65), btts("betis-porto", 1.62, 0.65, 0.60)], {}, None, NOW,
                           "h3")
     assert {l["match"] for l in doc["tickets"]["semi_safe"]["jambes"]} == {"roma-real", "betis-porto"}
 
@@ -273,3 +273,9 @@ def test_a_new_bonus_shares_no_bet_with_a_bonus_of_another_kind_fixed_earlier():
     doc = build_pronostic(LEGS, {}, prev, NOW, "h3")
     assert all(("a-b", "Victoire a") not in {(l["match"], l["pari"]) for l in t["jambes"]}
                for t in doc["bonus"].get("safe", []))
+
+
+def test_no_ticket_leg_under_the_odds_floor():
+    # Owner, 2026-10-22: no proposal under 1.50 anywhere ("Moins de 4,5 buts" at 1.28 and 1.17 in the fun ticket).
+    doc = build_pronostic([leg("a-b", "Moins de 4,5 buts", 1.28, 0.85, 0.80), *LEGS], {}, None, NOW, "h3")
+    assert all(l["cote"] >= 1.50 for t in doc["tickets"].values() for l in t["jambes"])

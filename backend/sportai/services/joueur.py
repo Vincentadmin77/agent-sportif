@@ -22,6 +22,7 @@ from datetime import date, datetime
 import numpy as np
 
 from sportai.engine.football.scorers import live_scorer_proba
+from sportai.selection.engine import COTE_MIN
 from sportai.services.buteurs import player_state, settle_scorer
 from sportai.services.prematch import LOCAL_TZ
 from sportai.services.dashboard import NON_VALIDE, settle
@@ -92,6 +93,7 @@ def candidates(pronostic: dict, legs: list[dict] | None = None) -> list[dict]:
         out.append({"id": f"simple:{leg['match_id']}:{leg['pari']}", "type": "simple",
                     "quoi": f"{leg['pari']} ({leg['match']})", "jambes": [clean], "cote": leg["cote"],
                     "proba": cautious_proba(leg)})
+    out = [c for c in out if all(l["cote"] >= COTE_MIN for l in c["jambes"])]  # owner, 2026-10-22
     for c in out:
         c["valeur"] = round(c["proba"] * c["cote"] - 1, 4)
         c["kelly"] = round(max(c["valeur"], 0) / (c["cote"] - 1), 4) if c["cote"] > 1 else 0.0
@@ -835,7 +837,9 @@ def _live_stakes(day: dict, page: dict[str, dict], now: datetime, past_days: dic
             k = round(max(valeur, 0) / (cote - 1), 4) if cote > 1 else 0.0
             stake = round(min(min(kelly * UCL_MISE * k, p["max_pari"] * UCL_MISE) * bank, max(budget, 0.0)), 2)
             why = None
-            if key in taken:
+            if cote < COTE_MIN:
+                why = "Cote sous 1,50 : jamais proposée."
+            elif key in taken:
                 why = LIVE_ONE_PER_MATCH
             elif not _fresh(m, now):
                 why = "Données du direct trop anciennes pour miser dessus."
