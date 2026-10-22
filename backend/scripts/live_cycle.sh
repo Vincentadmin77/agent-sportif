@@ -6,17 +6,16 @@
 cd "$(dirname "$0")/.."
 M=/tmp/claude-0/mirror; O=/tmp/claude-0/liveout
 [ -d $O/matchs ] && cp $O/matchs/*.json $M/matchs/ 2>/dev/null
-for sub in joueur chasseur; do [ -d $O/$sub ] && mkdir -p $M/$sub && cp $O/$sub/*.json $M/$sub/ 2>/dev/null; done
+for sub in joueur; do [ -d $O/$sub ] && mkdir -p $M/$sub && cp $O/$sub/*.json $M/$sub/ 2>/dev/null; done
 rm -rf $O
 python3 scripts/agent_pass.py live --page $M --out $O ${COMPS:-FR1 ES1 IT1 BR1} 2>&1 | tail -1
 # A match just ended: settle tickets, bilan and bankroll right away, nobody needs to ask (owner, 2026-10-11).
 if grep -qs '"statut": "termine"' $O/matchs/*.json; then
   cp $O/matchs/*.json $M/matchs/; [ -d $O/joueur ] && cp $O/joueur/*.json $M/joueur/
-  [ -d $O/chasseur ] && mkdir -p $M/chasseur && cp $O/chasseur/*.json $M/chasseur/
   # the day of the match that ended, not the clock's: a late Brazilian match ends after midnight in Paris
   DAY=$(basename "$(grep -ls '"statut": "termine"' $O/matchs/*.json | head -1)" | cut -c1-10)
   rm -rf $O.fin && python3 scripts/agent_pass.py pronostic --page $M --out $O.fin --day $DAY 2>&1 | tail -1
-  for sub in pronostic stats joueur chasseur; do [ -d $O.fin/$sub ] && mkdir -p $O/$sub && cp $O.fin/$sub/*.json $O/$sub/; done
+  for sub in pronostic stats joueur; do [ -d $O.fin/$sub ] && mkdir -p $O/$sub && cp $O.fin/$sub/*.json $O/$sub/; done
 fi
 python3 - <<'PY'
 import json,glob,os
@@ -27,7 +26,7 @@ for p in sorted(glob.glob('/tmp/claude-0/liveout/matchs/*.json')):
     print(k[11:], d['statut'], d.get('score'), d.get('minute'), (d.get('direct') or {}).get('periode'))
     w.append({"op":"set","collection":"matchs","doc_id":k,"file_path":p,"if_version":v.get(k)})
 days={os.path.basename(p)[:10] for p in glob.glob('/tmp/claude-0/liveout/matchs/*.json')}
-for sub in ("joueur", "pronostic", "stats", "chasseur"):  # the player's day followed live; tickets and bilan when a match ended
+for sub in ("joueur", "pronostic", "stats"):  # the player's day followed live; tickets and bilan when a match ended
     for p in sorted(glob.glob(f'/tmp/claude-0/liveout/{sub}/*.json')):
         k=os.path.basename(p)[:-5]
         if sub != "stats" and k[:4].isdigit() and k not in days:

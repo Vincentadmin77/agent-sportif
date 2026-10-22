@@ -89,12 +89,6 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
         ticket_stakes(doc, write_player(page, out, doc, matchs, settings, now, legs))
     except Exception as e:  # the player is a bonus: never lose the pass for it
         print(f"joueur unavailable ({str(e)[:160]})", file=sys.stderr)
-    try:  # "Le chasseur alpin": a montante on one coherent single a day, its own gauge (collection chasseur)
-        from sportai.services.chasseur import write as write_chasseur
-
-        write_chasseur(page, out, legs, matchs, now, day)
-    except Exception as e:  # a bonus too: never lose the pass for it
-        print(f"chasseur unavailable ({str(e)[:160]})", file=sys.stderr)
     bilan = build_bilan(matchs, days, settings, now)
     for sub, name, body in (("pronostic", day, doc), ("stats", "bilan", bilan)):
         (Path(out) / sub).mkdir(parents=True, exist_ok=True)
@@ -469,12 +463,6 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         live_write(page, out, {**current, **docs}, now)
     except Exception as e:
         print(f"joueur live unavailable ({str(e)[:160]})", file=sys.stderr)
-    try:  # "Le chasseur alpin": its pick frozen 30 min before kick-off, followed live, settled at the final whistle
-        from sportai.services.chasseur import live_write as chasseur_live
-
-        chasseur_live(page, out, {**current, **docs}, now)
-    except Exception as e:
-        print(f"chasseur live unavailable ({str(e)[:160]})", file=sys.stderr)
     n_done = sum(d["statut"] == "termine" for d in docs.values())
     _write(out, docs, f"Direct : {n_live} match(s) en cours, {n_done} terminé(s)", now)
 
