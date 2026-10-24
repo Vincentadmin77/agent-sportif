@@ -18,8 +18,14 @@ btts and over/under 1.5 / 2.5 / 3.5 with it; without it, or for a team it does n
 
 Odds come from API-Football (every bookmaker and bet type of its feed, 1 to 2 requests per competition and pass);
 every bet decided by the final score is priced, those the backtest has not validated marked "non validé" on the
-page, in the tickets and for the player. The Odds API is only the fallback when API-Football has no odds; --goals
-then fetches its btts / totals odds match by match.
+page, in the tickets and for the player. The Odds API is only the fallback when API-Football has no odds, or only
+odds older than 4 h: then it supplies the result markets and every other market keeps API-Football's last prices
+(up to 12 h old, never past kick-off: runs.keep_stale_quotes), with or without --goals and The Odds API credits;
+--goals also fetches its btts / totals odds match by match.
+
+Each pronostic step first reviews the earlier days (sportai/services/revue.py, owner 2026-10-24): the winning bets
+nobody chose and the chosen ones that lost, the record of each family of bets, and a correction of the model's
+chances by family applied to the day's tickets, ideas and player; pronostic/<day>.json "revue" holds it.
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -75,9 +81,21 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     raw = folder / "reglages" / "bankroll.json"
     settings = bankroll_settings(json.loads(raw.read_text()) if raw.exists() else None)
     matchs = {**_load_page(page), **docs}
-    legs = legs_from_db(db, date.fromisoformat(day))
+    # The daily review of the errors and of the winning bets nobody chose (owner, 2026-10-24): its correction of each
+    # family of bets is applied to the tickets, the ideas and the player's chances; its sentences go on the page.
+    revue = None
+    try:
+        from sportai.services.revue import build_revue
+
+        joueurs = {p.stem: json.loads(p.read_text()) for p in (folder / "joueur").glob("*.json") if p.stem != "etat"}
+        revue = build_revue(matchs, days, joueurs, date.fromisoformat(day))
+    except Exception as e:  # the review is a bonus: never lose the pass for it
+        print(f"revue unavailable ({str(e)[:160]})", file=sys.stderr)
+    legs = legs_from_db(db, date.fromisoformat(day), corrections=(revue or {}).get("corrections"))
     doc = build_pronostic(legs, matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
+    if revue:
+        doc["revue"] = revue
     banks = replay_by_ticket({d: v for d, v in days.items() if d < day}, settings)
     days[day] = apply_stakes(doc, settings, {k: b for k, (b, _) in banks.items()})
     doc["bankroll_du_jour"] = replay({d: v for d, v in days.items() if d < day}, settings)[0]  # combined, for reference

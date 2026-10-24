@@ -190,22 +190,41 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     _mark(db, fixtures_p.name, f"odds: {e}")
             # API-Football refreshes its odds only every few hours: once they are past their age limit, nothing
             # could be priced, so The Odds API supplies the current 1X2 odds (2026-10-14: 16:30 pass found none).
+            stale_af: list = []
             if quotes and not any(q.expires_at is None or q.expires_at > now for q in quotes):
                 _mark(db, fixtures_p.name, "odds: every API-Football quote past its age limit")
-                quotes = []
+                stale_af, quotes, odds_source = quotes, [], None
+            elif quotes:  # some matches refreshed, others not: the old ones keep their non-result markets
+                ok = [q.expires_at is None or q.expires_at > now for q in quotes]
+                fresh = [q for q, f in zip(quotes, ok) if f]
+                quotes = fresh + keep_stale_quotes([q for q, f in zip(quotes, ok) if not f], fresh, now)
             if not quotes and (fixtures is None or window):
                 current = TheOddsApiProvider.name
-                # Each market requested costs one credit: totals only when that market is enabled.
-                odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
-                                            bookmakers=settings.odds_bookmakers,
-                                            markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
-                quotes = odds_p.odds(competition)
-                _mark(db, odds_p.name, quota=odds_p.last_quota)
-                if fixtures is None:
-                    fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
-                if goal_markets:
-                    quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
-                odds_source = odds_p.name
+                try:
+                    # Each market requested costs one credit: totals only when that market is enabled.
+                    odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
+                                                bookmakers=settings.odds_bookmakers,
+                                                markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
+                    quotes = odds_p.odds(competition)
+                    _mark(db, odds_p.name, quota=odds_p.last_quota)
+                    if fixtures is None:
+                        fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
+                    if goal_markets:
+                        quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
+                    odds_source = odds_p.name
+                except ProviderUnavailable as e:
+                    if not stale_af:  # nothing else to price with
+                        raise
+                    _mark(db, TheOddsApiProvider.name, str(e))  # no credits left: API-Football's other markets still
+                # 2026-10-23 (Stuttgart - Gladbach, Alavés - Málaga, Ipswich - Forest): API-Football had not refreshed
+                # these matches for over 4 hours, so its ~1 100 quotes (goals, both teams score, team totals,
+                # handicaps...) were all thrown away and the page kept The Odds API's three 1X2 prices only. The
+                # markets the fallback does not price are now kept from API-Football (keep_stale_quotes).
+                if stale_af:
+                    kept = keep_stale_quotes(stale_af, quotes, now)
+                    if kept:
+                        quotes += kept
+                        odds_source = "+".join(x for x in (odds_source, fixtures_p.name) if x)
             run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
@@ -245,7 +264,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      **({"non_analyses": unpriced[f.fixture.provider_event_id]}
                         if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}
                     for f in report.fixtures]
-    if raw_odds and fixtures_p is not None and run.data_sources.get("odds") == fixtures_p.name:
+    if raw_odds and fixtures_p is not None and fixtures_p.name in (run.data_sources.get("odds") or "").split("+"):
         run.fixtures = scorer_markets(db, fixtures_p, competition, raw_odds, window, run.fixtures, now)
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)
@@ -294,6 +313,29 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
 
 
 API_FOOTBALL_ODDS_VALIDITY = timedelta(hours=4)  # the feed refreshes pre-match odds about every 3 hours
+# When the feed has not refreshed a match for over 4 hours (2026-10-23: Bundesliga, LaLiga, Premier League evening
+# matches last updated at 13:22 / 13:59 UTC, passes at 18:16 and 18:45), the markets The Odds API fallback does not
+# price stay priced from API-Football's last prices, up to this age and never past kick-off. Goal markets (number of
+# goals, both teams score, team totals) move little in the last hours; the result markets, which follow the team
+# news, never use an old price: their current odds come from the fallback. Prices older than the 4-hour limit are
+# still analysed and offered to the tickets and the player, but the selection engine keeps its own age limit
+# (max_odds_age_by_provider) for the official selections.
+API_FOOTBALL_STALE_VALIDITY = timedelta(hours=12)
+RESULT_MARKETS = ("1x2", "double_chance", "dnb")
+
+
+def keep_stale_quotes(stale: list, fallback: list, now: datetime) -> list:
+    """API-Football quotes past their 4-hour validity, kept for the markets (and lines) the fallback quotes do not
+    cover, valid up to API_FOOTBALL_STALE_VALIDITY after their observation and never past kick-off."""
+    covered = {(normalise(q.home), normalise(q.away), q.market, q.line) for q in fallback}
+    out = []
+    for q in stale:
+        if q.market in RESULT_MARKETS or (normalise(q.home), normalise(q.away), q.market, q.line) in covered:
+            continue
+        expires = min(q.observed_at + API_FOOTBALL_STALE_VALIDITY, q.kickoff)
+        if expires > now:
+            out.append(replace(q, expires_at=expires))
+    return out
 
 
 def _in_window(f, now: datetime, cfg: SelectionConfig) -> bool:

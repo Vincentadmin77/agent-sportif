@@ -48,6 +48,7 @@ from sportai.services.dashboard import (
 )
 from sportai.services.buteurs import scorer_leg_info, settle_scorer
 from sportai.services.prematch import LOCAL_TZ, journee
+from sportai.services.revue import GOAL_FAMILIES, correct_leg
 from sportai.services.runs import EUROPEAN_CUPS
 
 TOP_MIN_PROBA, TOP_MAX_ODDS = 0.30, 4.0
@@ -101,12 +102,33 @@ TRIAL_PER_MATCH = 5
 TRIAL_STAKE_FACTOR = 0.5
 # Bets of one match kept for the combinations: the best trade-offs of chance and odds, at most this many.
 COMBO_PER_MATCH = 6
+# Goal bets (both teams score yes / no, over / under 1.5, 2.5, 3.5, a team's over / under 0.5 and 1.5), owner
+# 2026-10-24: "il n'y a pas assez de « + de 1,5 but » ou « les deux équipes marquent »" (2026-10-23: Brest - Nice and
+# Stuttgart - Gladbach both teams scored, Alavés - Málaga under 2.5, none proposed). They stay "non validé" (only
+# over / under 1.5 and 3.5 of the enriched goals model are validated, docs/11-backtest-buts.md) but were crowded out:
+# each match kept its 5 best unvalidated bets by value, nearly always exact goals, handicaps and combinations, and
+# needed 3 % of value. They now have their own places (GOAL_PER_MATCH, not counted in TRIAL_PER_MATCH) and enter
+# with a value above 0 after the review's correction (sportai/services/revue.py), at odds of 1.50 or more, the model
+# within the usual limit of a complete market, and a chance of GOAL_MIN_PROBA at least on the more cautious of the
+# model and the bookmakers. Over 1.5 goals of a whole match rarely reaches 1.50; a team's over 1.5 or a combination
+# often does.
+GOAL_PER_MATCH = 3
+GOAL_MIN_VALUE = 0.0
+GOAL_MIN_PROBA = 0.40
 
 
-def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
+def _goal(leg: dict) -> bool:
+    """A goal bet (both teams score, numbers of goals, a team's goals): its own rules above."""
+    return leg.get("famille") in GOAL_FAMILIES if leg.get("famille") else leg.get("marche") in GOAL_MARKETS.values()
+
+
+def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None) -> list[dict]:
     """Every validated-market bet priced today, from the latest run that analysed each match.
 
-    ucl: also the Champions League 1X2 bets, marked `ucl: True` and validated only within the limits above."""
+    ucl: also the Champions League 1X2 bets, marked `ucl: True` and validated only within the limits above.
+    corrections: the daily review's correction of each family of bets (revue.build_revue "corrections"): the model's
+    chance and value of each bet are corrected before any rule is applied; the raw ones stay as "proba_brute" and
+    "valeur_brute"."""
     runs = db.scalars(select(AnalysisRun).where(AnalysisRun.status == "completed", AnalysisRun.kind == "prematch")
                       .order_by(AnalysisRun.started_at))
     latest: dict[str, tuple[AnalysisRun, dict]] = {}
@@ -144,10 +166,13 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 CandidateRow.market.not_in(VALIDATED_MARKETS))))
         div = cfg.get("max_market_divergence", 0.10)
         trial_ok = cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
-        trials = []
+        trials, goal_trials = [], []
         for c in rows:
             if c.odds < COTE_MIN:  # never proposed (owner, 2026-10-22)
                 continue
+            fix = correct_leg(c.market, c.selection, c.line, c.p_win, c.p_push, c.odds, c.market_fair_prob, corrections)
+            p_win, ev, fam = fix["proba"], fix["valeur"], fix["famille"]
+            goal = fam in GOAL_FAMILIES
             if c.market in enabled:
                 pari, marche = bet_label(c.market, c.selection, home, away), MARKET_NAMES.get(c.market, c.market)
             elif c.market in goals and c.market in GOAL_MARKETS:
@@ -161,27 +186,37 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
             if paper and c.market in enabled:  # Champions League result: a win within the odds limits only
                 valide = c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1]
             # A de-vigged two-way price estimates the chance of winning when the bet is not refunded.
-            p_cmp = c.p_win / (1 - c.p_push) if c.p_push and c.p_push < 1 else c.p_win
+            p_cmp = fix["p_cmp"]
             if not valide and not (paper and c.market in enabled):
-                if (is_quarter(c.line) or c.ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
-                        or c.p_win < TRIAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
+                if goal and not paper:  # goal bets: their own rules (GOAL_* above)
+                    if (is_quarter(c.line) or ev <= GOAL_MIN_VALUE or c.market_fair_prob is None
+                            or min(p_cmp, c.market_fair_prob) < GOAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
+                            or abs(p_cmp - c.market_fair_prob) > div):
+                        continue
+                elif (is_quarter(c.line) or ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
+                        or p_win < TRIAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
                         or abs(p_cmp - c.market_fair_prob) > div):
                     continue
             leg = {
                 "match_id": doc_id(ko, home, away), "match": f["match"],
                 "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
                 "pari": pari, "marche": marche,
-                "cote": c.odds, "bookmaker": c.bookmaker, "proba": round(c.p_win, 4),
+                "cote": c.odds, "bookmaker": c.bookmaker, "proba": round(p_win, 4),
                 "proba_marche": None if c.market_fair_prob is None else round(c.market_fair_prob, 4),
-                "valeur": round(c.ev, 4),
+                "valeur": round(ev, 4),
                 # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
                 "valide": valide,
                 "_divergence_max": div, "_p_cmp": round(p_cmp, 4),
+                **({"famille": fam} if fam else {}),
                 **({"ucl": True} if paper else {}),
             }
+            if fix["ratio"] != 1.0:  # the review's correction, shown with the raw figures (revue.py)
+                leg.update(proba_brute=round(c.p_win, 4), valeur_brute=round(c.ev, 4), correction=fix["ratio"])
+            if fix["ratio_marche"] != 1.0 and fix["proba_marche"] is not None:
+                leg["proba_marche_corrigee"] = fix["proba_marche"]
             if not leg["valide"] and not (paper and c.market in enabled):
                 leg["validation"] = NON_VALIDE
-                trials.append(leg)
+                (goal_trials if goal and not paper else trials).append(leg)
             else:
                 legs.append(leg)
         # Anytime goalscorer (owner, 2026-10-15: "buteur Haaland ou Mbappé"): never backtested, so on trial with the
@@ -198,8 +233,9 @@ def legs_from_db(db: DB, day, ucl: bool = True) -> list[dict]:
                 "bookmaker": r["bookmaker"], "proba": round(p, 4), "proba_marche": round(pm, 4),
                 "proba_marche_brute": True, "valeur": round(r["valeur"], 4), "valide": False,
                 "validation": NON_VALIDE, "buteur": scorer_leg_info(r), "_divergence_max": div, "_p_cmp": round(p, 4)})
-        # the best few unvalidated bets of the match, by value
+        # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
+        legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
     return legs
 
 
@@ -243,6 +279,8 @@ def agrees(leg: dict) -> bool:
 def _correct(leg: dict) -> bool:
     if _ucl_result(leg) and not leg["valide"]:  # Champions League result: only within the limits above
         return False
+    if _trial(leg) and _goal(leg):  # goal bets: a value above 0 is enough (owner, 2026-10-24)
+        return leg["valeur"] > GOAL_MIN_VALUE and leg["proba_marche"] is not None and agrees(leg)
     return (leg["valeur"] >= (TRIAL_MIN_VALUE if _trial(leg) else 0) and leg["proba_marche"] is not None
             and agrees(leg))
 
@@ -286,9 +324,9 @@ def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min
     for n in range(min_legs, max_legs + 1):
         for combo in combinations(pool, n):
             # one bet on trial per ticket at most; the match's goals do not count (owner, 2026-10-15: two "both teams
-            # score" make a good ticket)
+            # score" make a good ticket), a team's goals neither since 2026-10-24
             if (len({l["match_id"] for l in combo}) == n
-                    and sum(_trial(l) and l.get("marche") not in GOAL_MARKETS.values() for l in combo) <= 1
+                    and sum(_trial(l) and not _goal(l) for l in combo) <= 1
                     and math.prod(l["cote"] for l in combo) > min_odds
                     and math.prod(chance(l) for l in combo) >= min_total):
                 yield list(combo)

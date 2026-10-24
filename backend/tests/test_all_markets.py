@@ -247,7 +247,8 @@ def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
     rows = [("m1", "1x2", "home", None, 1.60, 0.66, 0.0, 0.62),
             ("m2", "asian_handicap", "away", -0.5, 1.85, 0.60, 0.0, 0.57),  # +11 %: kept, non validé
             ("m2", "asian_handicap", "home", -0.75, 2.40, 0.50, 0.05, 0.45),  # quarter line: never a leg
-            ("m2", "team_total_home", "over", 1.5, 1.70, 0.60, 0.0, 0.58),  # +2 %: under the 3 % on trial
+            ("m2", "team_total_home", "over", 1.5, 1.70, 0.60, 0.0, 0.58),  # +2 %: a goal bet, kept (2026-10-24)
+            ("m2", "team_total_away", "over", 1.5, 2.40, 0.38, 0.0, 0.37),  # goal bet, but under 40 %: never a leg
             ("m2", "exact_score", "1:0", None, 9.0, 0.12, 0.0, None),  # no market probability: never a leg
             ("m3", "result_btts", "home_yes", None, 3.0, 0.36, 0.0, 0.33)]
     rows += [("m5", "exact_score", "4:0", None, 48.0, 0.027, 0.0, 0.016)]
@@ -259,14 +260,19 @@ def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
     assert ah["valide"] is False and ah["validation"] == "non validé" and ah["marche"] == "Handicap asiatique"
     assert by[("m1h - m1a", "Victoire m1h")]["valide"] is True
     assert not any("+0,75" in p or "-0,75" in p for _, p in by)
-    assert not any(m == "m2h - m2a" and ("plus de" in p or "Score exact" in p) for m, p in by)
+    assert not any(m == "m2h - m2a" and ("m2a : plus de" in p or "Score exact" in p) for m, p in by)
+    # goal bets have their own places and a value above 0 is enough (owner, 2026-10-24); still "non validé"
+    tt = by[("m2h - m2a", "m2h : plus de 1,5 buts")]
+    assert tt["validation"] == "non validé" and tt["famille"] == "equipe_plus_1_5"
     assert sum(m == "m4h - m4a" for m, _ in by) == TRIAL_PER_MATCH
     assert not any(m == "m5h - m5a" for m, _ in by)  # long shot
     assert all("marche" in l and "valide" in l for l in legs)
     later = NOW.replace(hour=9)  # the 8 am pass: nothing fixed yet
     doc = build_pronostic(legs, {}, None, later, "matin")
     for t in doc["tickets"].values():
-        assert sum(not l["valide"] for l in t["jambes"]) <= 1  # one unvalidated bet per ticket at most
+        # one unvalidated bet per ticket at most, goal bets apart
+        assert sum(not l["valide"] and not l.get("famille", "").startswith(("equipe_", "btts", "plus", "moins"))
+                   for l in t["jambes"]) <= 1
     trial_tickets = [k for k, t in doc["tickets"].items() if any(not l["valide"] for l in t["jambes"])]
     assert trial_tickets
     apply_stakes(doc, {"mises": {"safe": 0.04, "semi_safe": 0.02, "fun": 0.01}}, 1000.0)
@@ -295,3 +301,112 @@ def test_match_document_lists_every_market():
     assert first["pari"] == "A handicap asiatique -1" and first["validation"] == "non validé"
     assert second["validation"] == "validé" and block["non_analyses"][0]["statut"] == "non analysé"
     assert block["n_marches"] == 2 and "non analysés" in block["note"]
+
+
+def _stale_feed_run(tmp_path, monkeypatch, odds_api_down=False):
+    """A real-mode pass 15 min before a match whose API-Football odds were last refreshed almost 5 hours earlier
+    (2026-10-23: Stuttgart - Gladbach, Alavés - Málaga and Ipswich - Forest kept three 1X2 prices only)."""
+    from dataclasses import replace as dc_replace
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from sportai.config import get_settings
+    from sportai.connectors.base import ProviderUnavailable
+    from sportai.connectors.simulation import SimulationProvider
+    from sportai.db.models import Base, CandidateRow
+    from sportai.services import runs
+
+    now = datetime(2026, 10, 23, 18, 45, tzinfo=timezone.utc)
+    ko = now + timedelta(minutes=15)
+    sim = SimulationProvider(now=now)
+    history = [dc_replace(r, provider="api-football", mode="real") for r in sim.results()]
+    home, away = sim.upcoming_fixtures()[0].home, sim.upcoming_fixtures()[0].away
+
+    def bet(name, values):
+        return {"name": name, "values": [{"value": v, "odd": o} for v, o in values]}
+
+    item = {"fixture": {"id": 999, "date": ko.isoformat()}, "update": "2026-10-23T13:59:20+00:00", "bookmakers": [
+        {"id": 8, "name": "Bet365", "bets": [
+            bet("Match Winner", [("Home", "2.10"), ("Draw", "3.40"), ("Away", "3.50")]),
+            bet("Both Teams Score", [("Yes", "1.57"), ("No", "2.30")]),
+            bet("Goals Over/Under", [("Over 1.5", "1.28"), ("Under 1.5", "3.75"), ("Over 2.5", "1.90"),
+                                     ("Under 2.5", "1.90")]),
+            bet("Total - Home", [("Over 1.5", "2.05"), ("Under 1.5", "1.75")])]}]}
+
+    class FakeApi:
+        name = "api-football"
+
+        def __init__(self, key):
+            pass
+
+        def results(self, competition, season):
+            return history
+
+        def upcoming_fixtures(self, competition):
+            return [Fixture("api-football", "999", competition, ko, home, away, "real")]
+
+        def odds_on(self, competition, day):
+            return [item]
+
+        def fixture_odds(self, fid):
+            return []
+
+    class FakeOddsApi:
+        name = "the-odds-api"
+
+        def __init__(self, *a, **k):
+            self.last_quota, self.last_events = {}, []
+
+        def odds(self, competition):
+            if odds_api_down:
+                raise ProviderUnavailable("HTTP 401: usage quota reached")
+            return [OddsQuote("the-odds-api", "winamax_fr", "toa-1", home, away, ko, "1x2", s, None, o,
+                              now - timedelta(minutes=1), "real", "valid", now + timedelta(minutes=30))
+                    for s, o in (("home", 2.05), ("draw", 3.45), ("away", 3.60))]
+
+    monkeypatch.setattr(runs, "ApiFootballProvider", FakeApi)
+    monkeypatch.setattr(runs, "TheOddsApiProvider", FakeOddsApi)
+    monkeypatch.setattr(runs, "OPENFOOTBALL_FILES", {})
+    monkeypatch.setattr(runs, "load_book_safely", lambda now: None)
+    monkeypatch.setattr(runs, "scorer_markets", lambda db, api, comp, raw, window, fixtures, now: fixtures)
+    eng = create_engine(f"sqlite:///{tmp_path}/s.db")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng, expire_on_commit=False)()
+    run = runs.execute_prematch(db, get_settings(), "DE1", "test", mode="real", now=now)
+    rows = list(db.query(CandidateRow).filter(CandidateRow.run_id == run.id))
+    return run, rows
+
+
+def test_goal_markets_priced_when_api_football_odds_are_old(tmp_path, monkeypatch):
+    run, rows = _stale_feed_run(tmp_path, monkeypatch)
+    assert run.status == "completed" and run.data_sources["odds"] == "the-odds-api+api-football"
+    by = {(r.market, r.selection, r.line): r for r in rows}
+    # the result markets from the current fallback prices only, never from the 5-hour-old feed
+    assert {r.bookmaker for r in rows if r.market == "1x2"} == {"winamax_fr"}
+    # the goal markets from API-Football's last prices: both teams score, totals, team totals
+    assert by[("btts", "yes", None)].odds == 1.57 and by[("btts", "yes", None)].market_fair_prob is not None
+    assert {("totals", "over", 1.5), ("totals", "under", 2.5), ("team_total_home", "over", 1.5)} <= by.keys()
+    # analysed and offered, but the official selections keep their own 4-hour age limit
+    assert any("old" in x for x in by[("btts", "yes", None)].reasons)
+
+
+def test_goal_markets_priced_without_odds_api_credits(tmp_path, monkeypatch):
+    run, rows = _stale_feed_run(tmp_path, monkeypatch, odds_api_down=True)
+    assert run.status == "completed" and run.data_sources["odds"] == "api-football"
+    assert {r.market for r in rows} >= {"btts", "totals", "team_total_home"}
+    assert not any(r.market == "1x2" for r in rows)
+
+
+def test_keep_stale_quotes_never_past_kickoff_nor_twelve_hours():
+    from sportai.services.runs import keep_stale_quotes
+
+    def q(market, observed, line=None):
+        return OddsQuote("api-football", "Bet365", "1", "A", "B", KO, market, "over" if line else "yes", line, 1.8,
+                         observed, "real", "valid", observed + timedelta(hours=4))
+
+    old = [q("btts", NOW - timedelta(hours=5)), q("1x2", NOW - timedelta(hours=5)),
+           q("totals", NOW - timedelta(hours=13), 2.5), q("totals", NOW - timedelta(hours=5), 1.5)]
+    covered = [q("totals", NOW, 1.5)]
+    kept = keep_stale_quotes(old, covered, NOW)
+    assert [(k.market, k.line) for k in kept] == [("btts", None)] and kept[0].expires_at == KO

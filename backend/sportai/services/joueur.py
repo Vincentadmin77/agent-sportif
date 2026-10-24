@@ -27,6 +27,7 @@ from sportai.services.buteurs import player_state, settle_scorer
 from sportai.services.prematch import LOCAL_TZ
 from sportai.services.dashboard import NON_VALIDE, settle
 from sportai.services.pronostic import _settle_ticket, agrees, cautious_proba
+from sportai.services.revue import GOAL_FAMILIES
 
 # Probabilities: each bet is sized on the model's chance capped at the divergence limit above the market's
 # (pronostic.cautious_proba), never on a model far more confident than the bookmakers alone.
@@ -157,6 +158,15 @@ def _corrige(p: float, r: float) -> float:
 # likely than not (docs/13-lecons.md, rule 1): on 2026-10-15 the player's one bet was Dion Beljo to score at 2.25
 # (model 46 %, bookmakers 44 %) while it left every favourite around 1.50.
 ESSAI_MARCHE_MIN = 0.50
+# Goal bets (both teams score, numbers of goals, a team's goals): 45 % (owner 2026-10-24, "pas assez de « + de 1,5
+# but » ou « les deux équipes marquent »"): a team's over 1.5 at 1.90 to 2.10 is a 45-50 % bet for the bookmakers,
+# never a long shot like a scorer at 2.25, and the daily review (revue.py) now corrects their chances by what
+# actually happened.
+ESSAI_MARCHE_MIN_BUTS = 0.45
+
+
+def _essai_marche_min(leg: dict) -> float:
+    return ESSAI_MARCHE_MIN_BUTS if leg.get("famille") in GOAL_FAMILIES else ESSAI_MARCHE_MIN
 
 
 def _result(decision: dict, page: dict[str, dict]) -> dict:
@@ -267,10 +277,11 @@ def decide(pronostic: dict, previous: dict | None, page: dict[str, dict], bank_s
         why, motif = None, None
         if stopped:
             why, motif = (UCL_RULE if stopped == ["ucl"] else ESSAI_RULE.format(nom=_essai_nom(stopped[0]))), "non_valide"
-        elif essais - {"ucl"} and any((l.get("proba_marche") or 1 / l["cote"]) < ESSAI_MARCHE_MIN for l in c["jambes"]
-                                      if not l.get("valide", True)):
-            why, motif = ("Pari à l'essai que les bookmakers donnent à moins de 50 % : ce n'est pas une vraie confiance, "
-                          "je ne le joue pas."), "proba"
+        elif essais - {"ucl"} and any((l.get("proba_marche_corrigee") or l.get("proba_marche") or 1 / l["cote"])
+                                      < _essai_marche_min(l) for l in c["jambes"] if not l.get("valide", True)):
+            low = min(_essai_marche_min(l) for l in c["jambes"] if not l.get("valide", True))
+            why, motif = (f"Pari à l'essai que les bookmakers donnent à moins de {_pct(low, 0)} : ce n'est pas une "
+                          "vraie confiance, je ne le joue pas."), "proba"
         elif c["valeur"] < vmin:
             why, motif = (f"Valeur {_pct(c['valeur'])} sous mon minimum de {_pct(vmin, 1)}"
                           + (" (un point de plus sur un pari à l'essai)" if essais else "")
@@ -344,7 +355,8 @@ CONFIANCE_PREUVES = 30
 
 def _trust(leg: dict, w: float) -> float:
     """The leg's chance with weight w on the model (cautious) and 1 - w on the market."""
-    p, pm = cautious_proba(leg), leg.get("proba_marche")
+    # the bookmakers' chance corrected by what the daily review saw of the bet's family (revue.py), when it did
+    p, pm = cautious_proba(leg), leg.get("proba_marche_corrigee", leg.get("proba_marche"))
     return p if pm is None else w * p + (1 - w) * pm
 
 
@@ -1002,6 +1014,10 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
     if not journal and lrn["examens"]:
         e = lrn["examens"][0]
         journal.append({"heure": heure, "texte": f"Examen du {e['jour']} : {e['texte']}"})
+    # The daily review of the bets nobody chose (revue.py, owner 2026-10-24): what it saw, once a day.
+    revue = (pronostic.get("revue") or {}).get("phrases") or []
+    if revue and revue[0].startswith("Revue du ") and not any(x["texte"].startswith("Revue du ") for x in journal):
+        journal += [{"heure": heure, "texte": t} for t in revue]
     if not journal or not any(x["texte"].startswith("Mon profil") for x in journal):
         journal.append({"heure": heure, "texte": f"Mon profil aujourd'hui : {PROFILS[choisi]['titre'].lower()}. "
                                                  f"{lrn['profil_raison']}"})
@@ -1040,7 +1056,8 @@ def run(pronostic: dict, previous_day: dict | None, past_days: dict[str, dict], 
 
     doc = {"jour": day, "maj": now.isoformat(), "profil": profil, "profil_choisi": choisi,
            "bankroll_du_jour": round(bank_start, 2), "kelly_du_jour": kelly, "budget_max": round(PROFILS[profil]["max_jour"] * bank_start, 2),
-           "decisions": decisions, "resume": resume, "journal": journal[-60:]}
+           "decisions": decisions, "resume": resume, "journal": journal[-60:],
+           **({"revue": revue} if revue else {})}
     for key in ("direct_vus", "en_direct"):  # written by the live loop, kept across the pre-match passes
         if (previous_day or {}).get(key):
             doc[key] = previous_day[key]
