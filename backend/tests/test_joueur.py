@@ -304,3 +304,11 @@ def test_live_bets_need_news_and_the_bookmakers():
     d = day()  # a goal, the bookmakers agree it is likely: played
     joueur._live_stakes(d, page(20, "1 - 0", 0.50), NOW, {})
     assert d["decisions"] and d["decisions"][0]["joue"]
+
+
+def test_confiance_floor_keeps_some_trust_in_the_model():
+    # owner 2026-10-24: never below 30 % on the model, even when the bookmakers were always right
+    settled = [{"jambes": [{"match_id": f"m{i}", "pari": "x", "proba": 0.9, "proba_marche": 0.1, "cote": 5.0,
+                            "resultat": "perdu"}]} for i in range(40)]
+    c = joueur._confiance(settled)
+    assert c["poids_modele"] == joueur.CONFIANCE_PLANCHER and "minimum" in c["raison"]

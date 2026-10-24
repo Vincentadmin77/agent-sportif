@@ -351,6 +351,9 @@ def _motif(d: dict) -> str | None:
 # would have announced its result best (log loss). Thin evidence moves the player only part of the way.
 CONFIANCE_GRILLE = (0.0, 0.25, 0.5, 0.75, 1.0)
 CONFIANCE_PREUVES = 30
+# Owner 2026-10-24: the player keeps at least 30 % trust in the model, whatever its record says, so that it still
+# finds bets (at 0 % it only believed the bookmakers and played 0 of 41 candidates on 2026-10-23).
+CONFIANCE_PLANCHER = 0.3
 
 
 def _trust(leg: dict, w: float) -> float:
@@ -375,13 +378,16 @@ def _confiance(settled: list[dict]) -> dict:
                    for p, m, y in tests.values())
     best = min(CONFIANCE_GRILLE, key=loss)
     w = round(1 - (1 - best) * min(n / CONFIANCE_PREUVES, 1), 3)
+    floored = w < CONFIANCE_PLANCHER
+    w = max(w, CONFIANCE_PLANCHER)
     if w >= 0.99:
         why = f"Sur {n} pari(s) réglé(s), le modèle a vu au moins aussi juste que les bookmakers : je garde sa chance."
     else:
         why = (f"Sur {n} pari(s) réglé(s), les bookmakers ont vu plus juste que le modèle quand ils n'étaient pas "
                f"d'accord : je ne crois le modèle qu'à {_pct(w, 0)} et les bookmakers pour le reste"
                + (f" (il faudra {CONFIANCE_PREUVES} paris pour aller jusqu'au bout de cette leçon)" if n < CONFIANCE_PREUVES else "")
-               + ".")
+               + (" ; mes résultats diraient moins, mais je garde au moins ce minimum, choisi par le propriétaire"
+                  if floored else "") + ".")
     return {"poids_modele": w, "n": n, "meilleur": best, "raison": why}
 
 
