@@ -620,6 +620,18 @@ def plan(bank: float, objectif: float, sim: dict, profil: str, rythme: dict, kel
     return {"multiplicateur": round(mult, 1), "echeance": rythme, "kelly_du_jour": kelly, "phrases": phrases}
 
 
+# Leg fields the player never reads back on a bet it passed (only the review reads them, on played bets): dropped
+# from those bets so the day's document stays under the page's 256 KiB per-document limit (235 bets on 24/10).
+_PASSED_LEG_EXTRAS = ("proba_brute", "valeur_brute", "validation", "correction")
+
+
+def _slim(doc: dict) -> dict:
+    return {**doc, "decisions": [d if d.get("joue") else
+                                 {**d, "jambes": [{k: v for k, v in l.items() if k not in _PASSED_LEG_EXTRAS}
+                                                  for l in d.get("jambes") or []]}
+                                 for d in doc.get("decisions") or []]}
+
+
 def write(page_folder: str | None, out: str, pronostic: dict, page: dict[str, dict], settings: dict,
           now: datetime, legs: list[dict] | None = None) -> dict:
     """Write out/joueur/<day>.json and out/joueur/etat.json from the page copy; returns the day's document.
@@ -635,7 +647,7 @@ def write(page_folder: str | None, out: str, pronostic: dict, page: dict[str, di
     doc, etat = run(pronostic, past.get(pronostic["jour"]), past, page, settings,
                     read(folder / "reglages" / "joueur.json"), read(folder / "joueur" / "etat.json"), now, legs)
     (Path(out) / "joueur").mkdir(parents=True, exist_ok=True)
-    for name, body in ((pronostic["jour"], doc), ("etat", etat)):
+    for name, body in ((pronostic["jour"], _slim(doc)), ("etat", etat)):
         (Path(out) / "joueur" / f"{name}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
     return doc
 
@@ -984,7 +996,7 @@ def live_write(page_folder: str | None, out: str, page: dict[str, dict], now: da
     for name in sorted(d for d in days if d and (folder / f"{d}.json").exists()):
         doc = live(json.loads((folder / f"{name}.json").read_text()), page, now, past)
         (Path(out) / "joueur").mkdir(parents=True, exist_ok=True)
-        (Path(out) / "joueur" / f"{name}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+        (Path(out) / "joueur" / f"{name}.json").write_text(json.dumps(_slim(doc), ensure_ascii=False, indent=1))
         written.append(name)
     return written
 
