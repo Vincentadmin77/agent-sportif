@@ -48,6 +48,9 @@ from pathlib import Path
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
 COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL", "UEL"]
+# The "Joueur pro" was removed by the owner on 2026-10-26 (too much like gambling, poor results): its code and its
+# history stay, but no pass computes or writes its positions any more, pre-match or live.
+JOUEUR_PRO = False
 
 
 def _load_page(folder: str | None) -> dict[str, dict]:
@@ -100,6 +103,8 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     days[day] = apply_stakes(doc, settings, {k: b for k, (b, _) in banks.items()})
     doc["bankroll_du_jour"] = replay({d: v for d, v in days.items() if d < day}, settings)[0]  # combined, for reference
     try:  # "Agent joueur pro": decides which tickets / top 3 picks to play and the stakes (0 when it passes)
+        if not JOUEUR_PRO:
+            raise RuntimeError("désactivé par le propriétaire")
         from sportai.services.joueur import ticket_stakes
         from sportai.services.joueur import write as write_player
 
@@ -477,6 +482,8 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
     try:  # the "Joueur pro" player's bets followed live
+        if not JOUEUR_PRO:
+            raise RuntimeError("désactivé par le propriétaire")
         from sportai.services.joueur import live_write
         live_write(page, out, {**current, **docs}, now)
     except Exception as e:
