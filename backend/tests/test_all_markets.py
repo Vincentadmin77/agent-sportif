@@ -264,6 +264,9 @@ def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
     # goal bets have their own places and a value above 0 is enough (owner, 2026-10-24); still "non validé"
     tt = by[("m2h - m2a", "m2h : plus de 1,5 buts")]
     assert tt["validation"] == "non validé" and tt["famille"] == "equipe_plus_1_5"
+    # the team each bet needs to win or score (rotation risk of the next match, owner 2026-10-26)
+    assert by[("m1h - m1a", "Victoire m1h")]["_exige"] == "home" and tt["_exige"] == "home"
+    assert "_exige" not in ah  # m2a +0,5: no win needed
     assert sum(m == "m4h - m4a" for m, _ in by) == TRIAL_PER_MATCH
     assert not any(m == "m5h - m5a" for m, _ in by)  # long shot
     assert all("marche" in l and "valide" in l for l in legs)

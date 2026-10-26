@@ -111,6 +111,10 @@ class ApiFootballProvider:
         """A team's last played matches (raw fixtures), all competitions."""
         return self._get("/fixtures", {"team": team_id, "last": last}, ttl=86400).get("response", [])
 
+    def team_next(self, team_id: int, next_: int = 2) -> list[dict]:
+        """A team's next matches (raw fixtures), all competitions, domestic cups included."""
+        return self._get("/fixtures", {"team": team_id, "next": next_}, ttl=6 * 3600).get("response", [])
+
     def lineups(self, fixture_id: int | str, ttl: float = 300) -> list[dict]:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
         return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=ttl).get("response", [])

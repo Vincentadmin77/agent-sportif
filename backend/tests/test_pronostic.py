@@ -279,3 +279,44 @@ def test_no_ticket_leg_under_the_odds_floor():
     # Owner, 2026-10-22: no proposal under 1.50 anywhere ("Moins de 4,5 buts" at 1.28 and 1.17 in the fun ticket).
     doc = build_pronostic([leg("a-b", "Moins de 4,5 buts", 1.28, 0.85, 0.80), *LEGS], {}, None, NOW, "h3")
     assert all(l["cote"] >= 1.50 for t in doc["tickets"].values() for l in t["jambes"])
+
+
+def test_needs_effort_markets():
+    from sportai.services.pronostic import needs_effort
+
+    assert needs_effort("1x2", "home", None) == "home" and needs_effort("1x2", "draw", None) is None
+    assert needs_effort("dnb", "away", None) == "away"
+    assert needs_effort("double_chance", "1X", None) is None
+    assert needs_effort("asian_handicap", "home", -1.5) == "home" and needs_effort("asian_handicap", "home", 0.5) is None
+    assert needs_effort("asian_handicap", "away", 1.0) == "away"  # the line is the home team's: away -1
+    assert needs_effort("asian_handicap", "away", -1.0) is None  # away +1
+    assert needs_effort("euro_handicap", "home", -1.0) == "home" and needs_effort("euro_handicap", "home", 1.0) is None
+    assert needs_effort("euro_handicap", "away", 0.0) == "away" and needs_effort("euro_handicap", "away", -1.0) is None
+    assert needs_effort("team_total_home", "over", 1.5) == "home" and needs_effort("team_total_home", "over", 0.5) is None
+    assert needs_effort("team_total_away", "under", 1.5) is None
+    assert needs_effort("result_total", "away_over", 2.5) == "away" and needs_effort("result_btts", "draw_yes", None) is None
+    assert needs_effort("win_to_nil_home", "yes", None) == "home" and needs_effort("win_to_nil_home", "no", None) is None
+    assert needs_effort("exact_goals_away", "2+", None) == "away" and needs_effort("exact_goals_away", "1", None) is None
+    assert needs_effort("exact_score", "2:1", None) == "home" and needs_effort("exact_score", "1:1", None) is None
+    assert needs_effort("totals", "over", 2.5) is None and needs_effort("btts", "yes", None) is None
+
+
+def test_high_rotation_risk_keeps_win_bets_out_of_the_tickets_and_ideas():
+    # Owner, 2026-10-26: a team that plays a bigger match soon may hold back tonight.
+    win_a = {**leg("a-b", "Victoire a", 1.70, 0.66, 0.58), "_exige": "home"}
+    dc_a = leg("a-b", "a ou nul", 1.55, 0.72, 0.66)  # no win needed: kept
+    legs = [win_a, dc_a, *LEGS[1:]]
+    nxt = {"equipe": "a", "risque_rotation": "élevé",
+           "phrase": "a joue z 3 jours après (Ligue des champions, match plus important) : risque de rotation élevé."}
+    page = {"2026-10-11-a-b": {"contexte": {"prochain_match": {"domicile": nxt}}}}
+    doc = build_pronostic(legs, page, None, NOW, "matin")
+    picked = [(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]]
+    assert ("a-b", "Victoire a") not in picked and ("a-b", "a ou nul") in picked
+    assert nxt["phrase"] in doc["message"] and "écartés des idées" in doc["message"]
+    assert all(l["cote"] >= 1.50 for t in doc["tickets"].values() for l in t["jambes"])
+    # a moderate risk, or the other team's risk, changes nothing
+    for other in ({"domicile": {**nxt, "risque_rotation": "modéré"}}, {"exterieur": nxt}):
+        page = {"2026-10-11-a-b": {"contexte": {"prochain_match": other}}}
+        doc = build_pronostic(legs, page, None, NOW, "matin")
+        assert ("a-b", "Victoire a") in [(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]]
+        assert "écartés" not in doc["message"]

@@ -115,6 +115,47 @@ COMBO_PER_MATCH = 6
 GOAL_PER_MATCH = 3
 GOAL_MIN_VALUE = 0.0
 GOAL_MIN_PROBA = 0.40
+# Next match (owner, 2026-10-26: "s'ils vont devoir se retenir pour tout donner le match suivant"): a team whose
+# rotation risk is "élevé" (contexte.prochain_match, docs/15-prochain-match.md) may rest players tonight. Its effect
+# is not measured yet, so the model's chances are left alone; the tickets and the ideas only leave out the bets that
+# need that team to win, to cover a handicap of 0 or less, or to score 2 goals or more (ROTATION_LEVEL).
+ROTATION_LEVEL = "élevé"
+
+
+def needs_effort(market: str, selection: str, line: float | None) -> str | None:
+    """"home" or "away" when the bet needs that team to win, to cover a handicap of 0 or less (draw no bet
+    included) or to score 2 goals or more; None for every other bet (double chance, match goals, both teams score,
+    a team's under, clean sheet...)."""
+    side = selection if selection in ("home", "away") else None
+    if market in ("1x2", "dnb"):
+        return side
+    if market == "asian_handicap" and side and line is not None:
+        return side if (line if side == "home" else -line) <= 0 else None
+    if market == "euro_handicap" and side and line is not None:  # the line is the home team's
+        return side if (line <= 0 if side == "home" else line >= 0) else None
+    if market in ("result_total", "result_btts"):
+        res = selection.split("_")[0]
+        return res if res in ("home", "away") else None
+    if market in ("win_to_nil_home", "win_to_nil_away") and selection == "yes":
+        return market.rsplit("_", 1)[1]
+    if market in ("team_total_home", "team_total_away") and selection == "over" and (line or 0) >= 1.5:
+        return market.rsplit("_", 1)[1]
+    if market in ("exact_goals_home", "exact_goals_away") and int(selection.rstrip("+")) >= 2:
+        return market.rsplit("_", 1)[1]
+    if market == "exact_score":
+        hg, ag = (int(x) for x in selection.split(":"))
+        return "home" if hg > ag else "away" if ag > hg else None
+    return None
+
+
+def rotation_block(leg: dict, page: dict[str, dict]) -> dict | None:
+    """The next-match entry (contexte.prochain_match) that keeps this bet out of the tickets and ideas, if any."""
+    side = leg.get("_exige")
+    if not side:
+        return None
+    ctx = (page.get(leg["match_id"]) or {}).get("contexte") or {}
+    nxt = (ctx.get("prochain_match") or {}).get("domicile" if side == "home" else "exterieur") or {}
+    return nxt if nxt.get("risque_rotation") == ROTATION_LEVEL else None
 
 
 def _goal(leg: dict) -> bool:
@@ -207,6 +248,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
                 "valide": valide,
                 "_divergence_max": div, "_p_cmp": round(p_cmp, 4),
+                **({"_exige": side} if (side := needs_effort(c.market, c.selection, c.line)) else {}),
                 **({"famille": fam} if fam else {}),
                 **({"ucl": True} if paper else {}),
             }
@@ -368,6 +410,17 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
 
     open_legs = [l for l in legs if not started(l) and _correct(l)]
     notes = []
+    # a team that may rest players tonight for its next match: the bets needing it to win or score are kept out of
+    # the tickets and the ideas (docs/15-prochain-match.md); the top 3 odds still show them
+    blocked: dict[str, dict] = {}
+    for l in open_legs:
+        nxt = rotation_block(l, page)
+        if nxt:
+            blocked.setdefault(nxt.get("equipe") or l["match"], nxt)
+    ticket_legs = [l for l in open_legs if not rotation_block(l, page)]
+    for team, nxt in blocked.items():
+        notes.append((nxt.get("phrase") or f"{team} : risque de rotation élevé.")
+                     + f" Les paris qui demandent à {team} de gagner ou de marquer beaucoup sont écartés des idées.")
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
     kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]
@@ -401,7 +454,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         used = set().union(*taken)
         # any market may make the safe single, if its value is positive and its chance strong (owner, 2026-10-15):
         # 55 % at least on the more cautious of the model and the bookmakers
-        candidates = open_legs if pool is None else pool
+        candidates = ticket_legs if pool is None else pool
         for fewest in range(min_legs, 0, -1):
             combos = [c for c in _combos(candidates, fewest, max_legs, min_odds, min_total, min_leg, chance)
                       if not {(l["match_id"], l["pari"]) for l in c} & used]
@@ -471,7 +524,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         taken = [bets(t) for t in [*tickets.values(), *kept, *(b for group in bonus.values() for b in group)]]
         taken += locked_bonus
         new = build(rules, None, taken, False,
-                    [l for l in open_legs if (l["match_id"], l["pari"]) not in official])
+                    [l for l in ticket_legs if (l["match_id"], l["pari"]) not in official])
         bonus[key] = kept + ([new] if new and len(kept) < MAX_BONUS else [])
 
     filled = [t["titre"] for t in tickets.values() if t["jambes"]]

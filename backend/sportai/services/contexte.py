@@ -10,6 +10,11 @@ written to the match document's ``contexte`` field, with one plain sentence per 
 - Streaks: the teams' last 10 matches, all competitions (the request the form dots already make).
 - Weather: Open-Meteo (free for non-commercial use; a commercial licence before going public), the stadium
   located once with Open-Meteo's geocoding and kept in state/stades.json.
+- Next match (owner, 2026-10-26): each team's match after tonight's (API-Football /fixtures?team=&next=2, all
+  competitions, domestic cups included; the season calendars of data/calendrier when it fails). A team that plays
+  a more important match, or a clearly stronger opponent, within 4 days may hold back tonight: "risque de
+  rotation", docs/15-prochain-match.md. Unlike the rest of the context, a high risk is used by the tickets
+  (pronostic.rotation_block), never by the probabilities.
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ import json
 import os
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 ARCHIVE = Path(os.getenv("SPORTAI_GOALS_CACHE", "/mnt/project-files/agent-sportif/data/api-football"))
@@ -439,6 +444,176 @@ def weather_at(http_meteo, pos: dict, kickoff: datetime) -> dict | None:
     return out
 
 
+# ---------------------------------------------------------------- next match and rotation risk
+
+ROTATION_DAYS = 4  # next match at most this many days after tonight's (betting days, Paris)
+HIGH_DAYS = 3  # a more important match this close: high risk
+STRONGER_PPM = 0.5  # next opponent at least this many points per match above tonight's: clearly stronger
+MIN_PLAYED = 3  # fewer matches in the table: strength not judged
+DROPPED = ("PST", "CANC", "ABD", "SUSP")
+CONTINENTAL = {2: "Ligue des champions", 3: "Ligue Europa", 848: "Ligue Conférence", 13: "Copa Libertadores",
+               11: "Copa Sudamericana"}
+LEAGUE_NAMES = {61: "Ligue 1", 39: "Premier League", 140: "LaLiga", 78: "Bundesliga", 135: "Serie A",
+                71: "Brasileirão", 66: "Coupe de France", 45: "FA Cup", 48: "Coupe de la Ligue anglaise",
+                143: "Coupe du Roi", 81: "Coupe d'Allemagne", 137: "Coupe d'Italie", 73: "Coupe du Brésil",
+                **CONTINENTAL}
+# the season calendars kept by calendrier.py, used when API-Football does not answer
+CALENDAR_LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "UCL": 2, "UEL": 3}
+KNOCKOUT = ("round of", "quarter", "semi", "final", "knockout", "play-off", "playoff", "8th", "16th", "1/8", "1/16")
+
+
+def is_league(league: dict) -> bool:
+    """A championship rather than a cup: API-Football's fixtures carry no type, their rounds say it
+    ("Regular Season - 12" against "Round of 32", "Quarter-finals")."""
+    if league.get("id") in CONTINENTAL:
+        return False
+    return (league.get("type") == "League" or league.get("id") in CALENDAR_LEAGUES.values()
+            or (league.get("round") or "").lower().startswith("regular season"))
+
+
+def importance(league: dict, stake: dict | None = None) -> int:
+    """How much a match counts, simply: 4 European knockout round (play-offs included), 3 European league phase, a
+    domestic cup's semi-final or final, or a league match with a big stake late in the season (title, Europe,
+    relegation), 2 league match or cup quarter-final, 1 earlier cup rounds and super cups, 0 friendlies."""
+    lid, name = league.get("id"), (league.get("name") or "").lower()
+    rnd = (league.get("round") or "").lower()
+    if "friendl" in name:
+        return 0
+    if lid in CONTINENTAL:
+        return 4 if any(k in rnd for k in KNOCKOUT) else 3
+    if is_league(league):
+        return 3 if (stake or {}).get("enjeu") == "fort" else 2
+    if any(k in name for k in ("super", "trophée", "community shield")):
+        return 1
+    if "semi" in rnd or rnd.startswith("final"):
+        return 3
+    if "quarter" in rnd:
+        return 2
+    return 1
+
+
+def _kickoff(s: str) -> datetime:
+    return datetime.fromisoformat(s)  # Python 3.11+ reads the "Z" itself
+
+
+def _betting_day(ko: datetime) -> date:
+    # the model's module, imported only when needed
+    from sportai.services.prematch import journee
+
+    return journee(ko)
+
+
+def next_from_fixtures(fixtures: list[dict], team_id: int, tonight: dict) -> dict | None:
+    """The team's first match after tonight's, from API-Football's next fixtures (raw), as a plain row."""
+    ko = _kickoff(tonight["fixture"]["date"])
+    for f in sorted(fixtures or [], key=lambda f: f["fixture"]["date"]):
+        if (f["fixture"]["id"] == tonight["fixture"]["id"] or _kickoff(f["fixture"]["date"]) <= ko
+                or f["fixture"]["status"]["short"] in DROPPED):
+            continue
+        home = f["teams"]["home"]["id"] == team_id
+        opp = f["teams"]["away" if home else "home"]
+        lg = f.get("league") or {}
+        return {"id": f["fixture"]["id"], "coup_envoi": f["fixture"]["date"], "domicile": home,
+                "adversaire": opp["name"], "adversaire_id": opp.get("id"),
+                "ligue": {"id": lg.get("id"), "name": lg.get("name"), "type": lg.get("type"),
+                          "round": lg.get("round"), "season": lg.get("season")}, "source": "api"}
+    return None
+
+
+def next_from_calendars(calendars: dict[str, dict], team: str, tonight: dict) -> dict | None:
+    """The same from the season calendars (team names only, no domestic cup): the fallback."""
+    from sportai.connectors.teams import same_team
+
+    ko = _kickoff(tonight["fixture"]["date"])
+    best = None
+    for comp, cal in (calendars or {}).items():
+        for m in (cal or {}).get("matchs") or []:
+            if m["id"] == tonight["fixture"]["id"] or m["statut"] in DROPPED or _kickoff(m["coup_envoi"]) <= ko:
+                continue
+            home = same_team(m["domicile"], team)
+            if not (home or same_team(m["exterieur"], team)):
+                continue
+            if best is None or _kickoff(m["coup_envoi"]) < _kickoff(best["coup_envoi"]):
+                lid = CALENDAR_LEAGUES.get(comp)
+                best = {"id": m["id"], "coup_envoi": m["coup_envoi"], "domicile": home,
+                        "adversaire": m["exterieur" if home else "domicile"], "adversaire_id": None,
+                        "ligue": {"id": lid, "name": LEAGUE_NAMES.get(lid, comp),
+                                  "type": "Cup" if lid in CONTINENTAL else "League", "round": m.get("journee"),
+                                  "season": cal.get("saison")}, "source": "calendrier"}
+    return best
+
+
+def strength(standings: list | None, team_id: int | None, name: str | None) -> tuple[dict, int] | None:
+    """Rank and points per match of a team in a table (by id, else by name) with its group's position in the
+    table; None when absent or too early in the season."""
+    from sportai.connectors.teams import same_team
+
+    for league in standings or []:
+        for g, group in enumerate((league.get("league") or {}).get("standings") or []):
+            for r in group:
+                t = r.get("team") or {}
+                if (team_id is not None and t.get("id") == team_id) or (
+                        team_id is None and name and t.get("name") and same_team(t["name"], name)):
+                    played = (r.get("all") or {}).get("played") or 0
+                    if played < MIN_PLAYED:
+                        return None
+                    return {"rang": r["rank"], "points_par_match": round(r["points"] / played, 2)}, g
+    return None
+
+
+def compare(tables: list, tonight_opp: dict, next_opp: dict) -> tuple[dict | None, dict | None]:
+    """Both opponents' strength from the first table holding them both in the same group."""
+    for t in tables:
+        a = strength(t, tonight_opp.get("id"), tonight_opp.get("name"))
+        b = strength(t, next_opp.get("id"), next_opp.get("name"))
+        if a and b and a[1] == b[1]:
+            return a[0], b[0]
+    return None, None
+
+
+def _after(n: int) -> str:
+    return "le lendemain" if n == 1 else f"{n} jours après"
+
+
+def next_match(team: dict, tonight_opp: dict, fx: dict, nxt: dict | None, tonight_importance: int,
+               tables: list, next_stake: dict | None = None) -> dict | None:
+    """What the team plays next and whether it may hold back tonight.
+
+    Risk when the next match is at most ROTATION_DAYS days after tonight's (betting days) and either counts more
+    (importance) or is against a clearly stronger opponent (STRONGER_PPM more points per match in the same table)
+    in a match that counts at least as much as tonight's: "élevé" when the more important match is at most
+    HIGH_DAYS days away or both reasons hold, "modéré" otherwise."""
+    if not nxt:
+        return None
+    ko, ko2 = _kickoff(fx["fixture"]["date"]), _kickoff(nxt["coup_envoi"])
+    days = (_betting_day(ko2) - _betting_day(ko)).days
+    imp = importance(nxt["ligue"], next_stake)
+    a, b = compare(tables, tonight_opp, {"id": nxt.get("adversaire_id"), "name": nxt["adversaire"]})
+    stronger = None if not (a and b) else b["points_par_match"] - a["points_par_match"] >= STRONGER_PPM
+    more = imp > tonight_importance
+    reasons = []
+    if days <= ROTATION_DAYS:
+        if more:
+            reasons.append("match plus important")
+        if stronger and imp >= tonight_importance:
+            reasons.append("adversaire plus fort")
+    risk = None
+    if reasons:
+        risk = "élevé" if more and (days <= HIGH_DAYS or len(reasons) == 2) else "modéré"
+    comp = LEAGUE_NAMES.get(nxt["ligue"].get("id")) or nxt["ligue"].get("name") or "autre compétition"
+    out = {"equipe": team["name"], "date": ko2.isoformat(), "jours": days,
+           "heures": round((ko2 - ko).total_seconds() / 3600), "adversaire": nxt["adversaire"],
+           "lieu": "domicile" if nxt["domicile"] else "exterieur", "competition": comp,
+           "tour": nxt["ligue"].get("round"), "importance": imp, "importance_ce_soir": tonight_importance,
+           "plus_important": more, "adversaire_plus_fort": stronger,
+           "force_adversaire_ce_soir": a, "force_adversaire_suivant": b,
+           "risque_rotation": risk, "raisons": reasons, "source": nxt["source"]}
+    if risk:
+        out["phrase"] = (f"{team['name']} joue {nxt['adversaire']} {_after(days)} ({comp}, "
+                         f"{', '.join(reasons)}) : risque de rotation {risk}.")
+    return out
+
+
 # ---------------------------------------------------------------- the whole context of one match
 
 def phrases(ctx: dict, home: str, away: str) -> list[str]:
@@ -453,13 +628,18 @@ def phrases(ctx: dict, home: str, away: str) -> list[str]:
         out += ((ctx.get("series") or {}).get(side) or {}).get("phrases") or []
     if (ctx.get("meteo") or {}).get("phrase"):
         out.append(ctx["meteo"]["phrase"])
+    for side in ("domicile", "exterieur"):
+        p = ((ctx.get("prochain_match") or {}).get(side) or {}).get("phrase")
+        if p:
+            out.append(p)
     return out
 
 
 class ContextSources:
     """What one pass needs to build the context of its matches; each source fails on its own."""
 
-    def __init__(self, api, now: datetime, referees: dict | None = None, geo=None, meteo=None):
+    def __init__(self, api, now: datetime, referees: dict | None = None, geo=None, meteo=None,
+                 calendars: dict | None = None):
         self.api, self.now = api, now
         self.referees = referees if referees is not None else load_referee_index()
         if geo is None or meteo is None:
@@ -468,7 +648,30 @@ class ContextSources:
             meteo = meteo or CachedClient("https://api.open-meteo.com", timeout=15.0)
         self.geo, self.meteo = geo, meteo
         self._standings: dict[tuple[int, int], list | None] = {}
+        self._next: dict[int, list | None] = {}
+        self._calendars = calendars  # data/calendrier, read when API-Football does not give a next match
         self.weather_down = False
+
+    def next_fixtures(self, team_id: int) -> list | None:
+        """The team's next two matches (raw), one request per team and pass; None when API-Football fails."""
+        if team_id not in self._next:
+            try:
+                self._next[team_id] = self.api.team_next(team_id, 2)
+            except Exception:  # noqa: BLE001 - context only: the calendars take over
+                self._next[team_id] = None
+        return self._next[team_id]
+
+    def calendars(self) -> dict:
+        if self._calendars is None:
+            from sportai.services import calendrier
+
+            self._calendars = {}
+            for comp in CALENDAR_LEAGUES:
+                try:
+                    self._calendars[comp] = calendrier.load(comp) or {}
+                except (OSError, ValueError):
+                    self._calendars[comp] = {}
+        return self._calendars
 
     def standings(self, league_id: int, season: int) -> list | None:
         key = (league_id, season)
@@ -480,9 +683,35 @@ class ContextSources:
         return self._standings[key]
 
 
+def next_matches(src: ContextSources, fx: dict, tonight_table: list | None, tonight_stakes: dict) -> dict:
+    """Both teams' next matches with their rotation risk; a side not found is left out."""
+    league = fx.get("league") or {}
+    out = {}
+    for side, me, opp in (("domicile", "home", "away"), ("exterieur", "away", "home")):
+        team, other = fx["teams"][me], fx["teams"][opp]
+        raw = src.next_fixtures(team["id"])
+        nxt = next_from_fixtures(raw, team["id"], fx) if raw is not None else None
+        if nxt is None:
+            nxt = next_from_calendars(src.calendars(), team["name"], fx)
+        if nxt is None:
+            continue
+        lg = nxt["ligue"]
+        table = None
+        if lg.get("id") and lg.get("season") and (is_league(lg) or lg.get("id") in CONTINENTAL):
+            table = src.standings(lg["id"], lg["season"])
+        stake = stakes(table, team["id"]) if table and is_league(lg) else None
+        info = next_match(team, other, fx, nxt, importance(league, tonight_stakes.get(side)),
+                          [table, tonight_table], stake)
+        if info:
+            out[side] = info
+    return out
+
+
 def build_context(src: ContextSources, fx: dict, previous: dict | None = None,
-                  last_home: list[dict] | None = None, last_away: list[dict] | None = None) -> dict:
-    """The context of one raw API-Football fixture; what an earlier pass found is kept when a source fails."""
+                  last_home: list[dict] | None = None, last_away: list[dict] | None = None,
+                  next_refresh: bool = True) -> dict:
+    """The context of one raw API-Football fixture; what an earlier pass found is kept when a source fails.
+    next_refresh: look the teams' next matches up again (one request per team), else keep the earlier pass's."""
     prev = dict(previous or {})
     ctx: dict = {"maj": src.now.isoformat()}
     home, away = fx["teams"]["home"], fx["teams"]["away"]
@@ -502,6 +731,15 @@ def build_context(src: ContextSources, fx: dict, previous: dict | None = None,
                          "exterieur": series(last_away, away["id"], away["name"])}
     elif prev.get("series"):
         ctx["series"] = prev["series"]
+    ctx["prochain_match"] = prev.get("prochain_match")
+    if next_refresh:
+        try:
+            found = next_matches(src, fx, table, ctx.get("classement") or {})
+        except Exception:  # noqa: BLE001 - context only: keep the earlier pass's
+            found = {}
+        old = prev.get("prochain_match") or {}
+        both = {side: found.get(side) or old.get(side) for side in ("domicile", "exterieur")}
+        ctx["prochain_match"] = {k: v for k, v in both.items() if v} or None
     ctx["meteo"] = prev.get("meteo")
     if not src.weather_down:
         try:
@@ -513,5 +751,7 @@ def build_context(src: ContextSources, fx: dict, previous: dict | None = None,
             src.weather_down = True
     ctx = {k: v for k, v in ctx.items() if v is not None}
     ctx["phrases"] = phrases(ctx, home["name"], away["name"])
-    ctx["note"] = "Contexte affiché pour l'analyse, pas encore pris en compte dans les probabilités."
+    ctx["note"] = ("Contexte affiché pour l'analyse, pas encore pris en compte dans les probabilités. Seul un risque "
+                   "de rotation élevé compte : il écarte des idées les paris qui demandent à cette équipe de gagner "
+                   "ou de marquer beaucoup.")
     return ctx

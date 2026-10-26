@@ -217,6 +217,10 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
             new = build_match_docs(db, run, {**current, **docs})
             docs.update(new)
             fixtures += run.fixtures or []
+    try:  # before the tickets: a high rotation risk (next match) keeps some bets out of them
+        _context(comps, docs, current, now)
+    except Exception as e:  # context is a bonus: never lose the pass for it
+        notes.append(f"contexte unavailable ({str(e)[:120]})")
     try:
         notes.append("pronostic: " + _pronostic(db, page, docs, out, now, "matin" if morning else "passage"))
     except Exception as e:  # the tab is a bonus: never lose the pass for it
@@ -230,10 +234,6 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         _form(comps, docs, current, now)
     except Exception as e:  # form is a bonus: never lose the pass for it
         notes.append(f"forme unavailable ({str(e)[:120]})")
-    try:
-        _context(comps, docs, current, now)
-    except Exception as e:  # context is a bonus: never lose the pass for it
-        notes.append(f"contexte unavailable ({str(e)[:120]})")
     STATE_DB.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(work, STATE_DB)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
@@ -273,7 +273,8 @@ def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now
 def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
     """Referee, standings, streaks and weather of the pass's matches still to play (sportai/services/contexte.py).
     Each pass refreshes them (the referee is often named late, the forecast improves); the streaks are fetched
-    once a day per match. Context only: no probability uses it yet."""
+    once a day per match, the teams' next matches too (rotation risk, docs/15-prochain-match.md). No probability
+    uses any of it; a high rotation risk only keeps some bets out of the tickets and ideas (pronostic.py)."""
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
     from sportai.services.contexte import ContextSources, build_context
@@ -298,12 +299,14 @@ def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], 
                 continue
             prev = docs[key].get("contexte") or (current.get(key) or {}).get("contexte") or {}
             last_h = last_a = None
-            if not prev.get("series") or journee(datetime.fromisoformat(prev["maj"])) != journee(now):
+            same_day = bool(prev.get("maj")) and journee(datetime.fromisoformat(prev["maj"])) == journee(now)
+            if not prev.get("series") or not same_day:
                 try:
                     last_h, last_a = api.team_last(fx["teams"]["home"]["id"]), api.team_last(fx["teams"]["away"]["id"])
                 except Exception as e:  # noqa: BLE001 - keep yesterday's streaks
                     print(f"séries unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
-            docs[key]["contexte"] = build_context(src, fx, prev, last_h, last_a)
+            docs[key]["contexte"] = build_context(src, fx, prev, last_h, last_a,
+                                                  next_refresh=not (prev.get("prochain_match") and same_day))
     if src.weather_down:
         print("météo unavailable (Open-Meteo unreachable)", file=sys.stderr)
 
