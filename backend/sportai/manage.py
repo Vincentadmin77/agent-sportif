@@ -3,7 +3,7 @@
   python -m sportai.manage init            # seed plans and competitions (after `alembic upgrade head`)
   python -m sportai.manage create-admin EMAIL   # password read from the ADMIN_PASSWORD env var or prompted
   python -m sportai.manage run-prematch FR1 [--mode simulation|real]
-  python -m sportai.manage set-plan-skus football_premium SKU1,SKU2
+  python -m sportai.manage set-plan-prices football_premium price_123:31,P-ABC:92   # Stripe price / PayPal plan id : period in days
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ def main() -> None:
     r = sub.add_parser("run-prematch")
     r.add_argument("competition")
     r.add_argument("--mode", choices=["simulation", "real"])
-    s = sub.add_parser("set-plan-skus")
+    s = sub.add_parser("set-plan-prices")
     s.add_argument("plan")
-    s.add_argument("skus")
+    s.add_argument("prices")
     args = ap.parse_args()
     db = session_factory()()
     if args.cmd == "init":
@@ -53,11 +53,12 @@ def main() -> None:
     elif args.cmd == "run-prematch":
         run = runs.execute_prematch(db, get_settings(), args.competition, "cli", mode=args.mode)
         print(run.id, run.status, run.outcome or "", run.status_detail or "")
-    elif args.cmd == "set-plan-skus":
+    elif args.cmd == "set-plan-prices":
         p = db.get(Plan, args.plan)
-        p.shopify_skus = [x.strip() for x in args.skus.split(",") if x.strip()]
+        pairs = [x.strip().rsplit(":", 1) for x in args.prices.split(",") if x.strip()]
+        p.payment_prices = {price_id: int(days) for price_id, days in pairs}
         db.commit()
-        print(p.code, p.shopify_skus)
+        print(p.code, p.payment_prices)
 
 
 if __name__ == "__main__":

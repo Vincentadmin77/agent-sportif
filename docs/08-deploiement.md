@@ -19,7 +19,7 @@ Pour l'hébergement des données personnelles, privilégier une région UE.
 4. Déployer le worker (même image, commande `python -m sportai.worker`).
 5. Construire le frontend avec `BACKEND_URL` = URL interne de l'API (figée au build) ; servir sur votre domaine en HTTPS.
 6. Démarrer en `DATA_MODE=simulation`, vérifier, puis passer en `real` une fois les clés en place.
-7. Brancher les webhooks Shopify sur `https://API/webhooks/shopify`.
+7. Brancher les webhooks Stripe sur `https://API/webhooks/stripe` et PayPal sur `https://API/webhooks/paypal` (voir docs/06-paiements.md).
 
 ## Surveillance
 - `GET /health` pour la sonde de disponibilité.
@@ -29,5 +29,5 @@ Pour l'hébergement des données personnelles, privilégier une région UE.
 ## Avant ouverture commerciale
 - Avis d'un avocat (pratiques commerciales, jeux d'argent, CGV, RGPD) ; compléter mentions légales, CGV, confidentialité.
 - Confirmation écrite des fournisseurs de données pour l'usage commercial.
-- Parcours Shopify complet testé sur une boutique de test.
+- Parcours complet testé en mode test Stripe et en sandbox PayPal.
 - Au moins plusieurs semaines en mode réel avec publication interne seulement, pour mesurer le comportement du filtre.

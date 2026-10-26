@@ -54,7 +54,7 @@ class Plan(Base):
     name: Mapped[str] = mapped_column(String(128))
     features: Mapped[list] = mapped_column(JSON, default=list)  # e.g. ["football.selections", "live.alerts"]
     price_label: Mapped[str] = mapped_column(String(64), default="")
-    shopify_skus: Mapped[list] = mapped_column(JSON, default=list)
+    payment_prices: Mapped[dict] = mapped_column(JSON, default=dict)  # Stripe price id / PayPal plan id -> period days
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -63,7 +63,7 @@ class Entitlement(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     plan_code: Mapped[str] = mapped_column(ForeignKey("plans.code"))
-    source: Mapped[str] = mapped_column(String(32))  # shopify | admin
+    source: Mapped[str] = mapped_column(String(32))  # stripe | paypal | admin | system
     external_ref: Mapped[str | None] = mapped_column(String(255), index=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | cancelled | refunded | expired
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

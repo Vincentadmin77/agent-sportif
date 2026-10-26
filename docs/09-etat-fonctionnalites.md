@@ -36,7 +36,7 @@ Légende : ✅ fait et testé · 🟡 fait, testé partiellement (sans le vrai s
 | Worker : analyses planifiées, surveillance live, déduplication des alertes, verrou d'instance unique | ✅ en simulation ; 🟡 en réel |
 | Site public (14 pages), espace abonné (4 pages), administration (8 onglets) | ✅ build Next.js + test navigateur `e2e/smoke.mjs` |
 | Envoi des notifications (e-mail, push) | ⬜ préférences enregistrées, aucun envoi |
-| Webhooks Shopify (HMAC, idempotence, attribution, remboursement, annulation) | 🟡 testé avec des charges construites ; pas avec une vraie boutique |
+| Webhooks Stripe et PayPal (signature, idempotence, attribution, remboursement, annulation) | 🟡 testé avec des charges construites ; pas en mode test Stripe ni en sandbox PayPal |
 | Agent Claude de contrôle qualité (garder / signaler / rejeter, budget, contenu non fiable) | 🟡 testé avec un faux client ; jamais appelé avec une vraie clé |
 | Orchestrateur multi-agents complet (7 agents) | ⬜ seul l'agent qualité existe ; les calculs sont déterministes et n'ont pas besoin d'agent |
 | Serveur MCP du moteur (7 outils) | ✅ testé, y compris en vrai aller-retour stdio |

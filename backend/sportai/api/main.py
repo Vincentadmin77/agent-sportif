@@ -17,7 +17,7 @@ from sportai.db.models import (
     Selection, SelectionCorrection, User,
 )
 from sportai.db.session import get_db
-from sportai.services import accounts, publication, runs, shopify
+from sportai.services import accounts, payments, publication, runs
 
 app = FastAPI(title="SportAI API", version="0.1.0")
 
@@ -39,7 +39,7 @@ def _row(obj, fields) -> dict:
 @app.middleware("http")
 async def json_only_mutations(request: Request, call_next):
     # Cookie auth + SameSite=Lax; requiring JSON on state-changing calls blocks
-    # cross-site form posts (CSRF). Shopify webhooks are authenticated by HMAC.
+    # cross-site form posts (CSRF). Payment webhooks are authenticated by signature.
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and not request.url.path.startswith("/webhooks/"):
         if not request.headers.get("content-type", "").startswith("application/json"):
             return JSONResponse({"detail": "content-type must be application/json"}, status_code=415)
@@ -93,7 +93,7 @@ def register(body: Credentials, request: Request, response: Response, db: DB = D
         u = accounts.create_user(db, body.email, body.password)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    shopify.replay_awaiting_account(db, u.email)
+    payments.replay_awaiting_account(db, u.email)
     _set_cookie(response, accounts.create_session(db, u, get_settings().session_days))
     return {"id": u.id, "email": u.email}
 
@@ -393,7 +393,8 @@ def admin_providers(admin: User = Depends(require_admin), db: DB = Depends(get_d
     return {
         "data_mode": s.data_mode,
         "configured": {"the-odds-api": bool(s.the_odds_api_key), "api-football": bool(s.api_football_key),
-                       "shopify-webhooks": bool(s.shopify_webhook_secret), "anthropic": bool(s.anthropic_api_key)},
+                       "stripe-webhooks": bool(s.stripe_webhook_secret),
+                       "paypal-webhooks": bool(s.paypal_client_id and s.paypal_client_secret and s.paypal_webhook_id), "anthropic": bool(s.anthropic_api_key)},
         "status": [_row(p, ("provider", "last_ok_at", "last_error_at", "last_error", "quota"))
                    for p in db.scalars(select(ProviderStatus))],
     }
@@ -401,7 +402,7 @@ def admin_providers(admin: User = Depends(require_admin), db: DB = Depends(get_d
 
 @app.get("/admin/payments")
 def admin_payments(admin: User = Depends(require_admin), db: DB = Depends(get_db)):
-    return [_row(p, ("id", "event_id", "topic", "status", "error", "received_at"))
+    return [_row(p, ("id", "provider", "event_id", "topic", "status", "error", "received_at"))
             for p in db.scalars(select(PaymentEvent).order_by(PaymentEvent.received_at.desc()).limit(200))]
 
 
@@ -414,24 +415,39 @@ def admin_performance(admin: User = Depends(require_admin), db: DB = Depends(get
 
 # ---------- webhooks ----------
 
-@app.post("/webhooks/shopify")
-async def shopify_webhook(request: Request, db: DB = Depends(get_db)):
-    raw = await request.body()
-    if not shopify.verify_hmac(raw, request.headers.get("x-shopify-hmac-sha256"), get_settings().shopify_webhook_secret):
-        raise HTTPException(401, "invalid signature")
-    event_id = request.headers.get("x-shopify-event-id") or request.headers.get("x-shopify-webhook-id")
-    topic = request.headers.get("x-shopify-topic", "")
-    if not event_id:
-        raise HTTPException(400, "missing event id")
+async def _json_body(request: Request) -> dict:
     try:
         payload = await request.json()
     except ValueError:
         raise HTTPException(400, "invalid JSON")
-    ev = shopify.record_event(db, event_id, topic, payload)
+    if not isinstance(payload, dict) or not payload.get("id") or not (payload.get("type") or payload.get("event_type")):
+        raise HTTPException(400, "missing event id or type")
+    return payload
+
+
+def _store(db: DB, provider: str, payload: dict, topic: str) -> dict:
+    ev = payments.record_event(db, provider, str(payload["id"]), topic, payload)
     if ev is None:
         return {"status": "duplicate"}
-    shopify.process_event(db, ev)
+    payments.process_event(db, ev)
     return {"status": ev.status}
+
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request, db: DB = Depends(get_db)):
+    raw = await request.body()
+    if not payments.verify_stripe(raw, request.headers.get("stripe-signature"), get_settings().stripe_webhook_secret):
+        raise HTTPException(401, "invalid signature")
+    payload = await _json_body(request)
+    return _store(db, "stripe", payload, payload["type"])
+
+
+@app.post("/webhooks/paypal")
+async def paypal_webhook(request: Request, db: DB = Depends(get_db)):
+    payload = await _json_body(request)
+    if not payments.verify_paypal({k.lower(): v for k, v in request.headers.items()}, payload, get_settings()):
+        raise HTTPException(401, "invalid signature")
+    return _store(db, "paypal", payload, str(payload.get("event_type", "")))
 
 
 @app.get("/time")

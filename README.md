@@ -1,6 +1,6 @@
 # SportAI — plateforme d'analyse sportive (MVP Football)
 
-Plateforme SaaS d'analyse football : un moteur statistique indépendant estime les probabilités, les compare aux cotes réellement observées et retient **0 à 4 sélections** par période, uniquement si l'avantage résiste aux tests d'incertitude. Validation humaine avant publication, historique immuable, surveillance live côté serveur, abonnements via Shopify.
+Plateforme SaaS d'analyse football : un moteur statistique indépendant estime les probabilités, les compare aux cotes réellement observées et retient **0 à 4 sélections** par période, uniquement si l'avantage résiste aux tests d'incertitude. Validation humaine avant publication, historique immuable, surveillance live côté serveur, abonnements payés directement par Stripe ou PayPal.
 
 > Aucune analyse ne garantit un résultat. Le mode simulation est strictement séparé du mode réel : une donnée simulée ne peut jamais être publiée.
 
@@ -11,7 +11,7 @@ Plateforme SaaS d'analyse football : un moteur statistique indépendant estime l
 | `backend/sportai/engine` | Moteur statistique : Dixon-Coles, marchés, modèle live, calcul de valeur, évaluation |
 | `backend/sportai/selection` | Filtre et classement des opportunités (0 à 4, une par match) |
 | `backend/sportai/connectors` | Adaptateurs : API-Football, The Odds API (dont Winamax), openfootball, simulation |
-| `backend/sportai/services` | Pipeline avant-match, live et alertes, publication, comptes, Shopify |
+| `backend/sportai/services` | Pipeline avant-match, live et alertes, publication, comptes, paiements Stripe et PayPal |
 | `backend/sportai/api` | API HTTP (FastAPI), droits vérifiés côté serveur |
 | `backend/sportai/worker.py` | Tâches de fond : analyses planifiées, surveillance live |
 | `backend/sportai/mcp` | Serveur MCP du moteur pour Claude |
@@ -40,7 +40,7 @@ cd ../frontend && npm ci && npm run build && npm start   # http://localhost:3000
 3. [Installation locale et tests](docs/03-installation-locale.md)
 4. [Backtest du modèle](docs/04-backtest.md)
 5. [Connexion aux API de données](docs/05-connexion-api.md)
-6. [Intégration Shopify](docs/06-shopify.md)
+6. [Paiements Stripe et PayPal](docs/06-paiements.md)
 7. [Guide administrateur](docs/07-guide-admin.md)
 8. [Déploiement](docs/08-deploiement.md)
 9. [État des fonctionnalités](docs/09-etat-fonctionnalites.md)

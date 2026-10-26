@@ -4,7 +4,7 @@ const QA: [string, string][] = [
   ["Les résultats sont-ils garantis ?", "Non. Le sport reste incertain et un avantage statistique ne se mesure que sur un grand nombre de sélections."],
   ["D'où viennent les données ?", "De fournisseurs disposant des droits de diffusion (statistiques et cotes multi-bookmakers). Nous ne collectons pas de données sans autorisation."],
   ["Pourquoi l'historique contient-il des sélections perdantes ?", "Parce qu'un historique honnête les inclut toutes. Nous ne supprimons ni ne modifions les sélections publiées ; les corrections sont tracées."],
-  ["Comment résilier ?", "Depuis votre compte client Shopify. Votre accès reste actif jusqu'à la fin de la période payée."],
+  ["Comment résilier ?", "Depuis « Mon compte », bouton « Résilier mon abonnement ». Votre accès reste actif jusqu'à la fin de la période payée."],
 ];
 
 export default function Faq() {

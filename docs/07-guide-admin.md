@@ -28,6 +28,6 @@ Modifiez les seuils prudemment et uniquement sur la base de résultats mesurés 
 ## Autres onglets
 - **Utilisateurs** : droits manuels (ex. accès offert), rôle admin.
 - **Sources** : clés configurées, dernier succès/erreur par fournisseur, quota The Odds API.
-- **Paiements** : webhooks Shopify reçus et leur traitement.
+- **Paiements** : webhooks Stripe et PayPal reçus et leur traitement.
 - **Performances** : bilan par type (avant-match, live) et nombre de sélections par statut.
 - **Journal** : toutes les actions d'administration.

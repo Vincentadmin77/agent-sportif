@@ -1,8 +1,8 @@
-import base64
 import hashlib
 import hmac
 import json
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -10,12 +10,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 DB_URL = os.getenv("TEST_DATABASE_URL", "sqlite:///./test-sportai.db")
-SECRET = "test-shopify-secret"
+SECRET = "whsec_test"
 
 
 @pytest.fixture(scope="module")
 def client():
-    os.environ.update(DATABASE_URL=DB_URL, DATA_MODE="simulation", COOKIE_SECURE="false", SHOPIFY_WEBHOOK_SECRET=SECRET)
+    os.environ.update(DATABASE_URL=DB_URL, DATA_MODE="simulation", COOKIE_SECURE="false", STRIPE_WEBHOOK_SECRET=SECRET,
+                      PAYPAL_CLIENT_ID="pp-id", PAYPAL_CLIENT_SECRET="pp-secret", PAYPAL_WEBHOOK_ID="WH-1")
     from sportai.config import get_settings
     get_settings.cache_clear()
     from alembic import command
@@ -158,36 +159,76 @@ def test_selection_settings_validation(client):
     assert r.status_code == 200 and r.json()["min_ev"] == 0.04
 
 
-def _hook(client, topic, payload, event_id, secret=SECRET):
-    raw = json.dumps(payload).encode()
-    sig = base64.b64encode(hmac.new(secret.encode(), raw, hashlib.sha256).digest()).decode()
-    return client.post("/webhooks/shopify", content=raw, headers={
-        "content-type": "application/json", "x-shopify-hmac-sha256": sig, "x-shopify-topic": topic,
-        "x-shopify-event-id": event_id})
+def _stripe(client, topic, obj, event_id, secret=SECRET, ts=None):
+    raw = json.dumps({"id": event_id, "type": topic, "data": {"object": obj}}).encode()
+    t = str(int(ts or time.time()))
+    sig = hmac.new(secret.encode(), t.encode() + b"." + raw, hashlib.sha256).hexdigest()
+    return client.post("/webhooks/stripe", content=raw, headers={
+        "content-type": "application/json", "stripe-signature": f"t={t},v1={sig}"})
 
 
-def test_shopify_webhook_flow(client):
+def _set_prices(prices):
     from sportai.db.models import Plan
     from sportai.db.session import session_factory
     db = session_factory()()
-    db.get(Plan, "football_premium").shopify_skus = ["FOOT-PREM-M"]
+    db.get(Plan, "football_premium").payment_prices = prices
     db.commit(); db.close()
 
-    order = {"id": 1001, "email": "buyer@example.com", "processed_at": datetime.now(timezone.utc).isoformat(),
-             "line_items": [{"sku": "FOOT-PREM-M", "quantity": 1}]}
-    assert _hook(client, "orders/paid", order, "evt-1", secret="wrong").status_code == 401
-    assert _hook(client, "orders/paid", order, "evt-1").json()["status"] == "awaiting_account"
-    assert _hook(client, "orders/paid", order, "evt-1").json()["status"] == "duplicate"
+
+def test_stripe_webhook_flow(client):
+    _set_prices({"price_month": 31, "P-QUARTER": 92})
+    now = int(time.time())
+    invoice = {"id": "in_1", "customer": "cus_1", "customer_email": "buyer@example.com", "subscription": "sub_1",
+               "status_transitions": {"paid_at": now},
+               "lines": {"data": [{"price": {"id": "price_month"}, "period": {"start": now, "end": now + 31 * 86400}}]}}
+    assert _stripe(client, "invoice.paid", invoice, "evt_1", secret="wrong").status_code == 401
+    assert _stripe(client, "invoice.paid", invoice, "evt_1", ts=now - 3600).status_code == 401  # replayed
+    assert _stripe(client, "invoice.paid", invoice, "evt_1").json()["status"] == "awaiting_account"
+    assert _stripe(client, "invoice.paid", invoice, "evt_1").json()["status"] == "duplicate"
 
     client.cookies.clear()
     client.post("/auth/register", json={"email": "buyer@example.com", "password": "buyer-password-1"})
     assert "football.selections" in client.get("/me").json()["features"]
     assert client.get("/selections").json()["access"] == "full"
 
-    refund = {"id": 5, "order_id": 1001, "refund_line_items": [{"line_item": {"sku": "FOOT-PREM-M"}}]}
-    assert _hook(client, "refunds/create", refund, "evt-2").json()["status"] == "processed"
+    assert _stripe(client, "customer.subscription.deleted", {"id": "sub_1", "customer": "cus_1"},
+                   "evt_2").json()["status"] == "processed"
+    assert "football.selections" in client.get("/me").json()["features"]  # paid period still runs
+    assert _stripe(client, "charge.refunded", {"id": "ch_1", "customer": "cus_1"}, "evt_3").json()["status"] == "processed"
     assert "football.selections" not in client.get("/me").json()["features"]
-    assert _hook(client, "carts/update", {"id": 1}, "evt-3").json()["status"] == "ignored"
+    assert _stripe(client, "customer.created", {"id": "cus_2"}, "evt_4").json()["status"] == "ignored"
+
+
+def test_paypal_webhook_flow(client, monkeypatch):
+    from sportai.services import payments
+    _set_prices({"price_month": 31, "P-QUARTER": 92})
+    genuine = {"ok": True}
+    monkeypatch.setattr(payments, "verify_paypal", lambda headers, event, s: genuine["ok"])
+
+    def hook(topic, resource, event_id):
+        return client.post("/webhooks/paypal", json={"id": event_id, "event_type": topic, "resource": resource})
+
+    client.cookies.clear()
+    client.post("/auth/register", json={"email": "paypal@example.com", "password": "paypal-password-1"})
+    sub = {"id": "I-SUB1", "plan_id": "P-QUARTER", "subscriber": {"email_address": "PayPal@example.com"},
+           "start_time": datetime.now(timezone.utc).isoformat()}
+    genuine["ok"] = False
+    assert hook("BILLING.SUBSCRIPTION.ACTIVATED", sub, "WH-A").status_code == 401
+    genuine["ok"] = True
+    assert hook("BILLING.SUBSCRIPTION.ACTIVATED", sub, "WH-A").json()["status"] == "processed"
+    assert "football.selections" in client.get("/me").json()["features"]
+    sale = {"id": "SALE-1", "billing_agreement_id": "I-SUB1", "create_time": datetime.now(timezone.utc).isoformat()}
+    assert hook("PAYMENT.SALE.COMPLETED", sale, "WH-B").json()["status"] == "processed"
+    assert hook("BILLING.SUBSCRIPTION.CANCELLED", {"id": "I-SUB1"}, "WH-C").json()["status"] == "processed"
+    assert "football.selections" in client.get("/me").json()["features"]
+    assert hook("PAYMENT.SALE.REFUNDED", {"id": "R-1", "sale_id": "SALE-1"}, "WH-D").json()["status"] == "processed"
+    assert "football.selections" not in client.get("/me").json()["features"]
+
+
+def test_paypal_verification_fails_closed():
+    from sportai.config import get_settings
+    from sportai.services import payments
+    assert payments.verify_paypal({}, {"id": "x"}, get_settings()) is False  # headers missing, no network call
 
 
 def test_admin_cannot_demote_self(client):

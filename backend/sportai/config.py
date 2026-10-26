@@ -15,7 +15,11 @@ class Settings:
     api_football_key: str | None
     odds_regions: str
     odds_bookmakers: list[str] | None
-    shopify_webhook_secret: str | None
+    stripe_webhook_secret: str | None
+    paypal_client_id: str | None
+    paypal_client_secret: str | None
+    paypal_webhook_id: str | None
+    paypal_api_base: str
     cookie_secure: bool
     session_days: int
     anthropic_api_key: str | None
@@ -35,7 +39,11 @@ def get_settings() -> Settings:
         api_football_key=os.getenv("API_FOOTBALL_KEY") or None,
         odds_regions=os.getenv("ODDS_REGIONS", "fr"),
         odds_bookmakers=[b.strip() for b in books.split(",")] if books else None,
-        shopify_webhook_secret=os.getenv("SHOPIFY_WEBHOOK_SECRET") or None,
+        stripe_webhook_secret=os.getenv("STRIPE_WEBHOOK_SECRET") or None,
+        paypal_client_id=os.getenv("PAYPAL_CLIENT_ID") or None,
+        paypal_client_secret=os.getenv("PAYPAL_CLIENT_SECRET") or None,
+        paypal_webhook_id=os.getenv("PAYPAL_WEBHOOK_ID") or None,
+        paypal_api_base=os.getenv("PAYPAL_API_BASE", "https://api-m.paypal.com"),
         cookie_secure=os.getenv("COOKIE_SECURE", "true").lower() == "true",
         session_days=int(os.getenv("SESSION_DAYS", "14")),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,

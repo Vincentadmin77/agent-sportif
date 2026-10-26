@@ -36,6 +36,6 @@ Les comptes, droits (`features` comme `basketball.selections`), abonnements, pub
 - Les requêtes modifiantes exigent `Content-Type: application/json` (bloque les formulaires inter-sites).
 - Limitation des tentatives de connexion (par processus ; à mutualiser en multi-instances).
 - Droits contrôlés par l'API sur chaque route ; un admin ne peut pas se rétrograder lui-même.
-- Webhooks Shopify : signature HMAC vérifiée en temps constant, idempotence par identifiant d'événement.
+- Webhooks Stripe et PayPal : signature vérifiée (Stripe en temps constant, PayPal par son API), idempotence par fournisseur et identifiant d'événement.
 - Contenus web passés à Claude balisés comme non fiables, réponse imposée par un schéma d'outil, budget vérifié avant l'appel.
 - Journal d'audit de toutes les actions d'administration.

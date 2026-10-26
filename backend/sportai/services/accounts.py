@@ -31,7 +31,7 @@ DEFAULT_PLANS = [
 def seed_plans(db: DB) -> None:
     for code, name, features, price in DEFAULT_PLANS:
         if db.get(Plan, code) is None:
-            db.add(Plan(code=code, name=name, features=features, price_label=price, shopify_skus=[]))
+            db.add(Plan(code=code, name=name, features=features, price_label=price, payment_prices={}))
     db.commit()
 
 

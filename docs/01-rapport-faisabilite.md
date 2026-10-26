@@ -43,7 +43,7 @@ Date : 9 octobre 2026. Ce rapport distingue ce qui a été **vérifié** (source
 | Données (stats + cotes) | 50–90 $/mois au départ | Ouvrir les comptes et me fournir les clés (jamais dans le chat : variables d'environnement du serveur). |
 | Hébergement (API + worker + Postgres managé + frontend) | 25–60 €/mois au départ (ex. Render/Railway/Fly + Neon/Supabase + Vercel) | Choix de l'hébergeur. |
 | API Claude (agents d'analyse) | Variable ; plafonné par budget configurable | Clé API Anthropic. |
-| Shopify | Abonnement Shopify + app d'abonnements | Boutique existante ou à créer. |
+| Stripe et PayPal | Comptes marchands avec abonnements | Accord écrit de chaque prestataire avant d'encaisser (activité soumise à autorisation). |
 | Juridique | Consultation avocat recommandée avant lancement | Voir § 6. |
 
 ## 4. Architecture recommandée
@@ -78,7 +78,7 @@ orchestrateur d'agents (Claude API, budgets) ──> appelle engine + connecteur
 5. Modèle live conditionnel (score, minute, cartons rouges) + garde-fou de fraîcheur des données.
 6. API, base de données, comptes, rôles et droits, historique immuable, workflow de validation admin.
 7. Frontend public + espace utilisateur + panneau admin.
-8. Webhooks Shopify (signature HMAC, idempotence, annulations/remboursements).
+8. Webhooks Stripe et PayPal (signature, idempotence, annulations/remboursements).
 9. Serveur MCP du moteur. Puis orchestrateur d'agents Claude (phase 2).
 
 ## 6. Risques majeurs

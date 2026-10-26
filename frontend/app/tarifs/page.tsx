@@ -21,7 +21,7 @@ export default function Tarifs() {
   return (
     <>
       <h1>Tarifs et abonnements</h1>
-      <p className="lead">Les abonnements sont vendus via notre boutique Shopify. Votre accès est activé automatiquement sur le compte associé au même e-mail.</p>
+      <p className="lead">Créez votre compte, puis payez par carte (Stripe) ou PayPal. Votre accès est activé automatiquement sur ce compte dès le paiement confirmé.</p>
       <div className="notice">Un abonnement donne accès à des analyses. Il ne garantit aucun gain.</div>
       <div className="grid">{plans.map((p) => (
         <div className="card" key={p.code}>
