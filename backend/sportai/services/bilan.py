@@ -155,7 +155,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                 items.append({"jour": day, "type": "Combinés de 2", "categorie": "combine",
                               "libelle": " + ".join(f"{l['pari']} ({l['match']})" for l in c["jambes"]),
                               "cote": c.get("cote_totale"), "proba": c.get("proba_totale"),
-                              "jambes": c["jambes"], "valide": c["resultat"] == "gagne"})
+                              "jambes": c["jambes"], "retenu": c.get("retenu", True), "valide": c["resultat"] == "gagne"})
         for p in (doc.get("paris_retenus") or {}).values():
             if p.get("pari") and p.get("resultat") in ("gagne", "perdu") and not under_floor([p]):
                 items.append({"jour": day, "type": "Probabilités retenues", "categorie": "pari_retenu",

@@ -242,7 +242,8 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
 # combiné") one combo a day, the most confident pair, and no upper limit on its odds (COMBO_MAX_ODDS None).
 # A combo is fixed with its first match (45 min before kick-off) and both its bets stay as they were then.
 COMBO_MAX_ODDS = None
-COMBOS_PER_DAY = 1
+COMBOS_PER_DAY = 1  # the selected one(s): "meilleure confiance combiné" (retenu: True)
+# Owner 2026-10-27 15:27: "dans combiné : tous les paris doubles et à côté les totaux": every other pair is kept too.
 COMBO_TITLE = "Combiné de 2"
 
 
@@ -263,17 +264,20 @@ def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict 
     for c in (previous or {}).get("combines") or []:
         legs = c.get("jambes") or []
         if len(legs) == 2 and (c.get("fige") or any(started(l) or frozen_at(l["coup_envoi"]) for l in legs)):
-            kept.append(combo([{**l, "fige": True} for l in legs], True))
+            kept.append({**combo([{**l, "fige": True} for l in legs], True), "retenu": bool(c.get("retenu"))})
     used = {l["match_id"] for c in kept for l in c["jambes"]} | {s["match_id"] for s in selections}
     free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["match_id"] not in used),
                   key=lambda p: (p["confiance"], p["cote"]), reverse=True)
     fresh = []
-    while free and len(kept) + len(fresh) < COMBOS_PER_DAY:
+    while free:
         first = free.pop(0)
         mate = next((p for p in free if not COMBO_MAX_ODDS or first["cote"] * p["cote"] <= COMBO_MAX_ODDS), None)
         if mate:
             free.remove(mate)
-            fresh.append(combo([first, mate], False))
+            fresh.append({**combo([first, mate], False), "retenu": False})
+    room = COMBOS_PER_DAY - sum(1 for c in kept if c["retenu"])
+    for c in fresh[:max(0, room)]:
+        c["retenu"] = True
     return kept + fresh
 
 
