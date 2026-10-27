@@ -6,6 +6,7 @@ candidates: the analysis is switched off, never filled with invented data.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -267,6 +268,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
     if raw_odds and fixtures_p is not None and fixtures_p.name in (run.data_sources.get("odds") or "").split("+"):
         run.fixtures = scorer_markets(db, fixtures_p, competition, raw_odds, window, run.fixtures, now)
         run.fixtures = half_markets(competition, raw_odds, run.fixtures)
+        run.fixtures = count_markets(competition, raw_odds, window, run.fixtures, now)
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)
     moves = {}
@@ -413,6 +415,36 @@ def half_markets(competition: str, raw: list[dict], fixtures: list[dict]) -> lis
             rows = []
         out.append({**f, "mi_temps_cotes": rows,
                     "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in HALF_BETS]}
+                   if rows else f)
+    return out
+
+
+def count_markets(competition: str, raw: list[dict], window, fixtures: list[dict], now: datetime) -> list[dict]:
+    """The corners, cards and shots bets of each analysed fixture, priced by the count model
+    (services/comptages.py, owner 2026-10-27): stored as "comptages_cotes", the bets then leaving the "non analysé"
+    list. A failure costs these bets only."""
+    from sportai.engine.football.counts import FEED
+    from sportai.services.comptages import price_counts
+    from sportai.services.goals_refresh import cache_dir
+
+    items = {str((r.get("fixture") or {}).get("id")): r for r in raw}
+    by_id = {f.provider_event_id: f for f in window}
+    out = []
+    for f in fixtures:
+        item, fx = items.get(f["match_id"]), by_id.get(f["match_id"])
+        if item is None or f.get("skipped_reason"):
+            out.append(f)
+            continue
+        home, _, away = f["match"].partition(" - ")
+        if fx is not None:
+            home, away = fx.home, fx.away
+        try:
+            rows = price_counts(item, home, away, competition, now, str(cache_dir()))
+        except (ValueError, TypeError, KeyError, OSError) as e:
+            print(f"count markets unavailable for {f['match']} ({str(e)[:120]})", file=sys.stderr)
+            rows = []
+        out.append({**f, "comptages_cotes": rows,
+                    "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in FEED]}
                    if rows else f)
     return out
 

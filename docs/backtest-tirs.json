@@ -1,0 +1,3463 @@
+{
+ "generated": "2026-10-27T16:14:19.062089+00:00",
+ "stat": "tirs",
+ "n_test": 2614,
+ "matchs_avec_la_stat": {
+  "FR1": 2108,
+  "EN1": 2336,
+  "ES1": 2353,
+  "DE1": 1879,
+  "IT1": 2332,
+  "BR1": 2190
+ },
+ "dispersion": {
+  "FR1": {
+   "equipe": 17.86,
+   "total": 88.2
+  },
+  "EN1": {
+   "equipe": 17.55,
+   "total": 92.46
+  },
+  "ES1": {
+   "equipe": 18.42,
+   "total": 96.24
+  },
+  "DE1": {
+   "equipe": 19.89,
+   "total": 84.09
+  },
+  "IT1": {
+   "equipe": 18.15,
+   "total": 75.57
+  },
+  "BR1": {
+   "equipe": 17.67,
+   "total": 103.21
+  }
+ },
+ "marches": {
+  "total:over@20.5": {
+   "observe": 0.8141,
+   "predit": 0.796,
+   "brier_modele": 0.14937,
+   "brier_ref": 0.1505,
+   "ecart_brier": -0.00113,
+   "ecart_brier_ic95": [
+    -0.00304,
+    0.00078
+   ],
+   "ecart_logloss": -0.00442,
+   "valide": false,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.8052,
+     "brier_modele": 0.15783,
+     "brier_ref": 0.15758
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.8147,
+     "brier_modele": 0.15405,
+     "brier_ref": 0.15093
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.7605,
+     "brier_modele": 0.17429,
+     "brier_ref": 0.18314
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.8589,
+     "brier_modele": 0.11803,
+     "brier_ref": 0.1212
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.7799,
+     "brier_modele": 0.17486,
+     "brier_ref": 0.17187
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.8528,
+     "brier_modele": 0.12502,
+     "brier_ref": 0.12618
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.6526,
+     "observed": 0.7252
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.7202,
+     "observed": 0.7701
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.7506,
+     "observed": 0.7931
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.7753,
+     "observed": 0.7901
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.7956,
+     "observed": 0.8008
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.8144,
+     "observed": 0.7854
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.8331,
+     "observed": 0.855
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.8509,
+     "observed": 0.8506
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8686,
+     "observed": 0.8429
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8987,
+     "observed": 0.9275
+    }
+   ],
+   "zone_60": {
+    "n": 2580,
+    "predit": 0.799,
+    "observe": 0.8182
+   }
+  },
+  "total:over@22.5": {
+   "observe": 0.7104,
+   "predit": 0.6774,
+   "brier_modele": 0.203,
+   "brier_ref": 0.2045,
+   "ecart_brier": -0.00151,
+   "ecart_brier_ic95": [
+    -0.00423,
+    0.00112
+   ],
+   "ecart_logloss": -0.00429,
+   "valide": false,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.689,
+     "brier_modele": 0.21658,
+     "brier_ref": 0.21516
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.7245,
+     "brier_modele": 0.20492,
+     "brier_ref": 0.19899
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.6581,
+     "brier_modele": 0.21288,
+     "brier_ref": 0.227
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.7748,
+     "brier_modele": 0.1727,
+     "brier_ref": 0.17461
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.6581,
+     "brier_modele": 0.2275,
+     "brier_ref": 0.22556
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.7481,
+     "brier_modele": 0.18765,
+     "brier_ref": 0.18923
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.5039,
+     "observed": 0.6183
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.5804,
+     "observed": 0.6284
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.617,
+     "observed": 0.6705
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.6476,
+     "observed": 0.6718
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.6733,
+     "observed": 0.682
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.6973,
+     "observed": 0.682
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7221,
+     "observed": 0.7863
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.746,
+     "observed": 0.7739
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.771,
+     "observed": 0.7471
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8158,
+     "observed": 0.8435
+    }
+   ],
+   "zone_60": {
+    "n": 2100,
+    "predit": 0.7108,
+    "observe": 0.7314
+   }
+  },
+  "total:over@24.5": {
+   "observe": 0.5608,
+   "predit": 0.5424,
+   "brier_modele": 0.23877,
+   "brier_ref": 0.24516,
+   "ecart_brier": -0.00639,
+   "ecart_brier_ic95": [
+    -0.00962,
+    -0.00314
+   ],
+   "ecart_logloss": -0.01319,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.5262,
+     "brier_modele": 0.24613,
+     "brier_ref": 0.24916
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.5202,
+     "brier_modele": 0.25124,
+     "brier_ref": 0.25532
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.5279,
+     "brier_modele": 0.2337,
+     "brier_ref": 0.25203
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.6486,
+     "brier_modele": 0.22085,
+     "brier_ref": 0.22745
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.5059,
+     "brier_modele": 0.24541,
+     "brier_ref": 0.25066
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.6176,
+     "brier_modele": 0.23503,
+     "brier_ref": 0.23748
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.3596,
+     "observed": 0.4237
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.4348,
+     "observed": 0.4674
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.4728,
+     "observed": 0.5211
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.5055,
+     "observed": 0.4847
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.5339,
+     "observed": 0.5019
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.5603,
+     "observed": 0.5402
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.5887,
+     "observed": 0.6641
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.6167,
+     "observed": 0.659
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.6471,
+     "observed": 0.6398
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.7048,
+     "observed": 0.7061
+    }
+   ],
+   "zone_60": {
+    "n": 811,
+    "predit": 0.6545,
+    "observe": 0.6634
+   }
+  },
+  "total:over@26.5": {
+   "observe": 0.4269,
+   "predit": 0.4068,
+   "brier_modele": 0.23694,
+   "brier_ref": 0.24302,
+   "ecart_brier": -0.00608,
+   "ecart_brier_ic95": [
+    -0.0092,
+    -0.00287
+   ],
+   "ecart_logloss": -0.01276,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.3663,
+     "brier_modele": 0.22798,
+     "brier_ref": 0.23128
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.3919,
+     "brier_modele": 0.23978,
+     "brier_ref": 0.24256
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.407,
+     "brier_modele": 0.226,
+     "brier_ref": 0.24563
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.5165,
+     "brier_modele": 0.24627,
+     "brier_ref": 0.25002
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.363,
+     "brier_modele": 0.22367,
+     "brier_ref": 0.23189
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.4901,
+     "brier_modele": 0.25081,
+     "brier_ref": 0.25141
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.2367,
+     "observed": 0.271
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.3017,
+     "observed": 0.3218
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.3365,
+     "observed": 0.3755
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.3671,
+     "observed": 0.3626
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.3946,
+     "observed": 0.4023
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.4202,
+     "observed": 0.4598
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.4485,
+     "observed": 0.4962
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.4774,
+     "observed": 0.5326
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.5099,
+     "observed": 0.4904
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.575,
+     "observed": 0.5573
+    }
+   ],
+   "zone_60": {
+    "n": 61,
+    "predit": 0.6265,
+    "observe": 0.6557
+   }
+  },
+  "total:over@28.5": {
+   "observe": 0.3045,
+   "predit": 0.285,
+   "brier_modele": 0.20629,
+   "brier_ref": 0.21072,
+   "ecart_brier": -0.00443,
+   "ecart_brier_ic95": [
+    -0.00712,
+    -0.00171
+   ],
+   "ecart_logloss": -0.01048,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.2384,
+     "brier_modele": 0.1796,
+     "brier_ref": 0.18119
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.2637,
+     "brier_modele": 0.19188,
+     "brier_ref": 0.1981
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.2884,
+     "brier_modele": 0.19759,
+     "brier_ref": 0.20872
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.4024,
+     "brier_modele": 0.24138,
+     "brier_ref": 0.24253
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.2623,
+     "brier_modele": 0.19005,
+     "brier_ref": 0.19374
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.3536,
+     "brier_modele": 0.22787,
+     "brier_ref": 0.23041
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1438,
+     "observed": 0.1641
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1937,
+     "observed": 0.2184
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.222,
+     "observed": 0.272
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2475,
+     "observed": 0.2443
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.2711,
+     "observed": 0.2874
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.2933,
+     "observed": 0.3372
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.3182,
+     "observed": 0.3473
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.3447,
+     "observed": 0.3755
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.3754,
+     "observed": 0.3678
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.4407,
+     "observed": 0.4313
+    }
+   ],
+   "zone_60": {
+    "n": 0,
+    "predit": null,
+    "observe": null
+   }
+  },
+  "total:under@20.5": {
+   "observe": 0.1859,
+   "predit": 0.204,
+   "brier_modele": 0.14937,
+   "brier_ref": 0.1505,
+   "ecart_brier": -0.00113,
+   "ecart_brier_ic95": [
+    -0.00304,
+    0.00078
+   ],
+   "ecart_logloss": -0.00442,
+   "valide": false,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.1948,
+     "brier_modele": 0.15783,
+     "brier_ref": 0.15758
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.1853,
+     "brier_modele": 0.15405,
+     "brier_ref": 0.15093
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.2395,
+     "brier_modele": 0.17429,
+     "brier_ref": 0.18314
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.1411,
+     "brier_modele": 0.11803,
+     "brier_ref": 0.1212
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.2201,
+     "brier_modele": 0.17486,
+     "brier_ref": 0.17187
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.1472,
+     "brier_modele": 0.12502,
+     "brier_ref": 0.12618
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1013,
+     "observed": 0.0725
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1314,
+     "observed": 0.1571
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.1491,
+     "observed": 0.1494
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.1669,
+     "observed": 0.145
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.1856,
+     "observed": 0.2146
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.2044,
+     "observed": 0.1992
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.2247,
+     "observed": 0.2099
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.2494,
+     "observed": 0.2069
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.2798,
+     "observed": 0.2299
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.3474,
+     "observed": 0.2748
+    }
+   ],
+   "zone_60": {
+    "n": 0,
+    "predit": null,
+    "observe": null
+   }
+  },
+  "total:under@22.5": {
+   "observe": 0.2896,
+   "predit": 0.3226,
+   "brier_modele": 0.203,
+   "brier_ref": 0.2045,
+   "ecart_brier": -0.00151,
+   "ecart_brier_ic95": [
+    -0.00423,
+    0.00112
+   ],
+   "ecart_logloss": -0.00429,
+   "valide": false,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.311,
+     "brier_modele": 0.21658,
+     "brier_ref": 0.21516
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.2755,
+     "brier_modele": 0.20492,
+     "brier_ref": 0.19899
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.3419,
+     "brier_modele": 0.21288,
+     "brier_ref": 0.227
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.2252,
+     "brier_modele": 0.1727,
+     "brier_ref": 0.17461
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.3419,
+     "brier_modele": 0.2275,
+     "brier_ref": 0.22556
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.2519,
+     "brier_modele": 0.18765,
+     "brier_ref": 0.18923
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1842,
+     "observed": 0.1565
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.229,
+     "observed": 0.2529
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.254,
+     "observed": 0.2261
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2779,
+     "observed": 0.2137
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.3027,
+     "observed": 0.318
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.3267,
+     "observed": 0.318
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.3524,
+     "observed": 0.3282
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.383,
+     "observed": 0.3295
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.4196,
+     "observed": 0.3716
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.4961,
+     "observed": 0.3817
+    }
+   ],
+   "zone_60": {
+    "n": 10,
+    "predit": 0.6305,
+    "observe": 0.7
+   }
+  },
+  "total:under@24.5": {
+   "observe": 0.4392,
+   "predit": 0.4576,
+   "brier_modele": 0.23877,
+   "brier_ref": 0.24516,
+   "ecart_brier": -0.00639,
+   "ecart_brier_ic95": [
+    -0.00962,
+    -0.00314
+   ],
+   "ecart_logloss": -0.01319,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.4738,
+     "brier_modele": 0.24613,
+     "brier_ref": 0.24916
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.4798,
+     "brier_modele": 0.25124,
+     "brier_ref": 0.25532
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.4721,
+     "brier_modele": 0.2337,
+     "brier_ref": 0.25203
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.3514,
+     "brier_modele": 0.22085,
+     "brier_ref": 0.22745
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.4941,
+     "brier_modele": 0.24541,
+     "brier_ref": 0.25066
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.3824,
+     "brier_modele": 0.23503,
+     "brier_ref": 0.23748
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.2952,
+     "observed": 0.2939
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.3529,
+     "observed": 0.3602
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.3833,
+     "observed": 0.341
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.4113,
+     "observed": 0.3359
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.4397,
+     "observed": 0.4598
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.4661,
+     "observed": 0.4981
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.4945,
+     "observed": 0.5153
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.5272,
+     "observed": 0.4789
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.5652,
+     "observed": 0.5326
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.6404,
+     "observed": 0.5763
+    }
+   ],
+   "zone_60": {
+    "n": 215,
+    "predit": 0.6506,
+    "observe": 0.6
+   }
+  },
+  "total:under@26.5": {
+   "observe": 0.5731,
+   "predit": 0.5932,
+   "brier_modele": 0.23694,
+   "brier_ref": 0.24302,
+   "ecart_brier": -0.00608,
+   "ecart_brier_ic95": [
+    -0.0092,
+    -0.00287
+   ],
+   "ecart_logloss": -0.01276,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.6337,
+     "brier_modele": 0.22798,
+     "brier_ref": 0.23128
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.6081,
+     "brier_modele": 0.23978,
+     "brier_ref": 0.24256
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.593,
+     "brier_modele": 0.226,
+     "brier_ref": 0.24563
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.4835,
+     "brier_modele": 0.24627,
+     "brier_ref": 0.25002
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.637,
+     "brier_modele": 0.22367,
+     "brier_ref": 0.23189
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.5099,
+     "brier_modele": 0.25081,
+     "brier_ref": 0.25141
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.425,
+     "observed": 0.4427
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.4901,
+     "observed": 0.5096
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.5226,
+     "observed": 0.4674
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.5515,
+     "observed": 0.5038
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.5798,
+     "observed": 0.5402
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.6054,
+     "observed": 0.5977
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.6329,
+     "observed": 0.6374
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.6635,
+     "observed": 0.6245
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.6983,
+     "observed": 0.6782
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.7633,
+     "observed": 0.729
+    }
+   ],
+   "zone_60": {
+    "n": 1226,
+    "predit": 0.6778,
+    "observe": 0.6566
+   }
+  },
+  "total:under@28.5": {
+   "observe": 0.6955,
+   "predit": 0.715,
+   "brier_modele": 0.20629,
+   "brier_ref": 0.21072,
+   "ecart_brier": -0.00443,
+   "ecart_brier_ic95": [
+    -0.00712,
+    -0.00171
+   ],
+   "ecart_logloss": -0.01048,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.7616,
+     "brier_modele": 0.1796,
+     "brier_ref": 0.18119
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.7363,
+     "brier_modele": 0.19188,
+     "brier_ref": 0.1981
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.7116,
+     "brier_modele": 0.19759,
+     "brier_ref": 0.20872
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.5976,
+     "brier_modele": 0.24138,
+     "brier_ref": 0.24253
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.7377,
+     "brier_modele": 0.19005,
+     "brier_ref": 0.19374
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.6464,
+     "brier_modele": 0.22787,
+     "brier_ref": 0.23041
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.5593,
+     "observed": 0.5687
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.6246,
+     "observed": 0.6322
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.6553,
+     "observed": 0.6245
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.6818,
+     "observed": 0.6527
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.7067,
+     "observed": 0.6628
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.7289,
+     "observed": 0.7126
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7525,
+     "observed": 0.7557
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.778,
+     "observed": 0.728
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8063,
+     "observed": 0.7816
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8562,
+     "observed": 0.8359
+    }
+   ],
+   "zone_60": {
+    "n": 2376,
+    "predit": 0.731,
+    "observe": 0.7092
+   }
+  },
+  "home:over@8.5": {
+   "observe": 0.8703,
+   "predit": 0.85,
+   "brier_modele": 0.10558,
+   "brier_ref": 0.11204,
+   "ecart_brier": -0.00646,
+   "ecart_brier_ic95": [
+    -0.00934,
+    -0.00365
+   ],
+   "ecart_logloss": -0.02529,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.8576,
+     "brier_modele": 0.11345,
+     "brier_ref": 0.12222
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.886,
+     "brier_modele": 0.0977,
+     "brier_ref": 0.10141
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.8349,
+     "brier_modele": 0.12744,
+     "brier_ref": 0.13814
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.9009,
+     "brier_modele": 0.08591,
+     "brier_ref": 0.08978
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.8197,
+     "brier_modele": 0.13494,
+     "brier_ref": 0.14844
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.9074,
+     "brier_modele": 0.08317,
+     "brier_ref": 0.08415
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.6461,
+     "observed": 0.6565
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.7492,
+     "observed": 0.8046
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.8011,
+     "observed": 0.8391
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.8389,
+     "observed": 0.8626
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.8648,
+     "observed": 0.8774
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.8847,
+     "observed": 0.9042
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.9027,
+     "observed": 0.9008
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.918,
+     "observed": 0.9464
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.9349,
+     "observed": 0.9425
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.9598,
+     "observed": 0.9695
+    }
+   ],
+   "zone_60": {
+    "n": 2562,
+    "predit": 0.8561,
+    "observe": 0.877
+   }
+  },
+  "home:under@8.5": {
+   "observe": 0.1297,
+   "predit": 0.15,
+   "brier_modele": 0.10558,
+   "brier_ref": 0.11204,
+   "ecart_brier": -0.00646,
+   "ecart_brier_ic95": [
+    -0.00934,
+    -0.00365
+   ],
+   "ecart_logloss": -0.02529,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.1424,
+     "brier_modele": 0.11345,
+     "brier_ref": 0.12222
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.114,
+     "brier_modele": 0.0977,
+     "brier_ref": 0.10141
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.1651,
+     "brier_modele": 0.12744,
+     "brier_ref": 0.13814
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.0991,
+     "brier_modele": 0.08591,
+     "brier_ref": 0.08978
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.1803,
+     "brier_modele": 0.13494,
+     "brier_ref": 0.14844
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.0926,
+     "brier_modele": 0.08317,
+     "brier_ref": 0.08415
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.0402,
+     "observed": 0.0305
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.0651,
+     "observed": 0.0575
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.082,
+     "observed": 0.0536
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.0973,
+     "observed": 0.0992
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.1153,
+     "observed": 0.0958
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.1352,
+     "observed": 0.1226
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.1611,
+     "observed": 0.1374
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.1989,
+     "observed": 0.1609
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.2508,
+     "observed": 0.1954
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.3539,
+     "observed": 0.3435
+    }
+   ],
+   "zone_60": {
+    "n": 0,
+    "predit": null,
+    "observe": null
+   }
+  },
+  "home:over@10.5": {
+   "observe": 0.7533,
+   "predit": 0.7201,
+   "brier_modele": 0.16864,
+   "brier_ref": 0.18412,
+   "ecart_brier": -0.01547,
+   "ecart_brier_ic95": [
+    -0.01995,
+    -0.01127
+   ],
+   "ecart_logloss": -0.04092,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.7122,
+     "brier_modele": 0.18054,
+     "brier_ref": 0.20508
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.772,
+     "brier_modele": 0.16819,
+     "brier_ref": 0.17665
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.707,
+     "brier_modele": 0.18289,
+     "brier_ref": 0.20758
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.7748,
+     "brier_modele": 0.16507,
+     "brier_ref": 0.17435
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.7026,
+     "brier_modele": 0.18251,
+     "brier_ref": 0.20936
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.8149,
+     "brier_modele": 0.14625,
+     "brier_ref": 0.15123
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.4456,
+     "observed": 0.4466
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.5669,
+     "observed": 0.6322
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.6364,
+     "observed": 0.7011
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.691,
+     "observed": 0.7176
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.731,
+     "observed": 0.7433
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.7629,
+     "observed": 0.7893
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7932,
+     "observed": 0.813
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.8205,
+     "observed": 0.8736
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8517,
+     "observed": 0.8927
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.9021,
+     "observed": 0.9237
+    }
+   ],
+   "zone_60": {
+    "n": 2115,
+    "predit": 0.7717,
+    "observe": 0.8061
+   }
+  },
+  "home:under@10.5": {
+   "observe": 0.2467,
+   "predit": 0.2799,
+   "brier_modele": 0.16864,
+   "brier_ref": 0.18412,
+   "ecart_brier": -0.01547,
+   "ecart_brier_ic95": [
+    -0.01995,
+    -0.01127
+   ],
+   "ecart_logloss": -0.04092,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.2878,
+     "brier_modele": 0.18054,
+     "brier_ref": 0.20508
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.228,
+     "brier_modele": 0.16819,
+     "brier_ref": 0.17665
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.293,
+     "brier_modele": 0.18289,
+     "brier_ref": 0.20758
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.2252,
+     "brier_modele": 0.16507,
+     "brier_ref": 0.17435
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.2974,
+     "brier_modele": 0.18251,
+     "brier_ref": 0.20936
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.1851,
+     "brier_modele": 0.14625,
+     "brier_ref": 0.15123
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.0979,
+     "observed": 0.0763
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1483,
+     "observed": 0.1073
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.1795,
+     "observed": 0.1264
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2068,
+     "observed": 0.187
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.2371,
+     "observed": 0.2107
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.269,
+     "observed": 0.2567
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.309,
+     "observed": 0.2824
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.3636,
+     "observed": 0.2989
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.4331,
+     "observed": 0.3678
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.5544,
+     "observed": 0.5534
+    }
+   ],
+   "zone_60": {
+    "n": 58,
+    "predit": 0.6492,
+    "observe": 0.6552
+   }
+  },
+  "home:over@12.5": {
+   "observe": 0.6094,
+   "predit": 0.5681,
+   "brier_modele": 0.21383,
+   "brier_ref": 0.23647,
+   "ecart_brier": -0.02263,
+   "ecart_brier_ic95": [
+    -0.02791,
+    -0.01758
+   ],
+   "ecart_logloss": -0.04971,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.5727,
+     "brier_modele": 0.22027,
+     "brier_ref": 0.24574
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.601,
+     "brier_modele": 0.21749,
+     "brier_ref": 0.23987
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.5884,
+     "brier_modele": 0.21338,
+     "brier_ref": 0.2449
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.6276,
+     "brier_modele": 0.21134,
+     "brier_ref": 0.23292
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.5457,
+     "brier_modele": 0.21057,
+     "brier_ref": 0.2483
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.6798,
+     "brier_modele": 0.21181,
+     "brier_ref": 0.21807
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.2725,
+     "observed": 0.2901
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.3847,
+     "observed": 0.4521
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.4577,
+     "observed": 0.4981
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.5193,
+     "observed": 0.5763
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.5673,
+     "observed": 0.6092
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.6074,
+     "observed": 0.6207
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.6473,
+     "observed": 0.6756
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.6851,
+     "observed": 0.7395
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.7303,
+     "observed": 0.7778
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8099,
+     "observed": 0.855
+    }
+   ],
+   "zone_60": {
+    "n": 1218,
+    "predit": 0.7035,
+    "observe": 0.7356
+   }
+  },
+  "home:under@12.5": {
+   "observe": 0.3906,
+   "predit": 0.4319,
+   "brier_modele": 0.21383,
+   "brier_ref": 0.23647,
+   "ecart_brier": -0.02263,
+   "ecart_brier_ic95": [
+    -0.02791,
+    -0.01758
+   ],
+   "ecart_logloss": -0.04971,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.4273,
+     "brier_modele": 0.22027,
+     "brier_ref": 0.24574
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.399,
+     "brier_modele": 0.21749,
+     "brier_ref": 0.23987
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.4116,
+     "brier_modele": 0.21338,
+     "brier_ref": 0.2449
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.3724,
+     "brier_modele": 0.21134,
+     "brier_ref": 0.23292
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.4543,
+     "brier_modele": 0.21057,
+     "brier_ref": 0.2483
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.3202,
+     "brier_modele": 0.21181,
+     "brier_ref": 0.21807
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1901,
+     "observed": 0.145
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.2697,
+     "observed": 0.2222
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.3149,
+     "observed": 0.2605
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.3527,
+     "observed": 0.3244
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.3926,
+     "observed": 0.3793
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.4327,
+     "observed": 0.3908
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.4807,
+     "observed": 0.4237
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.5423,
+     "observed": 0.5019
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.6153,
+     "observed": 0.5479
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.7275,
+     "observed": 0.7099
+    }
+   ],
+   "zone_60": {
+    "n": 435,
+    "predit": 0.6887,
+    "observe": 0.6667
+   }
+  },
+  "home:over@14.5": {
+   "observe": 0.451,
+   "predit": 0.4181,
+   "brier_modele": 0.22406,
+   "brier_ref": 0.24637,
+   "ecart_brier": -0.02231,
+   "ecart_brier_ic95": [
+    -0.02755,
+    -0.01708
+   ],
+   "ecart_logloss": -0.04754,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.4157,
+     "brier_modele": 0.22617,
+     "brier_ref": 0.24346
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.4252,
+     "brier_modele": 0.22194,
+     "brier_ref": 0.24509
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.4442,
+     "brier_modele": 0.21103,
+     "brier_ref": 0.25052
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.4745,
+     "brier_modele": 0.21624,
+     "brier_ref": 0.24809
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.3888,
+     "brier_modele": 0.20981,
+     "brier_ref": 0.23792
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.519,
+     "brier_modele": 0.24601,
+     "brier_ref": 0.25061
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1492,
+     "observed": 0.1756
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.2353,
+     "observed": 0.3103
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.2985,
+     "observed": 0.3065
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.3559,
+     "observed": 0.4198
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.4034,
+     "observed": 0.4291
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.445,
+     "observed": 0.433
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.4882,
+     "observed": 0.5267
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.5311,
+     "observed": 0.5287
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.5851,
+     "observed": 0.659
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.689,
+     "observed": 0.7214
+    }
+   ],
+   "zone_60": {
+    "n": 323,
+    "predit": 0.6736,
+    "observe": 0.7152
+   }
+  },
+  "home:under@14.5": {
+   "observe": 0.549,
+   "predit": 0.5819,
+   "brier_modele": 0.22406,
+   "brier_ref": 0.24637,
+   "ecart_brier": -0.02231,
+   "ecart_brier_ic95": [
+    -0.02755,
+    -0.01708
+   ],
+   "ecart_logloss": -0.04754,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.5843,
+     "brier_modele": 0.22617,
+     "brier_ref": 0.24346
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.5748,
+     "brier_modele": 0.22194,
+     "brier_ref": 0.24509
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.5558,
+     "brier_modele": 0.21103,
+     "brier_ref": 0.25052
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.5255,
+     "brier_modele": 0.21624,
+     "brier_ref": 0.24809
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.6112,
+     "brier_modele": 0.20981,
+     "brier_ref": 0.23792
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.481,
+     "brier_modele": 0.24601,
+     "brier_ref": 0.25061
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.311,
+     "observed": 0.2786
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.4149,
+     "observed": 0.341
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.4689,
+     "observed": 0.4713
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.5118,
+     "observed": 0.4733
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.555,
+     "observed": 0.567
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.5966,
+     "observed": 0.5709
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.6441,
+     "observed": 0.5802
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.7015,
+     "observed": 0.6935
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.7647,
+     "observed": 0.6897
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8508,
+     "observed": 0.8244
+    }
+   ],
+   "zone_60": {
+    "n": 1158,
+    "predit": 0.7276,
+    "observe": 0.6865
+   }
+  },
+  "away:over@8.5": {
+   "observe": 0.6982,
+   "predit": 0.7055,
+   "brier_modele": 0.20158,
+   "brier_ref": 0.21053,
+   "ecart_brier": -0.00896,
+   "ecart_brier_ic95": [
+    -0.01314,
+    -0.00495
+   ],
+   "ecart_logloss": -0.02168,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.6686,
+     "brier_modele": 0.21441,
+     "brier_ref": 0.22478
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.715,
+     "brier_modele": 0.20029,
+     "brier_ref": 0.20391
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.6605,
+     "brier_modele": 0.21257,
+     "brier_ref": 0.22486
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.7808,
+     "brier_modele": 0.17029,
+     "brier_ref": 0.1722
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.6885,
+     "brier_modele": 0.20005,
+     "brier_ref": 0.21484
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.692,
+     "brier_modele": 0.20532,
+     "brier_ref": 0.21455
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.4691,
+     "observed": 0.5344
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.5754,
+     "observed": 0.5939
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.6269,
+     "observed": 0.6207
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.6676,
+     "observed": 0.6641
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.7026,
+     "observed": 0.682
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.7339,
+     "observed": 0.6743
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7615,
+     "observed": 0.7557
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.7914,
+     "observed": 0.7931
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8323,
+     "observed": 0.8084
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8942,
+     "observed": 0.855
+    }
+   ],
+   "zone_60": {
+    "n": 2107,
+    "predit": 0.7502,
+    "observe": 0.7309
+   }
+  },
+  "away:under@8.5": {
+   "observe": 0.3018,
+   "predit": 0.2945,
+   "brier_modele": 0.20158,
+   "brier_ref": 0.21053,
+   "ecart_brier": -0.00896,
+   "ecart_brier_ic95": [
+    -0.01314,
+    -0.00495
+   ],
+   "ecart_logloss": -0.02168,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.3314,
+     "brier_modele": 0.21441,
+     "brier_ref": 0.22478
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.285,
+     "brier_modele": 0.20029,
+     "brier_ref": 0.20391
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.3395,
+     "brier_modele": 0.21257,
+     "brier_ref": 0.22486
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.2192,
+     "brier_modele": 0.17029,
+     "brier_ref": 0.1722
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.3115,
+     "brier_modele": 0.20005,
+     "brier_ref": 0.21484
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.308,
+     "brier_modele": 0.20532,
+     "brier_ref": 0.21455
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1058,
+     "observed": 0.145
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1677,
+     "observed": 0.1916
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.2086,
+     "observed": 0.2069
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2385,
+     "observed": 0.2443
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.2661,
+     "observed": 0.3257
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.2974,
+     "observed": 0.318
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.3324,
+     "observed": 0.3359
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.3731,
+     "observed": 0.3793
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.4246,
+     "observed": 0.4061
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.5309,
+     "observed": 0.4656
+    }
+   ],
+   "zone_60": {
+    "n": 39,
+    "predit": 0.6596,
+    "observe": 0.5385
+   }
+  },
+  "away:over@10.5": {
+   "observe": 0.5283,
+   "predit": 0.5248,
+   "brier_modele": 0.23317,
+   "brier_ref": 0.24901,
+   "ecart_brier": -0.01585,
+   "ecart_brier_ic95": [
+    -0.02101,
+    -0.01048
+   ],
+   "ecart_logloss": -0.03267,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.4971,
+     "brier_modele": 0.24299,
+     "brier_ref": 0.25263
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.5487,
+     "brier_modele": 0.23791,
+     "brier_ref": 0.2474
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.4907,
+     "brier_modele": 0.22912,
+     "brier_ref": 0.25047
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.5976,
+     "brier_modele": 0.22786,
+     "brier_ref": 0.24073
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.5129,
+     "brier_modele": 0.22647,
+     "brier_ref": 0.25117
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.5311,
+     "brier_modele": 0.23467,
+     "brier_ref": 0.25
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.2712,
+     "observed": 0.3435
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.368,
+     "observed": 0.3793
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.4217,
+     "observed": 0.4176
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.4668,
+     "observed": 0.5153
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.5077,
+     "observed": 0.4904
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.5463,
+     "observed": 0.5019
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.5817,
+     "observed": 0.5611
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.6223,
+     "observed": 0.6245
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.6811,
+     "observed": 0.682
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.781,
+     "observed": 0.7672
+    }
+   ],
+   "zone_60": {
+    "n": 786,
+    "predit": 0.6947,
+    "observe": 0.6908
+   }
+  },
+  "away:under@10.5": {
+   "observe": 0.4717,
+   "predit": 0.4752,
+   "brier_modele": 0.23317,
+   "brier_ref": 0.24901,
+   "ecart_brier": -0.01585,
+   "ecart_brier_ic95": [
+    -0.02101,
+    -0.01048
+   ],
+   "ecart_logloss": -0.03267,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.5029,
+     "brier_modele": 0.24299,
+     "brier_ref": 0.25263
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.4513,
+     "brier_modele": 0.23791,
+     "brier_ref": 0.2474
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.5093,
+     "brier_modele": 0.22912,
+     "brier_ref": 0.25047
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.4024,
+     "brier_modele": 0.22786,
+     "brier_ref": 0.24073
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.4871,
+     "brier_modele": 0.22647,
+     "brier_ref": 0.25117
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.4689,
+     "brier_modele": 0.23467,
+     "brier_ref": 0.25
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.219,
+     "observed": 0.2328
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.3189,
+     "observed": 0.318
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.3777,
+     "observed": 0.3755
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.4183,
+     "observed": 0.4389
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.4537,
+     "observed": 0.4981
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.4923,
+     "observed": 0.5096
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.5332,
+     "observed": 0.4847
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.5783,
+     "observed": 0.5824
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.632,
+     "observed": 0.6207
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.7288,
+     "observed": 0.6565
+    }
+   ],
+   "zone_60": {
+    "n": 547,
+    "predit": 0.6771,
+    "observe": 0.6362
+   }
+  },
+  "away:over@12.5": {
+   "observe": 0.3711,
+   "predit": 0.3552,
+   "brier_modele": 0.21717,
+   "brier_ref": 0.23352,
+   "ecart_brier": -0.01636,
+   "ecart_brier_ic95": [
+    -0.02127,
+    -0.01146
+   ],
+   "ecart_logloss": -0.03585,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.3576,
+     "brier_modele": 0.2095,
+     "brier_ref": 0.23022
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.361,
+     "brier_modele": 0.21648,
+     "brier_ref": 0.23189
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.3442,
+     "brier_modele": 0.20706,
+     "brier_ref": 0.22698
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.4234,
+     "brier_modele": 0.23303,
+     "brier_ref": 0.24442
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.363,
+     "brier_modele": 0.21115,
+     "brier_ref": 0.2316
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.3809,
+     "brier_modele": 0.22409,
+     "brier_ref": 0.2363
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.1364,
+     "observed": 0.1794
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.2059,
+     "observed": 0.2529
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.2496,
+     "observed": 0.2452
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2887,
+     "observed": 0.3473
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.326,
+     "observed": 0.341
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.3631,
+     "observed": 0.3372
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.3985,
+     "observed": 0.4237
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.4417,
+     "observed": 0.4291
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.5077,
+     "observed": 0.5287
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.6343,
+     "observed": 0.626
+    }
+   ],
+   "zone_60": {
+    "n": 161,
+    "predit": 0.6741,
+    "observe": 0.6211
+   }
+  },
+  "away:under@12.5": {
+   "observe": 0.6289,
+   "predit": 0.6448,
+   "brier_modele": 0.21717,
+   "brier_ref": 0.23352,
+   "ecart_brier": -0.01636,
+   "ecart_brier_ic95": [
+    -0.02127,
+    -0.01146
+   ],
+   "ecart_logloss": -0.03585,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.6424,
+     "brier_modele": 0.2095,
+     "brier_ref": 0.23022
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.639,
+     "brier_modele": 0.21648,
+     "brier_ref": 0.23189
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.6558,
+     "brier_modele": 0.20706,
+     "brier_ref": 0.22698
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.5766,
+     "brier_modele": 0.23303,
+     "brier_ref": 0.24442
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.637,
+     "brier_modele": 0.21115,
+     "brier_ref": 0.2316
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.6191,
+     "brier_modele": 0.22409,
+     "brier_ref": 0.2363
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.3657,
+     "observed": 0.374
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.4923,
+     "observed": 0.4713
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.5583,
+     "observed": 0.5709
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.6015,
+     "observed": 0.5763
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.6369,
+     "observed": 0.6628
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.674,
+     "observed": 0.659
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7113,
+     "observed": 0.6527
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.7504,
+     "observed": 0.7548
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.7941,
+     "observed": 0.7471
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8636,
+     "observed": 0.8206
+    }
+   ],
+   "zone_60": {
+    "n": 1716,
+    "predit": 0.7273,
+    "observe": 0.7098
+   }
+  },
+  "away:over@14.5": {
+   "observe": 0.2368,
+   "predit": 0.221,
+   "brier_modele": 0.16859,
+   "brier_ref": 0.18107,
+   "ecart_brier": -0.01248,
+   "ecart_brier_ic95": [
+    -0.0166,
+    -0.00844
+   ],
+   "ecart_logloss": -0.03219,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.2471,
+     "brier_modele": 0.171,
+     "brier_ref": 0.1863
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.2185,
+     "brier_modele": 0.15471,
+     "brier_ref": 0.17373
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.2163,
+     "brier_modele": 0.15404,
+     "brier_ref": 0.17026
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.3003,
+     "brier_modele": 0.20095,
+     "brier_ref": 0.21191
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.2319,
+     "brier_modele": 0.16785,
+     "brier_ref": 0.17846
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.2276,
+     "brier_modele": 0.16983,
+     "brier_ref": 0.17618
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.0607,
+     "observed": 0.1069
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1021,
+     "observed": 0.1379
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.1314,
+     "observed": 0.1571
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.1594,
+     "observed": 0.1603
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.1874,
+     "observed": 0.2031
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.2167,
+     "observed": 0.1954
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.246,
+     "observed": 0.2595
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.2837,
+     "observed": 0.2874
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.3448,
+     "observed": 0.4023
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.4775,
+     "observed": 0.458
+    }
+   ],
+   "zone_60": {
+    "n": 24,
+    "predit": 0.6688,
+    "observe": 0.6667
+   }
+  },
+  "away:under@14.5": {
+   "observe": 0.7632,
+   "predit": 0.779,
+   "brier_modele": 0.16859,
+   "brier_ref": 0.18107,
+   "ecart_brier": -0.01248,
+   "ecart_brier_ic95": [
+    -0.0166,
+    -0.00844
+   ],
+   "ecart_logloss": -0.03219,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.7529,
+     "brier_modele": 0.171,
+     "brier_ref": 0.1863
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.7815,
+     "brier_modele": 0.15471,
+     "brier_ref": 0.17373
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.7837,
+     "brier_modele": 0.15404,
+     "brier_ref": 0.17026
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.6997,
+     "brier_modele": 0.20095,
+     "brier_ref": 0.21191
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.7681,
+     "brier_modele": 0.16785,
+     "brier_ref": 0.17846
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.7724,
+     "brier_modele": 0.16983,
+     "brier_ref": 0.17618
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.5225,
+     "observed": 0.542
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.6552,
+     "observed": 0.5977
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.7163,
+     "observed": 0.7126
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.754,
+     "observed": 0.7405
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.7833,
+     "observed": 0.8046
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.8126,
+     "observed": 0.7969
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.8406,
+     "observed": 0.8397
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.8686,
+     "observed": 0.8429
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8979,
+     "observed": 0.8621
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.9393,
+     "observed": 0.8931
+    }
+   ],
+   "zone_60": {
+    "n": 2393,
+    "predit": 0.8042,
+    "observe": 0.7852
+   }
+  },
+  "1x2:home": {
+   "observe": 0.6316,
+   "predit": 0.6161,
+   "brier_modele": 0.2054,
+   "brier_ref": 0.2323,
+   "ecart_brier": -0.0269,
+   "ecart_brier_ic95": [
+    -0.03284,
+    -0.02126
+   ],
+   "ecart_logloss": -0.06029,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.6076,
+     "brier_modele": 0.21334,
+     "brier_ref": 0.23929
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.6318,
+     "brier_modele": 0.20061,
+     "brier_ref": 0.23348
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.6349,
+     "brier_modele": 0.2022,
+     "brier_ref": 0.23259
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.6276,
+     "brier_modele": 0.21284,
+     "brier_ref": 0.23396
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.5785,
+     "brier_modele": 0.19701,
+     "brier_ref": 0.24411
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.6783,
+     "brier_modele": 0.2081,
+     "brier_ref": 0.21923
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.2667,
+     "observed": 0.2939
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.4145,
+     "observed": 0.4291
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.5008,
+     "observed": 0.5517
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.564,
+     "observed": 0.6107
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.6157,
+     "observed": 0.6207
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.6606,
+     "observed": 0.7011
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.7047,
+     "observed": 0.7214
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.7511,
+     "observed": 0.7165
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.8032,
+     "observed": 0.7931
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.8801,
+     "observed": 0.8779
+    }
+   ],
+   "zone_60": {
+    "n": 1522,
+    "predit": 0.7402,
+    "observe": 0.7411
+   }
+  },
+  "1x2:draw": {
+   "observe": 0.0386,
+   "predit": 0.053,
+   "brier_modele": 0.03734,
+   "brier_ref": 0.03723,
+   "ecart_brier": 0.0001,
+   "ecart_brier_ic95": [
+    -0.00013,
+    0.00033
+   ],
+   "ecart_logloss": 0.00067,
+   "valide": false,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.0349,
+     "brier_modele": 0.03397,
+     "brier_ref": 0.03384
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.0499,
+     "brier_modele": 0.04759,
+     "brier_ref": 0.04762
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.0372,
+     "brier_modele": 0.03584,
+     "brier_ref": 0.03611
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.045,
+     "brier_modele": 0.04316,
+     "brier_ref": 0.04305
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.0445,
+     "brier_modele": 0.04246,
+     "brier_ref": 0.04266
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.0273,
+     "brier_modele": 0.02727,
+     "brier_ref": 0.02666
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.0283,
+     "observed": 0.0191
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.0407,
+     "observed": 0.0345
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.0466,
+     "observed": 0.0536
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.0511,
+     "observed": 0.0458
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.0546,
+     "observed": 0.0307
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.0572,
+     "observed": 0.0192
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.0594,
+     "observed": 0.0344
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.0614,
+     "observed": 0.0536
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.0638,
+     "observed": 0.0498
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.0673,
+     "observed": 0.0458
+    }
+   ],
+   "zone_60": {
+    "n": 0,
+    "predit": null,
+    "observe": null
+   }
+  },
+  "1x2:away": {
+   "observe": 0.3298,
+   "predit": 0.3308,
+   "brier_modele": 0.19558,
+   "brier_ref": 0.22092,
+   "ecart_brier": -0.02534,
+   "ecart_brier_ic95": [
+    -0.03096,
+    -0.01981
+   ],
+   "ecart_logloss": -0.0589,
+   "valide": true,
+   "par_championnat": {
+    "FR1": {
+     "n": 344,
+     "observe": 0.3576,
+     "brier_modele": 0.20597,
+     "brier_ref": 0.2302
+    },
+    "EN1": {
+     "n": 421,
+     "observe": 0.3183,
+     "brier_modele": 0.18447,
+     "brier_ref": 0.21871
+    },
+    "ES1": {
+     "n": 430,
+     "observe": 0.3279,
+     "brier_modele": 0.19265,
+     "brier_ref": 0.22104
+    },
+    "DE1": {
+     "n": 333,
+     "observe": 0.3273,
+     "brier_modele": 0.20169,
+     "brier_ref": 0.22037
+    },
+    "IT1": {
+     "n": 427,
+     "observe": 0.377,
+     "brier_modele": 0.1951,
+     "brier_ref": 0.2353
+    },
+    "BR1": {
+     "n": 659,
+     "observe": 0.2944,
+     "brier_modele": 0.1964,
+     "brier_ref": 0.20837
+    }
+   },
+   "calibration": [
+    {
+     "decile": 1,
+     "n": 262,
+     "mean_predicted": 0.0912,
+     "observed": 0.0954
+    },
+    {
+     "decile": 2,
+     "n": 261,
+     "mean_predicted": 0.1554,
+     "observed": 0.1877
+    },
+    {
+     "decile": 3,
+     "n": 261,
+     "mean_predicted": 0.2011,
+     "observed": 0.2222
+    },
+    {
+     "decile": 4,
+     "n": 262,
+     "mean_predicted": 0.2426,
+     "observed": 0.2443
+    },
+    {
+     "decile": 5,
+     "n": 261,
+     "mean_predicted": 0.2831,
+     "observed": 0.2682
+    },
+    {
+     "decile": 6,
+     "n": 261,
+     "mean_predicted": 0.3248,
+     "observed": 0.3333
+    },
+    {
+     "decile": 7,
+     "n": 262,
+     "mean_predicted": 0.3737,
+     "observed": 0.3626
+    },
+    {
+     "decile": 8,
+     "n": 261,
+     "mean_predicted": 0.4354,
+     "observed": 0.3985
+    },
+    {
+     "decile": 9,
+     "n": 261,
+     "mean_predicted": 0.5216,
+     "observed": 0.5287
+    },
+    {
+     "decile": 10,
+     "n": 262,
+     "mean_predicted": 0.6792,
+     "observed": 0.6565
+    }
+   ],
+   "zone_60": {
+    "n": 221,
+    "predit": 0.6961,
+    "observe": 0.6652
+   }
+  }
+ }
+}

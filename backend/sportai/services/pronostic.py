@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session as DB
 
 from sportai.db.models import AnalysisRun, CandidateRow
 from sportai.engine.football.halves import MARKET_NAME as HALF_MARKET, settle as settle_half
+from sportai.services.comptages import settle_count
 from sportai.engine.football.markets import VALIDATED_MARKETS, is_quarter
 from sportai.selection.engine import COTE_MIN, TRIAL_MARKETS as TRIAL_MARKETS_DEFAULT
 from sportai.services.dashboard import (
@@ -176,7 +177,8 @@ def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
     if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
-    if " : moins de " in leg["pari"] and not leg.get("mi_temps"):  # a team's under: paused (review of 2026-10-27)
+    # a team's under goals: paused (review of 2026-10-27)
+    if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage")):
         return False
     c = blended(leg)
     return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
@@ -458,6 +460,27 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
+        # Corners, cards and shots (owner 2026-10-27, docs/18-corners-cartons-tirs.md): same treatment as half-time.
+        for r in f.get("comptages_cotes") or []:
+            if r["cote"] < COTE_MIN:
+                continue
+            p, pm = r["proba"], r["proba_marche"]
+            if not r["valide"] and (r["valeur"] < TRIAL_MIN_VALUE or p < TRIAL_MIN_PROBA or r["cote"] > TRIAL_MAX_ODDS
+                                    or abs(p - pm) > div):
+                continue
+            leg = {
+                "match_id": doc_id(ko, home, away), "match": f["match"],
+                "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
+                "pari": r["pari"], "marche": r["marche"], "cote": r["cote"], "bookmaker": r["bookmaker"],
+                "proba": round(p, 4), "proba_marche": round(pm, 4), "valeur": round(r["valeur"], 4),
+                "valide": r["valide"], "comptage": {"stat": r["stat"], "type": r["type"], "selection": r["selection"],
+                                                    "ligne": r["ligne"]},
+                "_divergence_max": div, "_p_cmp": round(p, 4),
+                **({"proba_marche_brute": True} if r.get("proba_marche_brute") else {})}
+            if r["valide"]:
+                legs.append(leg)
+            else:
+                trials.append({**leg, "validation": NON_VALIDE})
         # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
@@ -566,6 +589,11 @@ def _settle_leg(leg: dict, page: dict[str, dict]) -> dict:
             hg, ag = (int(x) for x in doc["score"].split(" - "))
             h1, a1 = (int(x) for x in doc["score_mi_temps"].split(" - "))
             leg["resultat"] = settle_half(mt["marche"], mt["selection"], mt["ligne"], h1, a1, hg - h1, ag - a1)
+        return leg
+    if leg.get("comptage"):  # corners, cards, shots: from the final statistics of the live follow-up
+        res = settle_count(leg, doc)
+        if res:
+            leg["resultat"] = res
         return leg
     if leg.get("buteur"):  # a scorer bet: from the match sheet, refunded when the player did not play
         res = settle_scorer(leg, doc)
