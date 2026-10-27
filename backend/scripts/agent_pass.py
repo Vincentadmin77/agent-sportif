@@ -394,6 +394,8 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
     current, docs = _load_page(page), {}
     for comp in comps:
         docs.update(apply_scores(odds.scores(comp, completed_too=final), current, now))
+    if final:
+        _half_time_scores(comps, current, docs)
     if final and STATE_DB.exists():
         db = _state_session()
         for day in sorted({d["jour"] for d in docs.values() if d.get("jour")}):  # a late final runs past midnight
@@ -401,6 +403,35 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
         db.close()
     _write(out, docs, f"scores mis à jour pour {len(docs)} match(s)", now)
     print("quota:", odds.last_quota, file=sys.stderr)
+
+
+def _half_time_scores(comps: list[str], current: dict, docs: dict) -> None:
+    """The final pass marks matches finished from The Odds API, which has no half-time score: read it from
+    API-Football for every finished match still without one, so the half-time bets settle."""
+    from datetime import date as _date
+
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.live_page import find_doc
+
+    merged = {**current, **docs}
+    days = {d["jour"] for d in merged.values()
+            if d.get("jour") and d.get("statut") == "termine" and not d.get("score_mi_temps")}
+    if not days:
+        return
+    api = ApiFootballProvider(get_settings().api_football_key)
+    for day in sorted(days):
+        try:
+            fixtures = api.fixtures_on(comps, _date.fromisoformat(day))
+        except Exception as e:  # noqa: BLE001 - extra settlement data, never break the final pass
+            print(f"half-time scores {day}: {str(e)[:120]}", file=sys.stderr)
+            continue
+        for fx in fixtures:
+            key = find_doc(merged, day, fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
+            ht = (fx.get("score") or {}).get("halftime") or {}
+            if not key or merged[key].get("score_mi_temps") or ht.get("home") is None or ht.get("away") is None:
+                continue
+            merged[key] = docs[key] = {**merged[key], "score_mi_temps": f"{int(ht['home'])} - {int(ht['away'])}"}
 
 
 def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
