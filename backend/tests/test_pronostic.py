@@ -411,3 +411,15 @@ def test_top_pick_selected_combo_needs_two_high_confidence_bets():
                            l("e-f", "Victoire f", 2.10, 0.52, 0.48)], {}, None, now, "matin")
     assert [s["match"] for s in doc["selections"]] == ["c-d"]
     assert [c["retenu"] for c in doc["combines"]] == [False]  # a-b (élevée) + e-f (moyenne): kept in the total only
+
+
+def test_no_both_teams_no_and_no_team_under_in_a_half():
+    from sportai.services.pronostic import pick_ok
+
+    base = {"cote": 1.80, "proba": 0.62, "proba_marche": 0.60}
+    assert pick_ok({**base, "pari": "Plus de 2,5 buts"})
+    assert not pick_ok({**base, "pari": "Les deux équipes marquent : non"})
+    assert not pick_ok({**base, "pari": "Moins de 2,5 buts et les deux équipes marquent : non"})
+    half = {"marche": "ht_team_total_away", "selection": "under", "ligne": 0.5}
+    assert not pick_ok({**base, "pari": "1re mi-temps : Lazio moins de 0,5 buts", "mi_temps": half})
+    assert pick_ok({**base, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})

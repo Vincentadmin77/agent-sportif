@@ -177,8 +177,15 @@ def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
     if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
-    # a team's under goals: paused (review of 2026-10-27)
+    # a team's under goals: paused (review of 2026-10-27), in a half too (owner 2026-10-27 evening: Lazio, favourite,
+    # under 0.5 goals in the first half lost 4-2 at the break)
     if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage")):
+        return False
+    mt = leg.get("mi_temps") or {}
+    if "team_total" in str(mt.get("marche", "")) and mt.get("selection") == "under":
+        return False
+    # "both teams score: no", alone or with a total: removed (owner 2026-10-27, 2 won out of 7 since 15/10)
+    if "deux équipes marquent : non" in leg["pari"]:
         return False
     c = blended(leg)
     return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
