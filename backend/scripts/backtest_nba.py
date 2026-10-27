@@ -85,7 +85,8 @@ def load() -> list[Game]:
             if ts.month == 10 and ts.day < 18:
                 continue
             games.append(Game(ts.date(), h, a, g["scores"]["home"]["total"], g["scores"]["away"]["total"],
-                              g["status"]["short"] == "AOT"))
+                              g["status"]["short"] == "AOT",
+                              g["scores"]["home"]["quarter_1"], g["scores"]["away"]["quarter_1"]))
     games.sort(key=lambda g: g.day)
     return games
 
@@ -153,6 +154,24 @@ def run(games: list[Game]) -> dict:
                              "ecart_moyen_reference": round(sum(c[7]) / len(sel), 2)},
         }
 
+    # First quarter: its coefficients were fitted on 2023-24, so only later seasons are out of sample.
+    q1 = [r for r in rows if r["g"].day >= date(2024, 7, 1) and r["g"].q1_home is not None]
+    q1_out = None
+    if q1:
+        cnt = [1, 1, 1]
+        ll_m = ll_b = 0.0
+        pairs = []
+        for r in sorted(q1, key=lambda r: r["g"].day):
+            g = r["g"]
+            k = 0 if g.q1_home > g.q1_away else 1 if g.q1_home == g.q1_away else 2
+            pm = r["p"].q1_probs()
+            pb = [c / sum(cnt) for c in cnt]
+            ll_m -= math.log(max(1e-9, pm[k])); ll_b -= math.log(pb[k])
+            pairs.append((pm[0], int(k == 0)))
+            cnt[k] += 1
+        q1_out = {"matchs": len(q1), "logloss_modele": round(ll_m / len(q1), 4), "logloss_reference": round(ll_b / len(q1), 4),
+                  "calibration_domicile": _bins(pairs)}
+
     seasons = {}
     for lo, hi, name in [(date(2023, 7, 1), date(2024, 7, 1), "2023-24"), (date(2024, 7, 1), date(2025, 7, 1), "2024-25"),
                          (date(2025, 7, 1), date(2026, 7, 1), "2025-26"), (date(2026, 7, 1), date(2027, 7, 1), "2026-27")]:
@@ -164,6 +183,7 @@ def run(games: list[Game]) -> dict:
         "protocole": "walk-forward, refit tous les 7 jours sur les matchs passés uniquement",
         "global": block(out_rows),
         "par_saison": seasons,
+        "premier_quart_temps_1N2": q1_out,
         "calibration_vainqueur": _bins([(r[0], r[2]) for r in out_rows]),
         "calibration_over": _bins([(r[3], r[5]) for r in out_rows]),
         "sigma_derniere_fit": {"ecart": round(rows[-1]["p"].sigma_margin, 2), "total": round(rows[-1]["p"].sigma_total, 2)},
