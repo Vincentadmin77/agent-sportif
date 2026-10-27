@@ -44,7 +44,12 @@ def main() -> None:
         for n, gid in enumerate(todo, 1):
             if spent >= a.budget:
                 break
-            r = client.get("/games/statistics/players", params={"id": gid})
+            try:
+                r = client.get("/games/statistics/players", params={"id": gid})
+            except httpx.TransportError as e:
+                print("network error", gid, type(e).__name__, flush=True)
+                time.sleep(10)
+                continue
             spent += 1
             left = int(r.headers.get("x-ratelimit-requests-remaining", "9999"))
             data = r.json()
