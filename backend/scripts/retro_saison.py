@@ -31,6 +31,8 @@ import difflib
 import gzip
 import json
 import sys
+
+import numpy as np
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -56,6 +58,9 @@ NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "Liga", "DE1": "Bunde
 SEASON = {False: 2026, True: 2026}  # --season Y: the Y-(Y+1) European season and the Y Brazilian one
 FIRST_PASS = time(8, 0)
 RAW: list[dict] = []
+XG_W: float | None = None  # --xg W: fit on W x goals + (1 - W) x expected goals from shots (past matches only)
+XG_FIT_BEFORE = date(2022, 7, 1)  # the shot values are fitted on 2020-22, before every replayed season
+SHOTS: Path | None = None  # --shots DIR: football-data files of past seasons, <code>_<anything>.csv, shots columns read
 EARLY = False  # --early: the odds of a few days before (football-data pre-closing), closing ones as fallback
 PRICE = "Avg"  # --price Max: the best price over the bookmakers, an optimistic check
 BOOKS = ("B365", "BW", "PS", "WH", "BFD", "BV", "PP", "SKB", "1XB", "LB", "IW", "VC")  # bookmakers, no exchange
@@ -127,6 +132,34 @@ def load_odds(path: Path, brazil: bool) -> list[dict]:
             if m["books"]:
                 out.append(m)
     return out
+
+
+def load_shots(shots_dir: Path, fname: str) -> list[dict]:
+    """Shots and shots on target of each past match (football-data HS/AS/HST/AST)."""
+    out = []
+    for path in sorted(shots_dir.glob(fname.replace(".csv", "_*.csv"))):
+        with path.open(encoding="utf-8-sig", errors="replace") as fh:
+            for row in csv.DictReader(fh):
+                try:
+                    d = datetime.strptime(row["Date"], "%d/%m/%Y" if len(row["Date"]) == 10 else "%d/%m/%y").date()
+                    hs, as_, hst, ast = (float(row[k]) for k in ("HS", "AS", "HST", "AST"))
+                except (KeyError, ValueError):
+                    continue
+                out.append({"date": d, "home": row["HomeTeam"], "away": row["AwayTeam"], "hs": hs, "as": as_,
+                            "hst": hst, "ast": ast})
+    return out
+
+
+def xg_proxy(results: list[dict], shots: dict[int, dict], before: date) -> tuple[float, float]:
+    """Goals per shot on target and per other shot, fitted on the matches before `before` only."""
+    x, y = [], []
+    for i, s in shots.items():
+        m = results[i]
+        if m["ko"].date() < before:
+            x += [(s["hst"], s["hs"] - s["hst"]), (s["ast"], s["as"] - s["ast"])]
+            y += [m["hg"], m["ag"]]
+    a, b = np.linalg.lstsq(np.array(x), np.array(y, dtype=float), rcond=None)[0]
+    return float(a), float(b)
 
 
 def match_odds(results: list[dict], odds: list[dict]) -> tuple[dict[int, dict], list[str]]:
@@ -275,6 +308,15 @@ def run(af: Path, odds_dir: Path, last_day: date, leagues: list[str]) -> dict:
                "equipe_inconnue": 0, "cotes_cloture": sum(1 for v in found.values() if v["closing"])}
         canon = [dc.MatchResult(m["ko"].date(), normalise(m["home"]), normalise(m["away"]), m["hg"], m["ag"])
                  for m in results]
+        if XG_W is not None and SHOTS:
+            shots, _ = match_odds(results, load_shots(SHOTS, fname))
+            a, b = xg_proxy(results, shots, XG_FIT_BEFORE)
+            cov["xg_par_tir_cadre"], cov["xg_par_autre_tir"], cov["avec_tirs"] = round(a, 3), round(b, 3), len(shots)
+            for i, s in shots.items():
+                m = results[i]
+                xh, xa = a * s["hst"] + b * (s["hs"] - s["hst"]), a * s["ast"] + b * (s["as"] - s["ast"])
+                canon[i] = dc.MatchResult(m["ko"].date(), canon[i].home, canon[i].away,
+                                          XG_W * m["hg"] + (1 - XG_W) * xh, XG_W * m["ag"] + (1 - XG_W) * xa)
         by_day = defaultdict(list)
         for i in season:
             if i in found:
@@ -324,10 +366,12 @@ def main() -> None:
     ap.add_argument("--price", choices=("Avg", "Max"), default="Avg")
     ap.add_argument("--season", type=int, default=2026)
     ap.add_argument("--early", action="store_true")
+    ap.add_argument("--xg", type=float)
+    ap.add_argument("--shots", type=Path)
     ap.add_argument("--dump", type=Path, help="every priced bet with its result, to study the rules")
     a = ap.parse_args()
-    global PRICE, EARLY
-    PRICE, EARLY = a.price, a.early
+    global PRICE, EARLY, XG_W, SHOTS
+    PRICE, EARLY, XG_W, SHOTS = a.price, a.early, a.xg, a.shots
     SEASON.update({False: a.season, True: a.season})
     a.out.write_text(json.dumps(run(a.af, a.odds, a.to, a.leagues), indent=1, ensure_ascii=False, default=str))
     if a.dump:
