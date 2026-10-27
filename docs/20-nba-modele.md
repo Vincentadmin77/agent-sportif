@@ -22,3 +22,23 @@ Backtest walk-forward (refit tous les 7 jours, matchs passés uniquement), 3 955
 Le modèle bat la référence chaque saison. Vainqueur bien calibré (prévu 85 % → réel 85 %).
 Total de points trop sûr de lui aux extrêmes (prévu 85 % → réel 73 %) : reste « non validé ».
 Pas de cotes historiques : battre une référence n'est pas battre les bookmakers.
+
+## Joueurs (27/10/2026)
+
+Statistiques par joueur et par match de 2023-24 à aujourd'hui (4 265 matchs, `scripts/fetch_nba_players.py`).
+Modèle `sportai/engine/basketball/players.py` : minutes attendues × production par minute (récente, ramenée vers
+la moyenne de la ligue), loi binomiale négative. Test 2024-25 à 2026-27 (51 467 lignes joueur), ligne = moyenne
+des 10 derniers matchs, `docs/backtest-nba-joueurs.json` :
+
+| Marché | Brier modèle | Référence 0,25 |
+|---|---|---|
+| Points | 0,242 | 0,250 |
+| 3 points (référence taux réel 0,240) | 0,218 | |
+| Rebonds | 0,242 | |
+| Passes | 0,238 | |
+| Points + passes | 0,242 | |
+| Points + rebonds + passes | 0,241 | |
+
+Petit avantage partout, mais biais connu : seuls les joueurs ayant joué 10 minutes ou plus sont comptés.
+Aucune ligne historique de bookmaker : tout reste « non validé ». Pas de liste des blessés dans la source.
+Libellés de cotes API-Basketball à confirmer : « Player Triples » = 3 points, « Player Runs » ≈ rebonds (?).

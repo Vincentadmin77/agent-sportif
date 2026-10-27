@@ -35,6 +35,11 @@ import numpy as np
 
 HALF_LIFE_DAYS = 80.0
 RIDGE = 2.0
+# First quarter, fitted on the 2023-24 validation season only (backtest_nba.py):
+# Q1 margin = Q1_SLOPE * full-game expected margin + Q1_INTERCEPT, residual Q1_SIGMA;
+# Q1 total = Q1_TOTAL_SLOPE * expected total + Q1_TOTAL_INTERCEPT, residual Q1_TOTAL_SIGMA.
+Q1_SLOPE, Q1_INTERCEPT, Q1_SIGMA = 0.315, 0.21, 8.39
+Q1_TOTAL_SLOPE, Q1_TOTAL_INTERCEPT, Q1_TOTAL_SIGMA = 0.254, -1.36, 8.23
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,8 @@ class Game:
     home_pts: int | None = None
     away_pts: int | None = None
     overtime: bool = False
+    q1_home: int | None = None
+    q1_away: int | None = None
 
 
 def _phi(x: float) -> float:
@@ -93,6 +100,21 @@ class Prediction:
 
     def p_over(self, line: float) -> float:
         return 1.0 - _phi((line - self.total) / self.sigma_total)
+
+    def q1_probs(self) -> tuple[float, float, float]:
+        """(home, tie, away) after the first quarter; a tie is a whole-point margin of 0."""
+        mu = Q1_SLOPE * self.margin + Q1_INTERCEPT
+        lo, hi = _phi((-0.5 - mu) / Q1_SIGMA), _phi((0.5 - mu) / Q1_SIGMA)
+        return 1.0 - hi, hi - lo, lo
+
+    def q1_home_win_no_tie(self) -> float:
+        """'Home/Away - 1st Qtr' (stake refunded on a tie): home share of the decisive outcomes."""
+        h, _, a = self.q1_probs()
+        return h / (h + a)
+
+    def p_q1_over(self, line: float) -> float:
+        mu = Q1_TOTAL_SLOPE * self.total + Q1_TOTAL_INTERCEPT
+        return 1.0 - _phi((line - mu) / Q1_TOTAL_SIGMA)
 
     def p_team_over(self, side: str, line: float) -> float:
         mu = self.home_pts if side == "home" else self.away_pts
