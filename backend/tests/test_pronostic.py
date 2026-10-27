@@ -367,7 +367,8 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     assert "c-d" not in in_combos and len(in_combos) == len(set(in_combos))
     # every pair is kept (owner 2026-10-27 15:27), the most likely one is the day's selected combo
     assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"m-n", "a-b"}, {"e-f", "q-r"}]
-    assert [c["retenu"] for c in combos] == [True, False]
+    assert [c["retenu"] for c in combos] == [True, False]  # e-f + q-r: Confiance moyenne, never the selected one
+    assert all(l["niveau"] == "Confiance élevée" for l in combos[0]["jambes"])
     assert all("resultat" not in c for c in combos)
 
     # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan
@@ -397,3 +398,16 @@ def test_top_pick_only_among_high_confidence_bets():
                           {}, None, now, "matin")
     assert {p["niveau"] for p in doc["paris_retenus"].values() if p["pari"]} == {"Confiance moyenne"}
     assert doc["selections"] == []
+
+
+def test_top_pick_selected_combo_needs_two_high_confidence_bets():
+    now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
+
+    def l(match, pari, cote, proba, pm):
+        return {**leg(match, pari, cote, proba, pm, 4), "match_id": f"2026-10-28-{match}",
+                "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": proba}
+
+    doc = build_pronostic([l("c-d", "Victoire c", 1.60, 0.68, 0.63), l("a-b", "Victoire a", 1.70, 0.64, 0.60),
+                           l("e-f", "Victoire f", 2.10, 0.52, 0.48)], {}, None, now, "matin")
+    assert [s["match"] for s in doc["selections"]] == ["c-d"]
+    assert [c["retenu"] for c in doc["combines"]] == [False]  # a-b (élevée) + e-f (moyenne): kept in the total only

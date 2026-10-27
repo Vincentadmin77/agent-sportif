@@ -71,3 +71,8 @@ la règle, 4 validés, 0 non validé, 1 remboursé, mais une sélection 5 jours 
 jamais le match de la meilleure confiance simple) ; la première porte `retenu: true` (la meilleure confiance combiné,
 `COMBOS_PER_DAY` = 1), les autres `retenu: false`. Le bilan copie `retenu` sur chaque combiné. La page montre deux
 ratios : les sélectionnés et le total.
+
+## Meilleure confiance combiné : deux Confiance élevée (Vincent, 27/10 15:40)
+
+Le combiné sélectionné (`retenu: true`) est fait de deux cotes retenues en Confiance élevée, en dehors de la meilleure
+confiance simple. Sinon, pas de meilleure confiance combiné ce jour-là ; les autres doubles restent dans le total.
