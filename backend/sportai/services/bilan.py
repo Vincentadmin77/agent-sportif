@@ -17,8 +17,8 @@ from sportai.selection.engine import COTE_MIN
 
 BANKROLL_DEFAULTS = {"depart": 100.0, "objectif": 100000.0, "mises": {"safe": 0.03, "semi_safe": 0.02, "fun": 0.01}}
 TICKET_ORDER = ("safe", "semi_safe", "fun")
-NOTE = ("Seuls les pronostics dont le match est terminé comptent. Un score exact est rarement trouvé (environ une fois "
-        "sur dix pour le score le plus probable) : ce taux ne mesure pas la qualité des autres pronostics.")
+NOTE = ("Seules les estimations dont le match est terminé comptent. Un score exact est rarement trouvé (environ une fois "
+        "sur dix pour le score le plus probable) : ce taux ne mesure pas la qualité des autres estimations.")
 
 
 def bankroll_settings(raw: dict | None) -> dict:
