@@ -31,9 +31,19 @@ LOCAL_TZ = ZoneInfo("Europe/Paris")
 DAY_ROLLOVER = timedelta(hours=2)
 
 
-def journee(moment: datetime) -> date:
-    """The betting day of a moment (a kick-off or "now"): its Paris date, with 00:00-02:00 counted as the evening before."""
-    return (moment.astimezone(LOCAL_TZ) - DAY_ROLLOVER).date()
+# Basketball (NBA, WNBA, owner 2026-10-27): the US games of the night tip off between 00:30 and 04:00 Paris, so the
+# basketball day runs to 04:00: the 08:00 analysis of day D covers the games of the night D -> D+1.
+BASKET_ROLLOVER = timedelta(hours=4)
+
+
+def journee(moment: datetime, sport: str = "foot") -> date:
+    """The betting day of a moment (a kick-off or "now"): its Paris date, with 00:00-02:00 counted as the evening
+    before; for sport "basket", 00:00-04:00 (04:00 included)."""
+    local = moment.astimezone(LOCAL_TZ)
+    if sport == "basket":
+        midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+        return local.date() - timedelta(days=1) if local - midnight <= BASKET_ROLLOVER else local.date()
+    return (local - DAY_ROLLOVER).date()
 
 
 # Goal markets always computed from the model, with or without odds.

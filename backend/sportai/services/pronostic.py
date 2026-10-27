@@ -178,7 +178,7 @@ def pick_ok(leg: dict) -> bool:
     if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
     # a team's under goals: paused (review of 2026-10-27)
-    if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage")):
+    if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage") or leg.get("basket")):
         return False
     c = blended(leg)
     return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
@@ -190,6 +190,11 @@ def _pick(leg: dict) -> dict:
     out.update(titre=PICK_TITLE, confiance=round(c, 4), valeur_retenue=round(c * leg["cote"] - 1, 4),
                niveau="Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne")
     return out
+
+
+def top_ok(pick: dict) -> bool:
+    """Basketball (owner 2026-10-27): a market no backtest validated is never the Top confiance."""
+    return pick.get("sport") != "basket" or bool(pick.get("valide"))
 
 
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
@@ -230,7 +235,8 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
             and (picks[s["match_id"]].get("pari") == s.get("pari"))]
     kept = [{**picks[s["match_id"]], "rang": s.get("rang")} for s in kept]
     free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["cote"] >= SELECTION_MIN_ODDS
-                   and p["confiance"] >= SELECTION_MIN_CONF and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
+                   and p["confiance"] >= SELECTION_MIN_CONF and top_ok(p)
+                   and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
     selections = kept + [dict(p) for p in free[:max(0, SELECTIONS_PER_DAY - len(kept))]]
     for i, s in enumerate(sorted(selections, key=lambda s: s["coup_envoi"]), 1):
         s["rang"] = i
@@ -583,6 +589,14 @@ def _combos(legs: list[dict], min_legs: int, max_legs: int, min_odds: float, min
 def _settle_leg(leg: dict, page: dict[str, dict]) -> dict:
     leg = dict(leg)
     doc = page.get(leg["match_id"]) or {}
+    if leg.get("basket"):  # a basketball bet: from the final score, overtime included (services/basket.py)
+        if doc.get("statut") == "termine" and doc.get("score"):
+            from sportai.services.basket import settle as settle_basket
+
+            hp, ap = (int(x) for x in doc["score"].split(" - "))
+            b = leg["basket"]
+            leg["resultat"] = settle_basket(b["marche"], b["selection"], b["ligne"], hp, ap)
+        return leg
     if leg.get("mi_temps"):  # a half-time bet: from the half-time and final scores
         mt = leg["mi_temps"]
         if doc.get("statut") == "termine" and doc.get("score") and doc.get("score_mi_temps"):

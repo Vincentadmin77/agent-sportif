@@ -161,6 +161,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                 items.append({"jour": day, "type": "Probabilités retenues", "categorie": "pari_retenu",
                               "libelle": f"{p['pari']} ({p['match']})", "cote": p["cote"], "proba": p.get("confiance"),
                               "niveau": p.get("niveau"), "competition": p.get("competition"),
+                              "sport": p.get("sport", "foot"),
                               "match_id": p["match_id"], "valide": p["resultat"] == "gagne"})
         for leg in doc.get("top3") or []:
             if leg.get("resultat") in ("gagne", "perdu") and not under_floor([leg]):

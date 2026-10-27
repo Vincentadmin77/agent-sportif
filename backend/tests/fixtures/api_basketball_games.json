@@ -1,0 +1,186 @@
+{
+ "get": "games",
+ "errors": [],
+ "results": 3,
+ "parameters": {
+  "league": "12",
+  "season": "2026-2027",
+  "date": "2026-10-27"
+ },
+ "response": [
+  {
+   "id": 519577,
+   "date": "2026-10-26T23:00:00+00:00",
+   "time": "23:00",
+   "timestamp": 1793055600,
+   "timezone": "UTC",
+   "stage": null,
+   "week": null,
+   "venue": "Rocket Arena",
+   "status": {
+    "long": "After Over Time",
+    "short": "AOT",
+    "timer": null
+   },
+   "league": {
+    "id": 12,
+    "name": "NBA",
+    "type": "League",
+    "season": "2026-2027",
+    "logo": "https://media.api-sports.io/basketball/leagues/12.png"
+   },
+   "country": {
+    "id": 5,
+    "name": "USA",
+    "code": "US",
+    "flag": "https://media.api-sports.io/flags/us.svg"
+   },
+   "teams": {
+    "home": {
+     "id": 137,
+     "name": "Cleveland Cavaliers",
+     "logo": "https://media.api-sports.io/basketball/teams/137.png"
+    },
+    "away": {
+     "id": 149,
+     "name": "Minnesota Timberwolves",
+     "logo": "https://media.api-sports.io/basketball/teams/149.png"
+    }
+   },
+   "scores": {
+    "home": {
+     "quarter_1": 24,
+     "quarter_2": 26,
+     "quarter_3": 36,
+     "quarter_4": 27,
+     "over_time": 14,
+     "total": 127
+    },
+    "away": {
+     "quarter_1": 31,
+     "quarter_2": 29,
+     "quarter_3": 26,
+     "quarter_4": 27,
+     "over_time": 12,
+     "total": 125
+    }
+   }
+  },
+  {
+   "id": 519582,
+   "date": "2026-10-27T00:30:00+00:00",
+   "time": "00:30",
+   "timestamp": 1793061000,
+   "timezone": "UTC",
+   "stage": null,
+   "week": null,
+   "venue": "Toyota Center",
+   "status": {
+    "long": "Game Finished",
+    "short": "FT",
+    "timer": null
+   },
+   "league": {
+    "id": 12,
+    "name": "NBA",
+    "type": "League",
+    "season": "2026-2027",
+    "logo": "https://media.api-sports.io/basketball/leagues/12.png"
+   },
+   "country": {
+    "id": 5,
+    "name": "USA",
+    "code": "US",
+    "flag": "https://media.api-sports.io/flags/us.svg"
+   },
+   "teams": {
+    "home": {
+     "id": 142,
+     "name": "Houston Rockets",
+     "logo": "https://media.api-sports.io/basketball/teams/142.png"
+    },
+    "away": {
+     "id": 132,
+     "name": "Atlanta Hawks",
+     "logo": "https://media.api-sports.io/basketball/teams/132.png"
+    }
+   },
+   "scores": {
+    "home": {
+     "quarter_1": 32,
+     "quarter_2": 31,
+     "quarter_3": 28,
+     "quarter_4": 29,
+     "over_time": null,
+     "total": 120
+    },
+    "away": {
+     "quarter_1": 35,
+     "quarter_2": 31,
+     "quarter_3": 19,
+     "quarter_4": 25,
+     "over_time": null,
+     "total": 110
+    }
+   }
+  },
+  {
+   "id": 519585,
+   "date": "2026-10-27T23:30:00+00:00",
+   "time": "23:30",
+   "timestamp": 1793143800,
+   "timezone": "UTC",
+   "stage": null,
+   "week": null,
+   "venue": "TD Garden",
+   "status": {
+    "long": "Not Started",
+    "short": "NS",
+    "timer": null
+   },
+   "league": {
+    "id": 12,
+    "name": "NBA",
+    "type": "League",
+    "season": "2026-2027",
+    "logo": "https://media.api-sports.io/basketball/leagues/12.png"
+   },
+   "country": {
+    "id": 5,
+    "name": "USA",
+    "code": "US",
+    "flag": "https://media.api-sports.io/flags/us.svg"
+   },
+   "teams": {
+    "home": {
+     "id": 133,
+     "name": "Boston Celtics",
+     "logo": "https://media.api-sports.io/basketball/teams/133.png"
+    },
+    "away": {
+     "id": 134,
+     "name": "Brooklyn Nets",
+     "logo": "https://media.api-sports.io/basketball/teams/134.png"
+    }
+   },
+   "scores": {
+    "home": {
+     "quarter_1": null,
+     "quarter_2": null,
+     "quarter_3": null,
+     "quarter_4": null,
+     "over_time": null,
+     "total": null
+    },
+    "away": {
+     "quarter_1": null,
+     "quarter_2": null,
+     "quarter_3": null,
+     "quarter_4": null,
+     "over_time": null,
+     "total": null
+    }
+   }
+  }
+ ]
+}

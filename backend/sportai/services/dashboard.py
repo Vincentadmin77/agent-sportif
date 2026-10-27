@@ -30,7 +30,7 @@ from sportai.services.prematch import LOCAL_TZ, journee
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
                      "IT1": "Serie A", "UCL": "Ligue des champions", "UEL": "Ligue Europa", "BR1": "Brasileirão",
-                     "TR1": "Süper Lig"}
+                     "TR1": "Süper Lig", "NBA": "NBA", "WNBA": "WNBA"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul",
                 "totals": "Nombre de buts", "btts": "Les deux équipes marquent",
                 "team_total_home": "Buts de l'équipe à domicile", "team_total_away": "Buts de l'équipe à l'extérieur",
@@ -111,9 +111,9 @@ def _whole(x: float | None) -> str:
     return "–" if x is None else f"{x * 100:.0f} %"
 
 
-def doc_id(kickoff: datetime, home: str, away: str) -> str:
+def doc_id(kickoff: datetime, home: str, away: str, sport: str = "foot") -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", f"{normalise(home)} {normalise(away)}").strip("-")
-    return f"{journee(kickoff):%Y-%m-%d}-{slug}"
+    return f"{journee(kickoff, sport):%Y-%m-%d}-{slug}"
 
 
 def pass_name(started_at: datetime, kickoff: datetime) -> str:
@@ -456,10 +456,11 @@ def build_match_docs(db: DB, run: AnalysisRun, current: dict[str, dict]) -> dict
         if reason and (reason.startswith("status") or reason == "already kicked off"):
             # Under way: keep what the earlier passes published, only mark it live.
             if key in current and current[key].get("statut", "a_venir") == "a_venir":
-                out[key] = {**current[key], "statut": "en_direct"}
+                out[key] = {**current[key], "statut": "en_direct", "sport": "foot"}
             continue
         doc = dict(current.get(key) or {})
-        doc.update(jour=f"{today:%Y-%m-%d}", coup_envoi=ko.isoformat(), competition=COMPETITION_NAMES.get(run.competition, run.competition))
+        doc.update(jour=f"{today:%Y-%m-%d}", coup_envoi=ko.isoformat(), sport="foot",
+                   competition=COMPETITION_NAMES.get(run.competition, run.competition))
         doc.setdefault("domicile", home)  # keep the spelling first published
         doc.setdefault("exterieur", away)
         doc.setdefault("statut", "a_venir")
