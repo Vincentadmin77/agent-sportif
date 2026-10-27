@@ -266,6 +266,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     for f in report.fixtures]
     if raw_odds and fixtures_p is not None and fixtures_p.name in (run.data_sources.get("odds") or "").split("+"):
         run.fixtures = scorer_markets(db, fixtures_p, competition, raw_odds, window, run.fixtures, now)
+        run.fixtures = half_markets(competition, raw_odds, run.fixtures)
     kickoffs = {f.fixture.provider_event_id: f.fixture.kickoff for f in report.fixtures}
     before = previous_consensus(db, competition, mode, now)
     moves = {}
@@ -388,6 +389,31 @@ def scorer_markets(db: DB, api: ApiFootballProvider, competition: str, raw: list
         out.append({**f, "buteurs_cotes": priced["rows"], "buteurs_ecartes": priced["ecartes"],
                     "buteurs_composition": priced["composition"],
                     "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in SCORER_BETS]})
+    return out
+
+
+def half_markets(competition: str, raw: list[dict], fixtures: list[dict]) -> list[dict]:
+    """The half-time bets of each analysed fixture (half-time result, second half, half-time / full-time, both
+    halves...), priced by the half-time model (services/mi_temps.py, owner 2026-10-27): stored as "mi_temps_cotes",
+    the bets then leaving the "non analysé" list. A failure costs these bets only."""
+    from sportai.engine.football.halves import HALF_BETS
+    from sportai.services.mi_temps import price_halves
+
+    items = {str((r.get("fixture") or {}).get("id")): r for r in raw}
+    out = []
+    for f in fixtures:
+        item = items.get(f["match_id"])
+        if item is None or f.get("skipped_reason") or not f.get("expected_goals"):
+            out.append(f)
+            continue
+        home, _, away = f["match"].partition(" - ")
+        try:
+            rows = price_halves(item, home, away, f["expected_goals"], competition)
+        except (ValueError, TypeError, KeyError):
+            rows = []
+        out.append({**f, "mi_temps_cotes": rows,
+                    "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in HALF_BETS]}
+                   if rows else f)
     return out
 
 

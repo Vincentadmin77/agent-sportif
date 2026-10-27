@@ -53,3 +53,12 @@ Chaque erreur constatée sur les vrais matchs devient ici une règle. Tous les a
 - Tous les marchés peuvent faire le safe, à condition d'une valeur positive et d'une forte probabilité (Vincent). Les buts comptent comme un résultat d'analyse (forme des équipes et des attaquants, match ouvert ou fermé).
 - Dans les combinés, les paris sur les buts ne comptent pas dans la limite d'un seul pari en essai par ticket : deux « les deux équipes marquent » font un bon ticket (exemple de Vincent, 14/10).
 - Sans pari qui remplisse ces conditions, le safe reste vide et dit pourquoi.
+
+## 27/10/2026 : un tipster Telegram à 4 sur 4 en simples, nous à côté sur Séville - Osasuna
+
+- **Constat (Vincent) :** un tipster a passé 4 simples : Boulogne - Reims (Ligue 2) à 1,91, victoire de Séville contre Osasuna à 1,88, victoire de Trabzonspor à 1,79, Galatasaray ou nul et plus de 2,5 buts à 1,99. Notre position simple du 26/10 était « Osasuna marque » à 1,68 : perdue (Séville 2-0).
+- **Ce que disait le modèle sur Séville - Osasuna :** victoire de Séville 47 % contre 51 à 54 % pour les bookmakers ; victoire d'Osasuna 27 % contre 19 à 21 % ; « Osasuna marque » 68 % contre 58 % pour les bookmakers. Le modèle surestimait l'équipe qui se déplace, de près de 10 points. Les bookmakers avaient raison.
+- **Déjà corrigé :** avec les règles du 27/10, ce pari n'est plus retenu. La confiance est la moyenne du modèle et des bookmakers, et un modèle à plus de 8 points au-dessus des bookmakers écarte le pari. La victoire de Séville n'avait pas de valeur pour notre modèle (47 % pour une cote à 1,88), donc elle n'aurait pas été proposée non plus : sur ce match, l'agent ne prenait rien, ce qui reste mieux qu'un pari perdu.
+- **Couverture :** la Ligue 2 et le championnat turc n'étaient pas suivis ; la Süper Lig est ajoutée depuis le 27/10. La Ligue 2 reste à décider.
+- **Marchés :** « Galatasaray ou nul et plus de 2,5 buts » est un pari combiné sur un même match ; le flux de cotes n'en propose pas la cote (seulement « résultat et plus/moins de buts » sur les trois issues). Les marchés de mi-temps, puis corners et cartons, sont en cours d'ajout (Vincent, 27/10 : toutes les cotes doivent être étudiées).
+- **Mesure :** 4 sur 4 sur une journée ne dit rien d'un pronostiqueur ; on compare sur des dizaines de jours. Notre ratio de la meilleure confiance simple est suivi à part, échecs compris.
