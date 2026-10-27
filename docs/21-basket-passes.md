@@ -8,8 +8,7 @@ Source : API-Basketball (`v1.basketball.api-sports.io`, même clé que le foot `
 ## Journée
 La journée basket va de 04:00 à 04:00 (Paris) : un match qui commence entre 00:00 et 04:00 compte pour la veille
 (`journee(moment, "basket")`). L'analyse de 8 h du jour J couvre donc les matchs américains de la nuit J → J+1.
-Le foot garde sa journée 08:00-02:00. doc_id = `<jour>-<domicile>-<exterieur>` comme le foot, avec `"sport": "basket"`
-(les fiches foot portent `"sport": "foot"`).
+Le foot garde sa journée 08:00-02:00.
 
 ## Étapes (même routine que le foot, `agent_pass.py plan` les programme)
 | Quand (Paris) | Étape | Commande |
@@ -23,8 +22,20 @@ Le foot garde sa journée 08:00-02:00. doc_id = `<jour>-<domicile>-<exterieur>` 
 
 Pas de passage H−15 pour le basket. Un passage basket analyse tous les matchs du jour pas encore commencés (1 à
 2 requêtes pour la liste, 1 par match pour les cotes). Les étapes peuvent mêler foot et basket : chaque sport passe
-par son propre fournisseur. Un passage basket seul écrit `matchs/*.json`, `pronostic/<jour basket>.json` et
-`stats/bilan.json`, comme le foot.
+par son propre fournisseur.
+
+## Collections de la page (séparées du foot)
+Le basket n'écrit jamais dans `matchs/`, `pronostic/` ni `stats/` (le pronostic et le bilan foot n'ont plus aucun
+pari basket). Il lit `--page/basket_matchs` et `--page/basket_pronostic` (même arborescence) et écrit seulement :
+- `out/basket_matchs/<id du match dans le flux>.json` : sport, competition, code_ligue, jour (soirée basket),
+  coup_envoi (ISO UTC), domicile, exterieur, statut (a_venir / en_direct / termine), score (`"112-105"` ou null),
+  score_estime, proba_1x2, cotes_1x2 (cote médiane du vainqueur), points {total_prevu, ecart_prevu},
+  contexte {phrases}, passages {analyse, h3, m45, direct}. Pas de `q1` (non chiffré). En direct et au final :
+  score_quarts et direct en plus ; un match reporté ou annulé garde son statut avec `reporte: true`.
+- `out/basket_pronostic/<jour>.json` : jour, sport, maj, passage, paris_retenus {<id>: pari retenu ou
+  {pari: null, raison}}, selections (la Top confiance), combines (vide pour l'instant), note.
+Un passage basket seul écrit aussi `etat.json` et `manifest.json` (`matchs: []`, `basket_matchs`,
+`basket_pronostic`) ; un passage mixte ajoute ces deux listes au manifeste du foot.
 
 ## Modèle et règles (les mêmes que le foot)
 - Modèle de points par équipe (`sportai/engine/basketball/ratings.py`, docs/20-nba-modele.md), réajusté à chaque
@@ -32,9 +43,10 @@ par son propre fournisseur. Un passage basket seul écrit `matchs/*.json`, `pron
   saison en cours rechargée toutes les 6 h).
 - Validé : vainqueur NBA (prolongation comprise). « Non validé » : total de points, handicaps, points d'une équipe,
   et tous les marchés WNBA (pas de backtest WNBA). Un pari non validé ne peut jamais être la Top confiance.
-- Une seule cote retenue par match, cote minimale 1,60 partout, Top confiance du jour seulement parmi les paris
-  « Confiance élevée » (validés pour le basket), combinés de 2 comme le foot. Les paris basket entrent dans le même
-  `pronostic/<jour>` et le même bilan que le foot.
-- Fiche match : probabilités de victoire, points attendus, scénario, score estimé, tous les marchés chiffrés,
-  `paris_basket` (les paris proposés à « Mon pronostic »). Aucun nom de bookmaker ni de fournisseur, aucun montant,
-  aucun conseil en direct.
+- Une seule cote retenue par match (règles du foot : cote médiane ≥ 1,60, modèle et marché d'accord, la plus
+  probable), figée au passage H−45 (ou au coup d'envoi) puis reprise telle quelle de `basket_pronostic` de la page.
+  Top confiance (`selections`) : le meilleur pari validé « Confiance élevée » (≥ 0,60), sinon rien. `valide` n'est
+  vrai que pour le vainqueur NBA. Hors bilan officiel.
+- Règlement : `scores --final` et `live` mettent à jour statut et score de `basket_matchs` et écrivent `resultat`
+  (gagne / perdu / rembourse) sur chaque pari retenu de `basket_pronostic`.
+- Aucun nom de bookmaker ni de fournisseur, aucun montant, aucun conseil en direct.

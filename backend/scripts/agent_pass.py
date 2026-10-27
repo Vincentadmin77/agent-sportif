@@ -28,7 +28,9 @@ nobody chose and the chosen ones that lost, the record of each family of bets, a
 chances by family applied to the day's tickets, ideas and player; pronostic/<day>.json "revue" holds it.
 
 Basketball (NBA, WNBA, docs/21-basket-passes.md): the same subcommands with the codes NBA / WNBA, from
-API-Basketball (fixtures, quarter scores, odds; never The Odds API); its day runs to 04:00 Paris.
+API-Basketball (fixtures, quarter scores, odds; never The Odds API); its day runs to 04:00 Paris. Basketball has
+collections of its own on the page: it reads --page/basket_matchs and --page/basket_pronostic and writes only
+out/basket_matchs/<game id>.json and out/basket_pronostic/<day>.json, never matchs/, pronostic/ or stats/.
 
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
@@ -74,9 +76,20 @@ def _basket_api():
 
 
 def _load_page(folder: str | None) -> dict[str, dict]:
+    """The page's football documents (matchs/<id>.json; a basketball one left there by an older pass is ignored)."""
     if not folder or not (Path(folder) / "matchs").exists():
         return {}
-    return {p.stem: json.loads(p.read_text()) for p in (Path(folder) / "matchs").glob("*.json")}
+    docs = {p.stem: json.loads(p.read_text()) for p in (Path(folder) / "matchs").glob("*.json")}
+    return {k: d for k, d in docs.items() if d.get("sport") != "basket"}
+
+
+def _load_collection(folder: str | None, name: str) -> dict[str, dict]:
+    if not folder or not (Path(folder) / name).exists():
+        return {}
+    return {p.stem: json.loads(p.read_text()) for p in (Path(folder) / name).glob("*.json")}
+
+
+BASKET_KEYS = ("basket_matchs", "basket_pronostic")
 
 
 def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None:
@@ -85,7 +98,13 @@ def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None
     for key, doc in docs.items():
         (d / f"{key}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     (Path(out) / "etat.json").write_text(json.dumps({"maj": now.isoformat(), "message": message}, ensure_ascii=False))
-    (Path(out) / "manifest.json").write_text(json.dumps({"matchs": sorted(docs), "message": message}, ensure_ascii=False))
+    manifest = {"matchs": sorted(docs), "message": message}
+    try:  # a mixed step wrote its basketball collections first: keep them listed
+        old = json.loads((Path(out) / "manifest.json").read_text())
+        manifest.update({k: old[k] for k in BASKET_KEYS if k in old})
+    except (OSError, ValueError):
+        pass
+    (Path(out) / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False))
     print(json.dumps({"written": sorted(docs), "message": message}, ensure_ascii=False))
 
 
@@ -96,7 +115,6 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
 
     from sportai.services.bilan import apply_stakes, bankroll_settings, build_bilan, replay, replay_by_ticket
     from sportai.services.prematch import journee
-    from sportai.services import basket
     from sportai.services.pronostic import build_pronostic, legs_from_db
 
     day = day or f"{journee(now):%Y-%m-%d}"
@@ -116,7 +134,6 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
     except Exception as e:  # the review is a bonus: never lose the pass for it
         print(f"revue unavailable ({str(e)[:160]})", file=sys.stderr)
     legs = legs_from_db(db, date.fromisoformat(day), corrections=(revue or {}).get("corrections")) if db is not None else []
-    legs += basket.legs(matchs, day)  # NBA / WNBA bets, from their page documents (services/basket.py)
     doc = build_pronostic(legs, matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
     if revue:
@@ -252,11 +269,12 @@ def plan_steps(by_time: dict[str, set], basket_times: dict[str, set], now: datet
 def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals: bool = False,
              morning: bool = False) -> None:
     comps, basket = _split(comps)
+    bnotes = []
+    if basket:  # NBA / WNBA: their own collections, written first (services/basket.py)
+        bnotes = _basket_prematch(basket, page, out, now, "matin" if morning else "passage", final_step=not comps)
+        if not comps:
+            return
     current = _load_page(page)
-    bdocs, bnotes = _basket_prematch(basket, current, now) if basket else ({}, [])
-    if not comps:  # basketball only: no football run, the analysis database is only read for the day's tickets
-        _basket_only(page, out, now, bdocs, bnotes, "matin" if morning else "passage")
-        return
     work = Path(tempfile.mkdtemp()) / "agent.db"
     if STATE_DB.exists():
         shutil.copy(STATE_DB, work)
@@ -291,7 +309,7 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     except Exception as e:  # context is a bonus: never lose the pass for it
         notes.append(f"contexte unavailable ({str(e)[:120]})")
     try:
-        notes.append("pronostic: " + _pronostic(db, page, {**docs, **bdocs}, out, now, "matin" if morning else "passage"))
+        notes.append("pronostic: " + _pronostic(db, page, docs, out, now, "matin" if morning else "passage"))
     except Exception as e:  # the tab is a bonus: never lose the pass for it
         notes.append(f"pronostic unavailable ({str(e)[:120]})")
     db.close()
@@ -305,38 +323,62 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         notes.append(f"forme unavailable ({str(e)[:120]})")
     STATE_DB.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(work, STATE_DB)
-    docs.update(bdocs)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
 
 
-def _basket_prematch(comps: list[str], current: dict[str, dict], now: datetime) -> tuple[dict[str, dict], list[str]]:
-    """NBA / WNBA: every game of the basketball day not started yet (services/basket.py)."""
+def _basket_prematch(comps: list[str], page: str | None, out: str, now: datetime, passage: str,
+                     final_step: bool) -> list[str]:
+    """NBA / WNBA: every game of the basketball day not started yet (services/basket.py), written to
+    out/basket_matchs and out/basket_pronostic/<basketball day>. Returns the notes."""
     from sportai.services import basket
-
-    try:
-        return basket.prematch(_basket_api(), comps, current, now)
-    except Exception as e:  # noqa: BLE001 - football is analysed all the same
-        return {}, [f"basket failed ({str(e)[:120]})"]
-
-
-def _basket_only(page: str | None, out: str, now: datetime, docs: dict[str, dict], notes: list[str],
-                 passage: str, days: list[str] | None = None) -> None:
-    """Write a basketball-only step: its documents, and "Mon pronostic" of its basketball day(s) (with the football
-    bets of the same day, read from the analysis database)."""
     from sportai.services.prematch import journee
 
-    db = _state_session()
-    for day in days or [f"{journee(now, 'basket'):%Y-%m-%d}"]:
+    current = _load_collection(page, "basket_matchs")
+    try:
+        docs, offers, notes = basket.prematch(_basket_api(), comps, current, now)
+    except Exception as e:  # noqa: BLE001 - football is analysed all the same
+        docs, offers, notes = {}, {}, [f"basket failed ({str(e)[:120]})"]
+    _write_basket(page, out, now, docs, offers, passage, [f"{journee(now, 'basket'):%Y-%m-%d}"],
+                  f"{len(docs)} match(s) de basket mis à jour", final_step)
+    if final_step:
+        print("runs:", "; ".join(notes), file=sys.stderr)
+    return notes
+
+
+def _write_basket(page: str | None, out: str, now: datetime, docs: dict[str, dict], offers: dict[str, list[dict]],
+                  passage: str, days: list[str], message: str, final_step: bool) -> None:
+    """The basketball collections only: out/basket_matchs/<game id>.json (the documents of this step) and
+    out/basket_pronostic/<day>.json for each day given (bets fixed 45 min before tip-off reused from the page's
+    current document, settled once their game is over). final_step: a basketball-only step, which also writes
+    etat.json and manifest.json (never out/matchs)."""
+    from sportai.services import basket
+
+    current = _load_collection(page, "basket_matchs")
+    pronos = _load_collection(page, "basket_pronostic")
+    matchs = {**current, **docs}
+    written = {}
+    for day in sorted(set(days)):
         try:
-            notes.append(f"pronostic {day}: " + _pronostic(db, page, docs, out, now, passage, day))
-        except Exception as e:  # the tab is a bonus: never lose the pass for it
-            notes.append(f"pronostic unavailable ({str(e)[:120]})")
-    if db is not None:
-        db.close()
-    _write(out, docs, f"{len(docs)} match(s) de basket mis à jour", now)
-    print("runs:", "; ".join(notes), file=sys.stderr)
+            written[day] = basket.build_pronostic(day, matchs, offers, pronos.get(day), now, passage)
+        except Exception as e:  # noqa: BLE001 - the documents are written all the same
+            print(f"basket pronostic {day} unavailable ({str(e)[:160]})", file=sys.stderr)
+    for sub, items in (("basket_matchs", docs), ("basket_pronostic", written)):
+        if items:
+            (Path(out) / sub).mkdir(parents=True, exist_ok=True)
+        for key, body in items.items():
+            (Path(out) / sub / f"{key}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
+    listing = {"basket_matchs": sorted(docs), "basket_pronostic": sorted(written)}
+    Path(out).mkdir(parents=True, exist_ok=True)
+    if final_step:
+        (Path(out) / "etat.json").write_text(json.dumps({"maj": now.isoformat(), "message": message},
+                                                        ensure_ascii=False))
+        (Path(out) / "manifest.json").write_text(json.dumps({"matchs": [], **listing, "message": message},
+                                                            ensure_ascii=False))
+    else:  # a mixed step: football's _write keeps these keys in its manifest
+        (Path(out) / "manifest.json").write_text(json.dumps(listing, ensure_ascii=False))
+    print(json.dumps({"written": listing, "message": message}, ensure_ascii=False))
 
 
 def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
@@ -484,17 +526,10 @@ def _squad_news(api, fx: dict, doc: dict, fixtures: list[dict], now: datetime) -
 
 def scores(comps: list[str], page: str | None, out: str, final: bool, now: datetime) -> None:
     comps, basket = _split(comps)
-    if basket:  # NBA / WNBA: results from API-Basketball (never The Odds API)
-        bdocs = _basket_scores(basket, page, now)
+    if basket:  # NBA / WNBA: results from API-Basketball (never The Odds API), their own collections
+        _basket_follow(basket, page, out, now, "resultats" if final else "maj", final, not comps)
         if not comps:
-            days = _basket_final_days(_load_page(page), bdocs, now) if final else []
-            if final and days:
-                _basket_only(page, out, now, bdocs, [], "resultats", days)
-            else:
-                _write(out, bdocs, f"scores mis à jour pour {len(bdocs)} match(s)", now)
             return
-    else:
-        bdocs = {}
     from sportai.config import get_settings
     from sportai.connectors.the_odds_api import TheOddsApiProvider
     from sportai.services.dashboard import apply_scores
@@ -506,7 +541,6 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
         docs.update(apply_scores(odds.scores(comp, completed_too=final), current, now))
     if final:
         _half_time_scores(comps, current, docs)
-    docs.update(bdocs)
     if final and STATE_DB.exists():
         db = _state_session()
         for day in sorted({d["jour"] for d in docs.values() if d.get("jour")}):  # a late final runs past midnight
@@ -556,29 +590,36 @@ def _basket_final_days(current: dict[str, dict], bdocs: dict[str, dict], now: da
                   | {d["jour"] for d in current.values() if d.get("sport") == "basket" and d.get("jour") in recent})
 
 
-def _basket_scores(comps: list[str], page: str | None, now: datetime) -> dict[str, dict]:
-    """Score, quarter and end of the page's basketball games (services/basket.py), one or two requests a day."""
+def _basket_follow(comps: list[str], page: str | None, out: str, now: datetime, passage: str, final: bool,
+                   final_step: bool) -> dict[str, dict]:
+    """Statut, score and quarter scores of the page's basketball games (services/basket.py, one or two requests a
+    day), and their retained bets settled in basket_pronostic. Returns the updated documents."""
     from sportai.services import basket
 
-    return basket.update_scores(_basket_api(), comps, _load_page(page), now)
+    current = _load_collection(page, "basket_matchs")
+    try:
+        docs = basket.update_scores(_basket_api(), comps, current, now)
+    except Exception as e:  # noqa: BLE001 - never lose the football follow-up for it
+        print(f"basket scores unavailable ({str(e)[:160]})", file=sys.stderr)
+        docs = {}
+    days = (_basket_final_days(current, docs, now) if final
+            else sorted({d["jour"] for d in docs.values() if d.get("jour")}))
+    n_live = sum(d.get("statut") == "en_direct" for d in docs.values())
+    n_done = sum(d.get("statut") == "termine" for d in docs.values())
+    _write_basket(page, out, now, docs, {}, passage, days,
+                  f"Basket : {n_live} match(s) en cours, {n_done} terminé(s)", final_step)
+    return docs
 
 
 def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     """Follow the page's matches under way (and those that just finished): football with API-Football,
     basketball (score and quarter only) with API-Basketball."""
     comps, basket = _split(comps)
-    bdocs: dict[str, dict] = {}
     if basket:
-        try:
-            bdocs = _basket_scores(basket, page, now)
-        except Exception as e:  # noqa: BLE001 - never lose the football follow-up for it
-            print(f"basket live unavailable ({str(e)[:160]})", file=sys.stderr)
+        _basket_follow(basket, page, out, now, "direct", False, not comps)
         if not comps:
-            n_live = sum(d["statut"] == "en_direct" for d in bdocs.values())
-            n_done = sum(d["statut"] == "termine" for d in bdocs.values())
-            _write(out, bdocs, f"Direct : {n_live} match(s) en cours, {n_done} terminé(s)", now)
             return
-    _live_foot(comps, page, out, now, bdocs)
+    _live_foot(comps, page, out, now, {})
 
 
 def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs: dict[str, dict]) -> None:
