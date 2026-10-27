@@ -53,8 +53,10 @@ LEAGUES = {  # code: (API-Football id, football-data file, calendar-year season)
 }
 NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "Liga", "DE1": "Bundesliga", "IT1": "Serie A",
          "TR1": "Süper Lig", "BR1": "Brasileirão"}
-SEASON = {False: 2026, True: 2026}
+SEASON = {False: 2026, True: 2026}  # --season Y: the Y-(Y+1) European season and the Y Brazilian one
 FIRST_PASS = time(8, 0)
+RAW: list[dict] = []
+EARLY = False  # --early: the odds of a few days before (football-data pre-closing), closing ones as fallback
 PRICE = "Avg"  # --price Max: the best price over the bookmakers, an optimistic check
 BOOKS = ("B365", "BW", "PS", "WH", "BFD", "BV", "PP", "SKB", "1XB", "LB", "IW", "VC")  # bookmakers, no exchange
 
@@ -90,7 +92,7 @@ def load_odds(path: Path, brazil: bool) -> list[dict]:
     out = []
     with path.open(encoding="utf-8-sig", errors="replace") as fh:
         for row in csv.DictReader(fh):
-            if brazil and row.get("Season") != "2026":
+            if brazil and row.get("Season") != str(SEASON[True]):
                 continue
             try:
                 d = datetime.strptime(row["Date"], "%d/%m/%Y" if len(row["Date"]) == 10 else "%d/%m/%y").date()
@@ -98,7 +100,7 @@ def load_odds(path: Path, brazil: bool) -> list[dict]:
                 continue
             home, away = (row.get("Home"), row.get("Away")) if brazil else (row.get("HomeTeam"), row.get("AwayTeam"))
             m = {"date": d, "home": home, "away": away, "books": {}, "closing": True}
-            for closing in (True, False):
+            for closing in ((False, True) if EARLY else (True, False)):
                 c = "C" if closing else ""
                 books = {}
                 for b in BOOKS + ("Avg", "Max"):
@@ -178,6 +180,12 @@ def legs_for(m: dict, o: dict, sm, comp: str) -> list[dict]:
         fair = consensus(o["books"], "ah")
         for s, odd, p in zip(("home", "away"), price["ah"], fair or (None,) * 2):
             rows.append(("asian_handicap", s, o["ah_line"], odd, p))
+    for market, sel, line, odds, pm in rows:  # every priced bet, before any rule (--dump: the material to learn from)
+        out = outcome(sm, MarketKey(market, sel, line))
+        RAW.append({"jour": f"{journee(ko):%Y-%m-%d}", "comp": comp, "match": f"{home} - {away}", "marche": market,
+                    "sel": sel, "ligne": line, "cote": odds, "p": round(out.win, 4), "push": round(out.push, 4),
+                    "pm": None if pm is None else round(pm, 4),
+                    "res": settle_score(MarketKey(market, sel, line), m["hg"], m["ag"])})
     legs, trials, goal_trials = [], [], []
     div = 0.10
     for market, sel, line, odds, pm in rows:
@@ -314,10 +322,16 @@ def main() -> None:
     ap.add_argument("--leagues", nargs="+", default=list(LEAGUES))
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--price", choices=("Avg", "Max"), default="Avg")
+    ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--early", action="store_true")
+    ap.add_argument("--dump", type=Path, help="every priced bet with its result, to study the rules")
     a = ap.parse_args()
-    global PRICE
-    PRICE = a.price
+    global PRICE, EARLY
+    PRICE, EARLY = a.price, a.early
+    SEASON.update({False: a.season, True: a.season})
     a.out.write_text(json.dumps(run(a.af, a.odds, a.to, a.leagues), indent=1, ensure_ascii=False, default=str))
+    if a.dump:
+        a.dump.write_text(json.dumps(RAW, ensure_ascii=False))
 
 
 if __name__ == "__main__":
