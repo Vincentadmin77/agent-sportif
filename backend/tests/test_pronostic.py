@@ -365,7 +365,9 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     assert all(len(c["jambes"]) == 2 and len({l["match_id"] for l in c["jambes"]}) == 2 for c in combos)
     in_combos = [l["match"] for c in combos for l in c["jambes"]]
     assert "c-d" not in in_combos and len(in_combos) == len(set(in_combos))
-    assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"m-n", "a-b"}]
+    # every pair is kept (owner 2026-10-27 15:27), the most likely one is the day's selected combo
+    assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"m-n", "a-b"}, {"e-f", "q-r"}]
+    assert [c["retenu"] for c in combos] == [True, False]
     assert all("resultat" not in c for c in combos)
 
     # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan

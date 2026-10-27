@@ -63,3 +63,11 @@ La meilleure confiance simple n'est choisie que parmi les cotes retenues en Conf
 60 %, `SELECTION_MIN_CONF`), à 1,60 ou plus. Un jour sans Confiance élevée à 1,60 ou plus n'a pas de meilleure
 confiance simple. Rejeu 11-26/10 avant ce changement : les 4 non validés venaient tous de la Confiance moyenne ; avec
 la règle, 4 validés, 0 non validé, 1 remboursé, mais une sélection 5 jours sur 12 seulement.
+
+## Tous les combinés gardés, le meilleur sélectionné (Vincent, 27/10 15:27)
+
+« Dans simple : tous les paris simples. Dans combiné : tous les paris doubles et à côté les totaux avec ratio. »
+`combines` garde de nouveau toutes les paires (les plus sûres associées d'abord, jamais un pari dans deux combinés,
+jamais le match de la meilleure confiance simple) ; la première porte `retenu: true` (la meilleure confiance combiné,
+`COMBOS_PER_DAY` = 1), les autres `retenu: false`. Le bilan copie `retenu` sur chaque combiné. La page montre deux
+ratios : les sélectionnés et le total.
