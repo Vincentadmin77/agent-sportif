@@ -177,12 +177,13 @@ def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
     if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
-    # a team's under goals: paused (review of 2026-10-27), in a half too (owner 2026-10-27 evening: Lazio, favourite,
-    # under 0.5 goals in the first half lost 4-2 at the break)
+    # a team's under goals: paused (review of 2026-10-27)
     if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage")):
         return False
+    # any "under 0.5": one goal and it is lost (owner 2026-10-27 evening, Lazio under 0.5 in the first half lost 4-2
+    # at the break); higher unders (1.5, 2.5...) keep their margin and stay
     mt = leg.get("mi_temps") or {}
-    if "team_total" in str(mt.get("marche", "")) and mt.get("selection") == "under":
+    if (mt.get("selection") == "under" and mt.get("ligne") == 0.5) or "moins de 0,5 " in leg["pari"].lower() + " ":
         return False
     # "both teams score: no", alone or with a total: removed (owner 2026-10-27, 2 won out of 7 since 15/10)
     if "deux équipes marquent : non" in leg["pari"]:
