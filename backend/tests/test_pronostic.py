@@ -381,3 +381,17 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
         l["pari"] for l in doc["combines"][0]["jambes"]]
     bilan = build_bilan(page, {"2026-10-28": doc2}, bankroll_settings(None), later)
     assert bilan["par_type"]["pari_retenu"]["valides"] >= 1 and bilan["par_type"]["selection_jour"]["valides"] == 1
+
+
+def test_top_pick_only_among_high_confidence_bets():
+    # owner 2026-10-27 14:56: the best single is picked only among "Confiance élevée" bets, none otherwise
+    now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
+
+    def l(match, pari, cote, proba, pm):
+        return {**leg(match, pari, cote, proba, pm, 4), "match_id": f"2026-10-28-{match}",
+                "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": proba}
+
+    doc = build_pronostic([l("e-f", "Victoire f", 2.10, 0.52, 0.48), l("q-r", "Victoire q", 1.80, 0.58, 0.56)],
+                          {}, None, now, "matin")
+    assert {p["niveau"] for p in doc["paris_retenus"].values() if p["pari"]} == {"Confiance moyenne"}
+    assert doc["selections"] == []

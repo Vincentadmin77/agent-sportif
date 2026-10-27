@@ -153,6 +153,7 @@ PICK_HIGH = 0.60  # "Confiance élevée" from here, "Confiance moyenne" below
 SELECTION_RANK = "confiance"
 SELECTIONS_PER_DAY = 1
 SELECTION_MIN_ODDS = 1.60
+SELECTION_MIN_CONF = PICK_HIGH  # owner 2026-10-27 14:56: the best single only among "Confiance élevée" bets
 SELECTION_TITLE = "Top confiance du jour"
 PICK_TITLE = "Probabilité retenue"
 NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote d'au moins 1,60 où le modèle et les bookmakers "
@@ -226,7 +227,7 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
             and (picks[s["match_id"]].get("pari") == s.get("pari"))]
     kept = [{**picks[s["match_id"]], "rang": s.get("rang")} for s in kept]
     free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["cote"] >= SELECTION_MIN_ODDS
-                   and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
+                   and p["confiance"] >= SELECTION_MIN_CONF and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
     selections = kept + [dict(p) for p in free[:max(0, SELECTIONS_PER_DAY - len(kept))]]
     for i, s in enumerate(sorted(selections, key=lambda s: s["coup_envoi"]), 1):
         s["rang"] = i
