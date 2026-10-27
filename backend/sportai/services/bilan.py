@@ -150,6 +150,12 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                 items.append({"jour": day, "type": "Top confiance du jour", "categorie": "selection_jour",
                               "libelle": f"{s['pari']} ({s['match']})", "cote": s["cote"], "proba": s.get("confiance"),
                               "niveau": s.get("niveau"), "match_id": s["match_id"], "valide": s["resultat"] == "gagne"})
+        for c in doc.get("combines") or []:
+            if c.get("jambes") and c.get("resultat") in ("gagne", "perdu") and not under_floor(c["jambes"]):
+                items.append({"jour": day, "type": "Combinés de 2", "categorie": "combine",
+                              "libelle": " + ".join(f"{l['pari']} ({l['match']})" for l in c["jambes"]),
+                              "cote": c.get("cote_totale"), "proba": c.get("proba_totale"),
+                              "jambes": c["jambes"], "valide": c["resultat"] == "gagne"})
         for p in (doc.get("paris_retenus") or {}).values():
             if p.get("pari") and p.get("resultat") in ("gagne", "perdu") and not under_floor([p]):
                 items.append({"jour": day, "type": "Probabilités retenues", "categorie": "pari_retenu",
@@ -187,11 +193,11 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     kinds = {}
     for key, label in (("safe", "Top idée safe"), ("semi_safe", "Top idée semi safe"), ("fun", "Top idée fun"),
                        ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés"),
-                       ("selection_jour", "Top confiance du jour"), ("pari_retenu", "Probabilités retenues")):
+                       ("selection_jour", "Top confiance du jour"), ("pari_retenu", "Probabilités retenues"), ("combine", "Combinés de 2")):
         kinds[key] = {"titre": label, **_rate([i for i in items if i["categorie"] == key])}
     return {
         # the day's top pick is a match bet too: counted once in the overall rate
-        "maj": now.isoformat(), "global": _rate([i for i in items if i["categorie"] != "selection_jour"]),
+        "maj": now.isoformat(), "global": _rate([i for i in items if i["categorie"] not in ("selection_jour", "combine")]),
         "par_type": kinds,
         "paris_retenus_par_niveau": {n: _rate([i for i in items if i["categorie"] == "pari_retenu"
                                                and i.get("niveau") == n])

@@ -348,6 +348,13 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     # the day's top pick: the most likely bet at 1.60 or more (k-l, more likely, is at 1.55)
     assert [(s["match"], s["titre"]) for s in doc["selections"]] == [("c-d", "Top confiance du jour")]
     assert not any(k.startswith("_") for p in picks.values() for k in p)
+    # combos of 2 from two other matches, most confident first, never the Top confiance's match, total odds <= 4.00
+    combos = doc["combines"]
+    assert all(len(c["jambes"]) == 2 and len({l["match_id"] for l in c["jambes"]}) == 2 for c in combos)
+    in_combos = [l["match"] for c in combos for l in c["jambes"]]
+    assert "c-d" not in in_combos and len(in_combos) == len(set(in_combos))
+    assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"k-l", "m-n"}, {"a-b", "e-f"}]
+    assert all(c["cote_totale"] <= 4.0 and "resultat" not in c for c in combos)
 
     # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan
     later = now + timedelta(hours=6)
@@ -358,5 +365,8 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     cd = doc2["paris_retenus"]["2026-10-28-c-d"]
     assert cd["pari"] == "Victoire c" and cd["fige"] and cd["resultat"] == "gagne"
     assert any(s["match"] == "c-d" and s["resultat"] == "gagne" for s in doc2["selections"])
+    kl = next(c for c in doc2["combines"] if "k-l" in [l["match"] for l in c["jambes"]])
+    assert kl["fige"] and [l["pari"] for l in kl["jambes"]] == [l["pari"] for l in next(
+        c for c in doc["combines"] if "k-l" in [l["match"] for l in c["jambes"]])["jambes"]]
     bilan = build_bilan(page, {"2026-10-28": doc2}, bankroll_settings(None), later)
     assert bilan["par_type"]["pari_retenu"]["valides"] >= 1 and bilan["par_type"]["selection_jour"]["valides"] == 1

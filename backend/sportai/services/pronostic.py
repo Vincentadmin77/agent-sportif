@@ -230,6 +230,46 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
     return picks, sorted(selections, key=lambda s: s["rang"])
 
 
+# Combos of 2 (owner, 2026-10-27 09:24: "combiné de deux max à côté, ... juste pas retenu dans la confiance du jour,
+# il garde son ratio"): the retained bets of two different matches (the odds of two bets on the same match are not
+# the product of their odds), never the match of the Top confiance and never a bet in two combos. The most confident
+# bets are paired first, total odds at most COMBO_MAX_ODDS (1 combo of 4.00 or more won out of 15 in the review).
+# A combo is fixed with its first match (45 min before kick-off) and both its bets stay as they were then.
+COMBO_MAX_ODDS = 4.00
+COMBO_TITLE = "Combiné de 2"
+
+
+def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict | None, now: datetime,
+                 page: dict[str, dict], started) -> list[dict]:
+    def frozen_at(ko: str) -> bool:
+        return datetime.fromisoformat(ko) - FIX_BEFORE <= now + FIX_SLACK
+
+    def combo(legs: list[dict], fixed: bool) -> dict:
+        legs = sorted(legs, key=lambda l: l["coup_envoi"])
+        out = _settle_ticket({"titre": COMBO_TITLE, "jambes": legs, "cote_totale": round(legs[0]["cote"] * legs[1]["cote"], 2),
+                              "proba_totale": round(legs[0]["confiance"] * legs[1]["confiance"], 4), "fige": fixed}, page)
+        if out.get("resultat") == "en_cours":
+            out.pop("resultat")
+        return out
+
+    kept = []
+    for c in (previous or {}).get("combines") or []:
+        legs = c.get("jambes") or []
+        if len(legs) == 2 and (c.get("fige") or any(started(l) or frozen_at(l["coup_envoi"]) for l in legs)):
+            kept.append(combo([{**l, "fige": True} for l in legs], True))
+    used = {l["match_id"] for c in kept for l in c["jambes"]} | {s["match_id"] for s in selections}
+    free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["match_id"] not in used),
+                  key=lambda p: (p["confiance"], p["cote"]), reverse=True)
+    fresh = []
+    while free:
+        first = free.pop(0)
+        mate = next((p for p in free if first["cote"] * p["cote"] <= COMBO_MAX_ODDS), None)
+        if mate:
+            free.remove(mate)
+            fresh.append(combo([first, mate], False))
+    return kept + fresh
+
+
 def needs_effort(market: str, selection: str, line: float | None) -> str | None:
     """"home" or "away" when the bet needs that team to win, to cover a handicap of 0 or less (draw no bet
     included) or to score 2 goals or more; None for every other bet (double chance, match goals, both teams score,
@@ -537,7 +577,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         notes.append(f"{n} match(s) avec une cote retenue sur {len(picks)}." if picks else
                      "Aucun match analysé pour l'instant.")
         return {"jour": f"{day:%Y-%m-%d}", "maj": now.isoformat(), "passage": passage, "message": " ".join(notes),
-                "paris_retenus": picks, "selections": selections, "regle": PICKS_NOTE,
+                "paris_retenus": picks, "selections": selections,
+                "combines": build_combos(picks, selections, previous, now, page, started), "regle": PICKS_NOTE,
                 "classement_selections": SELECTION_RANK, "avertissement": WARNING_PICKS}
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.

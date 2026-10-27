@@ -26,3 +26,12 @@ les 3 sélections 15 sur 23 (65 %), Confiance élevée 23 sur 30 (77 %), Confian
 
 Top confiance du jour sur le même rejeu : 8 jours sur 12 en ont un (aucune cote retenue à 1,60 ou plus les autres
 jours), 4 passés, 3 pas passés, 1 remboursé. Trop peu pour conclure : à suivre sur les vrais jours.
+
+## Combinés de 2 (Vincent, 27/10 09:24)
+
+« Combiné de deux max à côté » : `combines` dans `pronostic/<jour>`, affichés dans l'onglet « Probabilité retenue » des
+deux matchs. Deux cotes retenues de deux matchs différents (sur un même match, la cote du combiné n'est pas le produit
+des cotes), jamais le match du Top confiance, jamais un pari dans deux combinés, les plus sûres associées d'abord,
+cote totale de 4,00 au plus (`COMBO_MAX_ODDS`). Figé avec son premier match. Jamais retenu comme Top confiance, mais
+son propre ratio dans le bilan (catégorie `combine`, hors taux global). Rejeu 11-26/10 : 10 passés, 12 pas passés,
+1 remboursé, cote moyenne 2,98.
