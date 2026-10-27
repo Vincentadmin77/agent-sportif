@@ -35,3 +35,12 @@ des cotes), jamais le match du Top confiance, jamais un pari dans deux combinés
 cote totale de 4,00 au plus (`COMBO_MAX_ODDS`). Figé avec son premier match. Jamais retenu comme Top confiance, mais
 son propre ratio dans le bilan (catégorie `combine`, hors taux global). Rejeu 11-26/10 : 10 passés, 12 pas passés,
 1 remboursé, cote moyenne 2,98.
+
+## Tout l'historique recalculé (Vincent, 27/10 09:31 et 09:32)
+
+« Faire et calculer comme si nous avions fait comme ça depuis le début », « refais tout en fonction de ça » :
+`PER_MATCH_FROM` passe au 1er octobre (les tests des anciens tickets gardent leur chemin avec un report de date), et
+les journées du 11 au 26/10 de la page ont été recalculées le 27/10 avec ces règles (cotes du dernier passage connu,
+réglées sur les scores finaux). Chaque document recalculé porte `recalcule: true` et garde les anciens tickets sous
+`ancien`. La page les marque « Recalculé ». Résultat : Top confiance 4 validés, 3 non validés, 1 remboursé ; cotes
+retenues 34 sur 54 (Confiance élevée 23/30, moyenne 11/24) ; combinés de 2 10 sur 22 (1 remboursé).

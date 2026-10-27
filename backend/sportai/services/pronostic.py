@@ -139,7 +139,7 @@ ROTATION_LEVEL = "élevé"
 #   (PICK_MODEL_WEIGHT), and value at that confidence;
 # - not a team's "moins de X buts" (6 won out of 14 for 68 % announced), paused until it proves itself.
 # Among those, the most likely; a match without one says why. Each bet is fixed 45 min before its kick-off.
-PER_MATCH_FROM = "2026-10-28"
+PER_MATCH_FROM = "2026-10-01"  # owner 2026-10-27 09:31: "comme si nous avions fait comme ça depuis le début"
 PICK_ODDS = (COTE_MIN, 2.20)
 PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50

@@ -232,7 +232,10 @@ def _run_with_rows(db, rows, competition="FR1"):
     return run
 
 
-def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path):
+def test_legs_tickets_and_player_take_unvalidated_markets_with_care(tmp_path, monkeypatch):
+    from sportai.services import pronostic
+
+    monkeypatch.setattr(pronostic, "PER_MATCH_FROM", "2099-01-01")  # the combined tickets' own path
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 

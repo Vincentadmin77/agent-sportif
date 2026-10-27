@@ -1,6 +1,16 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+from sportai.services import pronostic
 from sportai.services.pronostic import build_pronostic
+
+
+@pytest.fixture(autouse=True)
+def legacy_tickets(request, monkeypatch):
+    """The combined tickets of before the one-bet-per-match rule, still tested on their own path."""
+    if "top_pick" not in request.node.name:
+        monkeypatch.setattr(pronostic, "PER_MATCH_FROM", "2099-01-01")
 
 NOW = datetime(2026, 10, 11, 9, tzinfo=timezone.utc)
 
