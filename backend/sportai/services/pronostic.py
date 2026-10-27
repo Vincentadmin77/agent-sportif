@@ -275,8 +275,9 @@ def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict 
         if mate:
             free.remove(mate)
             fresh.append({**combo([first, mate], False), "retenu": False})
+    # owner 2026-10-27 15:40: the selected combo is two "Confiance élevée" bets (other than the best single)
     room = COMBOS_PER_DAY - sum(1 for c in kept if c["retenu"])
-    for c in fresh[:max(0, room)]:
+    for c in [c for c in fresh if all(l["confiance"] >= SELECTION_MIN_CONF for l in c["jambes"])][:max(0, room)]:
         c["retenu"] = True
     return kept + fresh
 
