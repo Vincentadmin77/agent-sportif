@@ -56,3 +56,10 @@ de 8 points au-dessus des bookmakers) restent : c'est eux qui décident, pas la 
 confiance 4 validés, 4 non validés, 1 remboursé ; cotes retenues 26 sur 48 (élevée 9/13, moyenne 17/35) ; combiné du
 jour 2 validés, 4 non validés (cotes 2,76 à 3,92). La plus grosse cote retenue reste 2,21 : avec ces filtres, une cote
 de 3 ou plus n'a presque jamais assez de chance réelle.
+
+## Meilleure confiance simple : Confiance élevée seulement (Vincent, 27/10 14:56)
+
+La meilleure confiance simple n'est choisie que parmi les cotes retenues en Confiance élevée (confiance d'au moins
+60 %, `SELECTION_MIN_CONF`), à 1,60 ou plus. Un jour sans Confiance élevée à 1,60 ou plus n'a pas de meilleure
+confiance simple. Rejeu 11-26/10 avant ce changement : les 4 non validés venaient tous de la Confiance moyenne ; avec
+la règle, 4 validés, 0 non validé, 1 remboursé, mais une sélection 5 jours sur 12 seulement.
