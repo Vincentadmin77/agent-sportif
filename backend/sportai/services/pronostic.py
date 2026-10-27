@@ -127,9 +127,9 @@ ROTATION_LEVEL = "élevé"
 
 
 # One bet per match (owner, 2026-10-27: "les agents vont chercher une seule cote valable par match"), shown on each
-# match card and added to "Mon carnet" by whoever wants it; the day's 3 selections are then picked among these bets
-# (owner, 2026-10-27: "les 3 sélections seront les cotes les plus hautes choisies entre tous les matchs", then
-# "confiance alors": the 3 most likely). From
+# match card and added to "Mon carnet" by whoever wants it; the day's single official pick, the "Top confiance du
+# jour", is then the most likely of these bets at odds of 1.60 or more (owner, 2026-10-27: "1 seul ticket retenu qui
+# devient la meilleure confiance, toujours au-dessus de 1.60"; it replaced 3 selections the same morning). From
 # PER_MATCH_FROM on, no more combined tickets, bonus ideas or top 3: the review of 11-26 October (54 % of the bets won
 # for 62 % announced) found the model too sure of itself whenever it strays from the bookmakers, the combined
 # tickets and the odds above 2.20 losing most. So a match's bet must have:
@@ -145,16 +145,18 @@ PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50
 PICK_MODEL_WEIGHT = 0.5
 PICK_HIGH = 0.60  # "Confiance élevée" from here, "Confiance moyenne" below
-# How the 3 selections of the day are ranked among the match bets: "confiance" (most likely first, owner 2026-10-27)
-# or "cote" (highest odds first).
+# How the day's official pick is chosen among the match bets: "confiance" (most likely first, owner 2026-10-27)
+# or "cote" (highest odds first); only bets at SELECTION_MIN_ODDS or more qualify.
 SELECTION_RANK = "confiance"
-SELECTIONS_PER_DAY = 3
+SELECTIONS_PER_DAY = 1
+SELECTION_MIN_ODDS = 1.60
+SELECTION_TITLE = "Top confiance du jour"
 PICK_TITLE = "Probabilité retenue"
 NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote de 1,50 à 2,20 où le modèle et les bookmakers "
            "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de pari.")
 PICKS_NOTE = ("Sur chaque match, l'agent retient au plus une cote : celle où le modèle et les bookmakers s'accordent "
-              "le mieux, entre 1,50 et 2,20. Les 3 sélections du jour sont choisies parmi elles. Ajoute celles que tu "
-              "veux à ton carnet. Estimation, jamais une garantie.")
+              "le mieux, entre 1,50 et 2,20. Le Top confiance du jour est la plus sûre d'entre elles à 1,60 ou plus. "
+              "Ajoute celles que tu veux à ton carnet. Estimation, jamais une garantie.")
 
 
 def blended(leg: dict) -> float:
@@ -184,7 +186,7 @@ def _pick(leg: dict) -> dict:
 
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
                 started, blocked) -> tuple[dict[str, dict], list[dict]]:
-    """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's 3 selections."""
+    """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's official pick(s)."""
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
 
@@ -214,17 +216,17 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         picks[mid] = {"match_id": mid, "match": match, "titre": PICK_TITLE, "pari": None,
                       "raison": "Pas de cote retenue avant le coup d'envoi." if under_way and not prev else
                       (prev or {}).get("raison") if under_way else NO_PICK}
-    # the 3 selections: those already fixed stay, the other places go to the best bets not yet fixed
+    # the official pick: once fixed it stays, otherwise it goes to the best bet not yet fixed at 1.60 or more
     rank = (lambda p: (p["cote"], p["confiance"])) if SELECTION_RANK == "cote" else (lambda p: (p["confiance"], p["cote"]))
     kept = [s for s in previous.get("selections") or [] if (picks.get(s["match_id"]) or {}).get("fige")
             and (picks[s["match_id"]].get("pari") == s.get("pari"))]
     kept = [{**picks[s["match_id"]], "rang": s.get("rang")} for s in kept]
-    free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige")
+    free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["cote"] >= SELECTION_MIN_ODDS
                    and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
     selections = kept + [dict(p) for p in free[:max(0, SELECTIONS_PER_DAY - len(kept))]]
     for i, s in enumerate(sorted(selections, key=lambda s: s["coup_envoi"]), 1):
         s["rang"] = i
-        s["titre"] = f"Sélection {i}"
+        s["titre"] = SELECTION_TITLE if SELECTIONS_PER_DAY == 1 else f"Sélection {i}"
     return picks, sorted(selections, key=lambda s: s["rang"])
 
 
@@ -528,7 +530,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         notes.append((nxt.get("phrase") or f"{team} : risque de rotation élevé.")
                      + f" Les paris qui demandent à {team} de gagner ou de marquer beaucoup sont écartés des idées.")
 
-    if f"{day:%Y-%m-%d}" >= PER_MATCH_FROM:  # one bet per match, the 3 selections among them (owner, 2026-10-27)
+    if f"{day:%Y-%m-%d}" >= PER_MATCH_FROM:  # one bet per match, the day's top pick among them (owner, 2026-10-27)
         picks, selections = build_picks(legs, page, previous, now, day, started,
                                         lambda l: rotation_block(l, page) is not None)
         n = sum(1 for p in picks.values() if p.get("pari"))

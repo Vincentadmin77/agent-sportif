@@ -322,7 +322,7 @@ def test_high_rotation_risk_keeps_win_bets_out_of_the_tickets_and_ideas():
         assert "écartés" not in doc["message"]
 
 
-def test_one_bet_per_match_and_three_selections_from_2026_10_28():
+def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     from sportai.services.bilan import bankroll_settings, build_bilan
 
     now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
@@ -345,9 +345,8 @@ def test_one_bet_per_match_and_three_selections_from_2026_10_28():
     assert picks["2026-10-28-e-f"]["niveau"] == "Confiance moyenne"
     for mid in ("g-h", "i-j", "o-p"):
         assert picks[f"2026-10-28-{mid}"]["pari"] is None and picks[f"2026-10-28-{mid}"]["raison"]
-    # the 3 most likely bets of the day, ranked by kick-off
-    assert {s["match"] for s in doc["selections"]} == {"k-l", "c-d", "m-n"}
-    assert [s["titre"] for s in doc["selections"]] == ["Sélection 1", "Sélection 2", "Sélection 3"]
+    # the day's top pick: the most likely bet at 1.60 or more (k-l, more likely, is at 1.55)
+    assert [(s["match"], s["titre"]) for s in doc["selections"]] == [("c-d", "Top confiance du jour")]
     assert not any(k.startswith("_") for p in picks.values() for k in p)
 
     # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan
