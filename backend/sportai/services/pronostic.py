@@ -76,6 +76,10 @@ WARNING = ("Probabilités estimées par le modèle. Celle d'un ticket multiplie 
            "de l'agent : ces propositions sont plus larges. Un pari « non validé » vient d'un marché que le backtest n'a pas "
            "encore validé : un seul par ticket, mise divisée par deux. Estimation, jamais une garantie.")
 
+WARNING_PICKS = ("Probabilités estimées : la confiance mélange à parts égales le modèle et les bookmakers. Un pari "
+                 "« non validé » vient d'un marché que le backtest n'a pas encore validé. Estimation, jamais une "
+                 "garantie.")
+
 
 def _aware(d: datetime) -> datetime:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
@@ -120,6 +124,108 @@ GOAL_MIN_PROBA = 0.40
 # is not measured yet, so the model's chances are left alone; the tickets and the ideas only leave out the bets that
 # need that team to win, to cover a handicap of 0 or less, or to score 2 goals or more (ROTATION_LEVEL).
 ROTATION_LEVEL = "élevé"
+
+
+# One bet per match (owner, 2026-10-27: "les agents vont chercher une seule cote valable par match"), shown on each
+# match card and added to "Mon carnet" by whoever wants it; the day's 3 selections are then picked among these bets
+# (owner, 2026-10-27: "les 3 sélections seront les cotes les plus hautes choisies entre tous les matchs", then
+# "confiance alors": the 3 most likely). From
+# PER_MATCH_FROM on, no more combined tickets, bonus ideas or top 3: the review of 11-26 October (54 % of the bets won
+# for 62 % announced) found the model too sure of itself whenever it strays from the bookmakers, the combined
+# tickets and the odds above 2.20 losing most. So a match's bet must have:
+# - odds of 1.50 to 2.20 (PICK_ODDS: 3 bets won out of 20 between 2.20 and 3.00);
+# - the model no more than PICK_MAX_GAP above the bookmakers (over 5 points the bets won 51 % for 64 % announced);
+# - a confidence of PICK_MIN_CHANCE at least, the confidence being half the model's chance and half the bookmakers'
+#   (PICK_MODEL_WEIGHT), and value at that confidence;
+# - not a team's "moins de X buts" (6 won out of 14 for 68 % announced), paused until it proves itself.
+# Among those, the most likely; a match without one says why. Each bet is fixed 45 min before its kick-off.
+PER_MATCH_FROM = "2026-10-28"
+PICK_ODDS = (COTE_MIN, 2.20)
+PICK_MAX_GAP = 0.08
+PICK_MIN_CHANCE = 0.50
+PICK_MODEL_WEIGHT = 0.5
+PICK_HIGH = 0.60  # "Confiance élevée" from here, "Confiance moyenne" below
+# How the 3 selections of the day are ranked among the match bets: "confiance" (most likely first, owner 2026-10-27)
+# or "cote" (highest odds first).
+SELECTION_RANK = "confiance"
+SELECTIONS_PER_DAY = 3
+PICK_TITLE = "Probabilité retenue"
+NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote de 1,50 à 2,20 où le modèle et les bookmakers "
+           "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de pari.")
+PICKS_NOTE = ("Sur chaque match, l'agent retient au plus une cote : celle où le modèle et les bookmakers s'accordent "
+              "le mieux, entre 1,50 et 2,20. Les 3 sélections du jour sont choisies parmi elles. Ajoute celles que tu "
+              "veux à ton carnet. Estimation, jamais une garantie.")
+
+
+def blended(leg: dict) -> float:
+    """The confidence of a match's bet: half the model's chance (after the review's correction), half the bookmakers'."""
+    pm = leg.get("proba_marche")
+    p = leg.get("_p_cmp", leg["proba"])
+    return p if pm is None else PICK_MODEL_WEIGHT * p + (1 - PICK_MODEL_WEIGHT) * pm
+
+
+def pick_ok(leg: dict) -> bool:
+    pm = leg.get("proba_marche")
+    if pm is None or leg.get("buteur") or not PICK_ODDS[0] <= leg["cote"] <= PICK_ODDS[1]:
+        return False
+    if " : moins de " in leg["pari"]:  # a team's under: paused (review of 2026-10-27)
+        return False
+    c = blended(leg)
+    return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
+
+
+def _pick(leg: dict) -> dict:
+    c = blended(leg)
+    out = {k: v for k, v in leg.items() if not k.startswith("_")}
+    out.update(titre=PICK_TITLE, confiance=round(c, 4), valeur_retenue=round(c * leg["cote"] - 1, 4),
+               niveau="Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne")
+    return out
+
+
+def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
+                started, blocked) -> tuple[dict[str, dict], list[dict]]:
+    """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's 3 selections."""
+    previous = previous or {}
+    old = previous.get("paris_retenus") or {}
+
+    def frozen(p: dict) -> bool:
+        return started(p) or datetime.fromisoformat(p["coup_envoi"]) - FIX_BEFORE <= now + FIX_SLACK
+
+    by_match: dict[str, list[dict]] = {}
+    for l in legs:
+        by_match.setdefault(l["match_id"], []).append(l)
+    ids = set(by_match) | set(old) | {k for k, m in page.items() if m.get("jour") == f"{day:%Y-%m-%d}"}
+    picks: dict[str, dict] = {}
+    for mid in sorted(ids):
+        prev = old.get(mid)
+        if prev and prev.get("pari") and (prev.get("fige") or frozen(prev)):
+            picks[mid] = _settle_leg({**prev, "fige": True}, page)
+            continue
+        ok = [l for l in by_match.get(mid, []) if not started(l) and _correct(l) and pick_ok(l) and not blocked(l)]
+        if ok:
+            best = max(ok, key=lambda l: (blended(l), l["cote"]))
+            picks[mid] = {**_pick(best), "fige": frozen(best)}
+            continue
+        m = page.get(mid) or {}
+        doc = (by_match.get(mid) or [{}])[0]
+        match = doc.get("match") or (f"{m.get('domicile')} - {m.get('exterieur')}" if m else mid)
+        ko = doc.get("coup_envoi") or m.get("coup_envoi")
+        under_way = (m.get("statut", "a_venir") != "a_venir") or (ko and datetime.fromisoformat(ko) <= now)
+        picks[mid] = {"match_id": mid, "match": match, "titre": PICK_TITLE, "pari": None,
+                      "raison": "Pas de cote retenue avant le coup d'envoi." if under_way and not prev else
+                      (prev or {}).get("raison") if under_way else NO_PICK}
+    # the 3 selections: those already fixed stay, the other places go to the best bets not yet fixed
+    rank = (lambda p: (p["cote"], p["confiance"])) if SELECTION_RANK == "cote" else (lambda p: (p["confiance"], p["cote"]))
+    kept = [s for s in previous.get("selections") or [] if (picks.get(s["match_id"]) or {}).get("fige")
+            and (picks[s["match_id"]].get("pari") == s.get("pari"))]
+    kept = [{**picks[s["match_id"]], "rang": s.get("rang")} for s in kept]
+    free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige")
+                   and p["match_id"] not in {s["match_id"] for s in kept}), key=rank, reverse=True)
+    selections = kept + [dict(p) for p in free[:max(0, SELECTIONS_PER_DAY - len(kept))]]
+    for i, s in enumerate(sorted(selections, key=lambda s: s["coup_envoi"]), 1):
+        s["rang"] = i
+        s["titre"] = f"Sélection {i}"
+    return picks, sorted(selections, key=lambda s: s["rang"])
 
 
 def needs_effort(market: str, selection: str, line: float | None) -> str | None:
@@ -421,6 +527,16 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
     for team, nxt in blocked.items():
         notes.append((nxt.get("phrase") or f"{team} : risque de rotation élevé.")
                      + f" Les paris qui demandent à {team} de gagner ou de marquer beaucoup sont écartés des idées.")
+
+    if f"{day:%Y-%m-%d}" >= PER_MATCH_FROM:  # one bet per match, the 3 selections among them (owner, 2026-10-27)
+        picks, selections = build_picks(legs, page, previous, now, day, started,
+                                        lambda l: rotation_block(l, page) is not None)
+        n = sum(1 for p in picks.values() if p.get("pari"))
+        notes.append(f"{n} match(s) avec une cote retenue sur {len(picks)}." if picks else
+                     "Aucun match analysé pour l'instant.")
+        return {"jour": f"{day:%Y-%m-%d}", "maj": now.isoformat(), "passage": passage, "message": " ".join(notes),
+                "paris_retenus": picks, "selections": selections, "regle": PICKS_NOTE,
+                "classement_selections": SELECTION_RANK, "avertissement": WARNING_PICKS}
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
     kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]

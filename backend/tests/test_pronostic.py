@@ -320,3 +320,44 @@ def test_high_rotation_risk_keeps_win_bets_out_of_the_tickets_and_ideas():
         doc = build_pronostic(legs, page, None, NOW, "matin")
         assert ("a-b", "Victoire a") in [(l["match"], l["pari"]) for t in doc["tickets"].values() for l in t["jambes"]]
         assert "écartés" not in doc["message"]
+
+
+def test_one_bet_per_match_and_three_selections_from_2026_10_28():
+    from sportai.services.bilan import bankroll_settings, build_bilan
+
+    now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
+
+    def l(match, pari, cote, proba, pm, hours=4):
+        return {**leg(match, pari, cote, proba, pm, hours), "match_id": f"2026-10-28-{match}",
+                "coup_envoi": (now + timedelta(hours=hours)).isoformat(), "_p_cmp": proba}
+
+    legs = [l("a-b", "Victoire a", 1.70, 0.64, 0.60), l("a-b", "Plus de 2,5 buts", 1.95, 0.56, 0.52),
+            l("c-d", "Victoire c", 1.60, 0.68, 0.63), l("e-f", "Victoire f", 2.10, 0.52, 0.48),
+            l("g-h", "Victoire g", 2.60, 0.45, 0.40),  # odds above 2.20: no bet on g-h
+            l("i-j", "Victoire i", 1.80, 0.66, 0.54),  # model 12 points above the bookmakers: no bet
+            l("k-l", "Victoire k", 1.55, 0.70, 0.68), l("m-n", "Victoire m", 1.65, 0.66, 0.62),
+            {**l("o-p", "p : moins de 1,5 buts", 1.70, 0.66, 0.62)}]  # a team's under: paused
+    doc = build_pronostic(legs, {}, None, now, "matin")
+    assert "tickets" not in doc and "top3" not in doc
+    picks = doc["paris_retenus"]
+    assert picks["2026-10-28-a-b"]["pari"] == "Victoire a"  # the most likely of the match
+    assert picks["2026-10-28-a-b"]["niveau"] == "Confiance élevée"
+    assert picks["2026-10-28-e-f"]["niveau"] == "Confiance moyenne"
+    for mid in ("g-h", "i-j", "o-p"):
+        assert picks[f"2026-10-28-{mid}"]["pari"] is None and picks[f"2026-10-28-{mid}"]["raison"]
+    # the 3 most likely bets of the day, ranked by kick-off
+    assert {s["match"] for s in doc["selections"]} == {"k-l", "c-d", "m-n"}
+    assert [s["titre"] for s in doc["selections"]] == ["Sélection 1", "Sélection 2", "Sélection 3"]
+    assert not any(k.startswith("_") for p in picks.values() for k in p)
+
+    # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan
+    later = now + timedelta(hours=6)
+    page = {"2026-10-28-c-d": {"statut": "termine", "score": "2 - 0", "domicile": "c", "exterieur": "d",
+                               "jour": "2026-10-28"}}
+    moved = [{**x, "proba": 0.40, "_p_cmp": 0.40} if x["match"] == "c-d" else x for x in legs]
+    doc2 = build_pronostic(moved, page, doc, later, "resultats")
+    cd = doc2["paris_retenus"]["2026-10-28-c-d"]
+    assert cd["pari"] == "Victoire c" and cd["fige"] and cd["resultat"] == "gagne"
+    assert any(s["match"] == "c-d" and s["resultat"] == "gagne" for s in doc2["selections"])
+    bilan = build_bilan(page, {"2026-10-28": doc2}, bankroll_settings(None), later)
+    assert bilan["par_type"]["pari_retenu"]["valides"] >= 1 and bilan["par_type"]["selection_jour"]["valides"] == 1

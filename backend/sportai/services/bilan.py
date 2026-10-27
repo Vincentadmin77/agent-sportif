@@ -144,6 +144,18 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                               "libelle": " + ".join(f"{l['pari']} ({l['match']})" for l in t["jambes"]),
                               "cote": t.get("cote_totale"), "proba": t.get("proba_totale"),
                               "jambes": t["jambes"], "valide": t["resultat"] == "gagne"})
+        # since 2026-10-28 (owner 2026-10-27): one bet per match and the day's 3 selections among them
+        for s in doc.get("selections") or []:
+            if s.get("resultat") in ("gagne", "perdu") and not under_floor([s]):
+                items.append({"jour": day, "type": "Sélections du jour", "categorie": "selection_jour",
+                              "libelle": f"{s['pari']} ({s['match']})", "cote": s["cote"], "proba": s.get("confiance"),
+                              "niveau": s.get("niveau"), "match_id": s["match_id"], "valide": s["resultat"] == "gagne"})
+        for p in (doc.get("paris_retenus") or {}).values():
+            if p.get("pari") and p.get("resultat") in ("gagne", "perdu") and not under_floor([p]):
+                items.append({"jour": day, "type": "Probabilités retenues", "categorie": "pari_retenu",
+                              "libelle": f"{p['pari']} ({p['match']})", "cote": p["cote"], "proba": p.get("confiance"),
+                              "niveau": p.get("niveau"), "competition": p.get("competition"),
+                              "match_id": p["match_id"], "valide": p["resultat"] == "gagne"})
         for leg in doc.get("top3") or []:
             if leg.get("resultat") in ("gagne", "perdu") and not under_floor([leg]):
                 items.append({"jour": day, "type": "Top 3 des cotes", "categorie": "top3",
@@ -174,10 +186,16 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     bonus_bank, bonus_history = replay_bonus(pronostics, settings)
     kinds = {}
     for key, label in (("safe", "Top idée safe"), ("semi_safe", "Top idée semi safe"), ("fun", "Top idée fun"),
-                       ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés")):
+                       ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés"),
+                       ("selection_jour", "Sélections du jour"), ("pari_retenu", "Probabilités retenues")):
         kinds[key] = {"titre": label, **_rate([i for i in items if i["categorie"] == key])}
     return {
-        "maj": now.isoformat(), "global": _rate(items), "par_type": kinds,
+        # the 3 selections are match bets too: counted once in the overall rate
+        "maj": now.isoformat(), "global": _rate([i for i in items if i["categorie"] != "selection_jour"]),
+        "par_type": kinds,
+        "paris_retenus_par_niveau": {n: _rate([i for i in items if i["categorie"] == "pari_retenu"
+                                               and i.get("niveau") == n])
+                                     for n in ("Confiance élevée", "Confiance moyenne")},
         "valides": [i for i in items if i["valide"]], "non_valides": [i for i in items if not i["valide"]],
         "bankroll": {"depart": settings["depart"], "objectif": settings["objectif"], "actuelle": bank,
                      "progression": round(bank / settings["objectif"], 6), "mises": settings["mises"],
