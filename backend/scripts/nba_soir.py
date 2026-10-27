@@ -97,7 +97,8 @@ VALIDE = {"vainqueur", "handicap", "q1_sans_nul", "q1_1n2"}
 # at least 3 books, and the model may not stray more than 12 points from the
 # bookmakers' fair probability (a bigger gap usually means news the model lacks:
 # injuries, rest decisions, trades).
-MIN_VALUE, MIN_P, MAX_ODDS, MIN_BOOKS, MAX_GAP = 0.03, 0.25, 4.0, 3, 0.12
+# Owner rule: no proposal under 1.60.
+MIN_VALUE, MIN_P, MIN_ODDS, MAX_ODDS, MIN_BOOKS, MAX_GAP = 0.03, 0.25, 1.60, 4.0, 3, 0.12
 
 
 def _opposite(key):
@@ -149,7 +150,7 @@ def main():
                 continue
             med, best = statistics.median(os_), max(os_)
             f = fair(odds, key)
-            ok = (key[0] in VALIDE and p * med - 1 >= MIN_VALUE and p >= MIN_P and med <= MAX_ODDS
+            ok = (key[0] in VALIDE and p * med - 1 >= MIN_VALUE and p >= MIN_P and MIN_ODDS <= med <= MAX_ODDS
                   and len(os_) >= MIN_BOOKS and f is not None and abs(p - f) <= MAX_GAP)
             sels.append({"retenu": ok, "proba_bookmakers": round(f, 3) if f else None,"marche": key[0], "selection": list(key[1:]), "proba": round(p, 3),
                          "cote_mediane": med, "meilleure_cote": best, "nb_bookmakers": len(os_),
