@@ -47,7 +47,7 @@ from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
-COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL", "UEL"]
+COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "UCL", "UEL"]
 # The "Joueur pro" was removed by the owner on 2026-10-26 (too much like gambling, poor results): its code and its
 # history stay, but no pass computes or writes its positions any more, pre-match or live.
 JOUEUR_PRO = False

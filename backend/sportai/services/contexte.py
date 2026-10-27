@@ -454,11 +454,12 @@ DROPPED = ("PST", "CANC", "ABD", "SUSP")
 CONTINENTAL = {2: "Ligue des champions", 3: "Ligue Europa", 848: "Ligue Conférence", 13: "Copa Libertadores",
                11: "Copa Sudamericana"}
 LEAGUE_NAMES = {61: "Ligue 1", 39: "Premier League", 140: "LaLiga", 78: "Bundesliga", 135: "Serie A",
-                71: "Brasileirão", 66: "Coupe de France", 45: "FA Cup", 48: "Coupe de la Ligue anglaise",
+                71: "Brasileirão", 203: "Süper Lig", 66: "Coupe de France", 45: "FA Cup", 48: "Coupe de la Ligue anglaise",
                 143: "Coupe du Roi", 81: "Coupe d'Allemagne", 137: "Coupe d'Italie", 73: "Coupe du Brésil",
+                206: "Coupe de Turquie",
                 **CONTINENTAL}
 # the season calendars kept by calendrier.py, used when API-Football does not answer
-CALENDAR_LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "UCL": 2, "UEL": 3}
+CALENDAR_LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "TR1": 203, "UCL": 2, "UEL": 3}
 KNOCKOUT = ("round of", "quarter", "semi", "final", "knockout", "play-off", "playoff", "8th", "16th", "1/8", "1/16")
 
 

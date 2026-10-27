@@ -54,11 +54,23 @@ ALIASES: dict[str, str] = {
     "sabah fa": "sabah",
     "sporting lisbon": "sporting",
     "sporting cp": "sporting",
+    # Süper Lig (2026-10): API-Football "Başakşehir", "Beşiktaş", "Gençlerbirliği S.K.", "Rizespor", "Amed"
+    # against the longer names the odds feeds use.
+    "istanbul basaksehir": "basaksehir",
+    "basaksehir fk": "basaksehir",
+    "besiktas jk": "besiktas",
+    "genclerbirligi s k": "genclerbirligi",
+    "caykur rizespor": "rizespor",
+    "amedspor": "amed",
+    "amed sportif faaliyetler": "amed",
 }
+
+# Turkish dotless i, which NFKD does not reduce to ASCII ("Kasımpaşa" must give "kasimpasa", not "kasmpasa").
+_TRANSLATE = str.maketrans({"ı": "i"})
 
 
 def normalise(name: str) -> str:
-    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    s = unicodedata.normalize("NFKD", name.translate(_TRANSLATE)).encode("ascii", "ignore").decode().lower()
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     s = " ".join(s.split())
     if s in ALIASES:

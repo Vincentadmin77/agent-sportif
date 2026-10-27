@@ -85,7 +85,10 @@ Un passage coûte 1 crédit par championnat (marché résultat seul), un score e
 Le calendrier (`plan`) est gratuit.
 
 ## Choix des championnats et bouton « Analyser maintenant »
-- La page écrit `reglages/championnats` = `{"actifs": ["FR1", "ES1", ...]}` (codes FR1 EN1 ES1 DE1 IT1 BR1 UCL UEL ; UEL = Ligue Europa depuis le 15/10, mêmes règles que la Ligue des champions).
+- La page écrit `reglages/championnats` = `{"actifs": ["FR1", "ES1", ...]}` (codes FR1 EN1 ES1 DE1 IT1 BR1 TR1 UCL UEL ; UEL = Ligue Europa depuis le 15/10, mêmes règles que la Ligue des champions ;
+  TR1 = Süper Lig turque depuis le 27/10, mêmes règles que les autres championnats : modèle résultat et modèle de buts
+  entraînés sur l'historique API-Football (ligue 203, saisons 2020-21 à aujourd'hui), cotes The Odds API
+  `soccer_turkey_super_league` en secours seulement).
   UCL : modèle entraîné sur les cinq grands championnats et la coupe d'Europe ensemble (API-Football), clubs vus dans moins
   de 20 matchs écartés, écart de force étiré de 20 % (calibration C1, voir 04-backtest.md) ; information seulement, aucune sélection tant qu'un test ne l'a pas validé. Le planning du matin et l'analyse à la
   demande ne traitent que ces championnats (`agent_pass.py plan --competitions ...`). Document absent : tous.

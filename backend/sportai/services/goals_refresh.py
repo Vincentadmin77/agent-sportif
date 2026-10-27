@@ -36,7 +36,7 @@ from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football import goals_model as gm
 
 BASE_URL = "https://v3.football.api-sports.io"
-LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71}
+LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "TR1": 203}
 CALENDAR_YEAR = {"BR1"}
 FINISHED = ("FT", "AET", "PEN")
 

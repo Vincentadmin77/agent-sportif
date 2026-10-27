@@ -29,7 +29,8 @@ from sportai.services.position import position
 from sportai.services.prematch import LOCAL_TZ, journee
 
 COMPETITION_NAMES = {"FR1": "Ligue 1", "EN1": "Premier League", "ES1": "LaLiga", "DE1": "Bundesliga",
-                     "IT1": "Serie A", "UCL": "Ligue des champions", "UEL": "Ligue Europa", "BR1": "Brasileirão"}
+                     "IT1": "Serie A", "UCL": "Ligue des champions", "UEL": "Ligue Europa", "BR1": "Brasileirão",
+                     "TR1": "Süper Lig"}
 MARKET_NAMES = {"1x2": "Résultat du match", "double_chance": "Double chance", "dnb": "Remboursé si nul",
                 "totals": "Nombre de buts", "btts": "Les deux équipes marquent",
                 "team_total_home": "Buts de l'équipe à domicile", "team_total_away": "Buts de l'équipe à l'extérieur",
