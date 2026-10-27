@@ -346,25 +346,27 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
             l("g-h", "Victoire g", 2.60, 0.45, 0.40),  # odds above 2.20: no bet on g-h
             l("i-j", "Victoire i", 1.80, 0.66, 0.54),  # model 12 points above the bookmakers: no bet
             l("k-l", "Victoire k", 1.55, 0.70, 0.68), l("m-n", "Victoire m", 1.65, 0.66, 0.62),
-            {**l("o-p", "p : moins de 1,5 buts", 1.70, 0.66, 0.62)}]  # a team's under: paused
+            {**l("o-p", "p : moins de 1,5 buts", 1.70, 0.66, 0.62)},  # a team's under: paused
+            l("q-r", "Victoire q", 2.80, 0.53, 0.50)]  # no upper limit when the chance is there
     doc = build_pronostic(legs, {}, None, now, "matin")
     assert "tickets" not in doc and "top3" not in doc
     picks = doc["paris_retenus"]
     assert picks["2026-10-28-a-b"]["pari"] == "Victoire a"  # the most likely of the match
     assert picks["2026-10-28-a-b"]["niveau"] == "Confiance élevée"
     assert picks["2026-10-28-e-f"]["niveau"] == "Confiance moyenne"
-    for mid in ("g-h", "i-j", "o-p"):
+    assert picks["2026-10-28-q-r"]["pari"] == "Victoire q"
+    for mid in ("g-h", "i-j", "o-p", "k-l"):  # k-l: odds of 1.55, under 1.60
         assert picks[f"2026-10-28-{mid}"]["pari"] is None and picks[f"2026-10-28-{mid}"]["raison"]
-    # the day's top pick: the most likely bet at 1.60 or more (k-l, more likely, is at 1.55)
+    # the day's top pick: the most likely bet
     assert [(s["match"], s["titre"]) for s in doc["selections"]] == [("c-d", "Top confiance du jour")]
     assert not any(k.startswith("_") for p in picks.values() for k in p)
-    # combos of 2 from two other matches, most confident first, never the Top confiance's match, total odds <= 4.00
+    # the day's combo: the two most likely bets of two other matches, never the Top confiance's match
     combos = doc["combines"]
     assert all(len(c["jambes"]) == 2 and len({l["match_id"] for l in c["jambes"]}) == 2 for c in combos)
     in_combos = [l["match"] for c in combos for l in c["jambes"]]
     assert "c-d" not in in_combos and len(in_combos) == len(set(in_combos))
-    assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"k-l", "m-n"}, {"a-b", "e-f"}]
-    assert all(c["cote_totale"] <= 4.0 and "resultat" not in c for c in combos)
+    assert [{l["match"] for l in c["jambes"]} for c in combos] == [{"m-n", "a-b"}]
+    assert all("resultat" not in c for c in combos)
 
     # 45 min before kick-off the bet is fixed; once the match is over it is settled and counted in the bilan
     later = now + timedelta(hours=6)
@@ -375,8 +377,7 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     cd = doc2["paris_retenus"]["2026-10-28-c-d"]
     assert cd["pari"] == "Victoire c" and cd["fige"] and cd["resultat"] == "gagne"
     assert any(s["match"] == "c-d" and s["resultat"] == "gagne" for s in doc2["selections"])
-    kl = next(c for c in doc2["combines"] if "k-l" in [l["match"] for l in c["jambes"]])
-    assert kl["fige"] and [l["pari"] for l in kl["jambes"]] == [l["pari"] for l in next(
-        c for c in doc["combines"] if "k-l" in [l["match"] for l in c["jambes"]])["jambes"]]
+    assert doc2["combines"][0]["fige"] and [l["pari"] for l in doc2["combines"][0]["jambes"]] == [
+        l["pari"] for l in doc["combines"][0]["jambes"]]
     bilan = build_bilan(page, {"2026-10-28": doc2}, bankroll_settings(None), later)
     assert bilan["par_type"]["pari_retenu"]["valides"] >= 1 and bilan["par_type"]["selection_jour"]["valides"] == 1

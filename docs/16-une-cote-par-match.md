@@ -9,7 +9,9 @@ d'avant reste tel quel.
 
 Règles (sportai/services/pronostic.py, `PICK_*`) :
 
-- cote entre 1,50 et 2,20 ;
+- cote de 1,60 au moins, sans plafond (Vincent, 27/10 12:52 : « la cote mini est de 1.60 mais pas de cote max ») :
+  une grosse cote passe seulement si sa chance est vraiment forte (« les agents sont là pour trouver du réalisme, pas
+  du rêve ») ;
 - confiance = moitié chance du modèle (après la correction de la revue), moitié chance des bookmakers ; au moins 50 %,
   et de la valeur à cette confiance (confiance × cote > 1) ;
 - le modèle pas plus de 8 points au-dessus des bookmakers ;
@@ -32,7 +34,8 @@ jours), 4 passés, 3 pas passés, 1 remboursé. Trop peu pour conclure : à suiv
 « Combiné de deux max à côté » : `combines` dans `pronostic/<jour>`, affichés dans l'onglet « Probabilité retenue » des
 deux matchs. Deux cotes retenues de deux matchs différents (sur un même match, la cote du combiné n'est pas le produit
 des cotes), jamais le match du Top confiance, jamais un pari dans deux combinés, les plus sûres associées d'abord,
-cote totale de 4,00 au plus (`COMBO_MAX_ODDS`). Figé avec son premier match. Jamais retenu comme Top confiance, mais
+sans plafond de cote (`COMBO_MAX_ODDS` = None depuis le 27/10 12:52), un seul par jour (`COMBOS_PER_DAY` = 1 : la
+meilleure confiance combiné). Figé avec son premier match. Jamais retenu comme Top confiance, mais
 son propre ratio dans le bilan (catégorie `combine`, hors taux global). Rejeu 11-26/10 : 10 passés, 12 pas passés,
 1 remboursé, cote moyenne 2,98.
 
@@ -44,3 +47,12 @@ les journées du 11 au 26/10 de la page ont été recalculées le 27/10 avec ces
 réglées sur les scores finaux). Chaque document recalculé porte `recalcule: true` et garde les anciens tickets sous
 `ancien`. La page les marque « Recalculé ». Résultat : Top confiance 4 validés, 3 non validés, 1 remboursé ; cotes
 retenues 34 sur 54 (Confiance élevée 23/30, moyenne 11/24) ; combinés de 2 10 sur 22 (1 remboursé).
+
+## Cote mini 1,60, sans cote max, un combiné par jour (Vincent, 27/10 12:52)
+
+« La cote mini est de 1.60 mais pas de cote max » ; la page dit seulement que ce sont la meilleure confiance simple et
+la meilleure confiance combiné retenues par l'analyse. Les filtres de confiance (au moins 50 %, valeur, modèle pas plus
+de 8 points au-dessus des bookmakers) restent : c'est eux qui décident, pas la cote. Rejeu 11-26/10 refait : Top
+confiance 4 validés, 4 non validés, 1 remboursé ; cotes retenues 26 sur 48 (élevée 9/13, moyenne 17/35) ; combiné du
+jour 2 validés, 4 non validés (cotes 2,76 à 3,92). La plus grosse cote retenue reste 2,21 : avec ces filtres, une cote
+de 3 ou plus n'a presque jamais assez de chance réelle.

@@ -133,14 +133,17 @@ ROTATION_LEVEL = "élevé"
 # PER_MATCH_FROM on, no more combined tickets, bonus ideas or top 3: the review of 11-26 October (54 % of the bets won
 # for 62 % announced) found the model too sure of itself whenever it strays from the bookmakers, the combined
 # tickets and the odds above 2.20 losing most. So a match's bet must have:
-# - odds of 1.50 to 2.20 (PICK_ODDS: 3 bets won out of 20 between 2.20 and 3.00);
+# - odds of 1.60 or more and no upper limit (owner, 2026-10-27 12:52: "la cote mini est de 1.60 mais pas de cote
+#   max ... si l'algorithme trouve une cote bien plus haute qui a de fortes probabilités il faut l'étudier aussi");
+#   a high odd still has to pass the confidence and agreement rules below (3 bets won out of 20 between 2.20 and 3.00
+#   in the review, when the model alone chose them);
 # - the model no more than PICK_MAX_GAP above the bookmakers (over 5 points the bets won 51 % for 64 % announced);
 # - a confidence of PICK_MIN_CHANCE at least, the confidence being half the model's chance and half the bookmakers'
 #   (PICK_MODEL_WEIGHT), and value at that confidence;
 # - not a team's "moins de X buts" (6 won out of 14 for 68 % announced), paused until it proves itself.
 # Among those, the most likely; a match without one says why. Each bet is fixed 45 min before its kick-off.
 PER_MATCH_FROM = "2026-10-01"  # owner 2026-10-27 09:31: "comme si nous avions fait comme ça depuis le début"
-PICK_ODDS = (COTE_MIN, 2.20)
+PICK_ODDS = (1.60, None)
 PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50
 PICK_MODEL_WEIGHT = 0.5
@@ -152,10 +155,11 @@ SELECTIONS_PER_DAY = 1
 SELECTION_MIN_ODDS = 1.60
 SELECTION_TITLE = "Top confiance du jour"
 PICK_TITLE = "Probabilité retenue"
-NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote de 1,50 à 2,20 où le modèle et les bookmakers "
+NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote d'au moins 1,60 où le modèle et les bookmakers "
            "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de pari.")
 PICKS_NOTE = ("Sur chaque match, l'agent retient au plus une cote : celle où le modèle et les bookmakers s'accordent "
-              "le mieux, entre 1,50 et 2,20. Le Top confiance du jour est la plus sûre d'entre elles à 1,60 ou plus. "
+              "le mieux, à 1,60 ou plus. La meilleure confiance simple et la meilleure confiance combiné du jour sont "
+              "choisies parmi elles. "
               "Ajoute celles que tu veux à ton carnet. Estimation, jamais une garantie.")
 
 
@@ -168,7 +172,7 @@ def blended(leg: dict) -> float:
 
 def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
-    if pm is None or leg.get("buteur") or not PICK_ODDS[0] <= leg["cote"] <= PICK_ODDS[1]:
+    if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
     if " : moins de " in leg["pari"]:  # a team's under: paused (review of 2026-10-27)
         return False
@@ -233,9 +237,11 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
 # Combos of 2 (owner, 2026-10-27 09:24: "combiné de deux max à côté, ... juste pas retenu dans la confiance du jour,
 # il garde son ratio"): the retained bets of two different matches (the odds of two bets on the same match are not
 # the product of their odds), never the match of the Top confiance and never a bet in two combos. The most confident
-# bets are paired first, total odds at most COMBO_MAX_ODDS (1 combo of 4.00 or more won out of 15 in the review).
+# bets are paired first. Since 2026-10-27 12:52 (owner: "la meilleure confiance simple et la meilleure confiance
+# combiné") one combo a day, the most confident pair, and no upper limit on its odds (COMBO_MAX_ODDS None).
 # A combo is fixed with its first match (45 min before kick-off) and both its bets stay as they were then.
-COMBO_MAX_ODDS = 4.00
+COMBO_MAX_ODDS = None
+COMBOS_PER_DAY = 1
 COMBO_TITLE = "Combiné de 2"
 
 
@@ -261,9 +267,9 @@ def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict 
     free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["match_id"] not in used),
                   key=lambda p: (p["confiance"], p["cote"]), reverse=True)
     fresh = []
-    while free:
+    while free and len(kept) + len(fresh) < COMBOS_PER_DAY:
         first = free.pop(0)
-        mate = next((p for p in free if first["cote"] * p["cote"] <= COMBO_MAX_ODDS), None)
+        mate = next((p for p in free if not COMBO_MAX_ODDS or first["cote"] * p["cote"] <= COMBO_MAX_ODDS), None)
         if mate:
             free.remove(mate)
             fresh.append(combo([first, mate], False))
