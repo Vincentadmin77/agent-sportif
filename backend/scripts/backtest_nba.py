@@ -4,7 +4,7 @@ Data: API-Basketball (league 12), one cached file per season in
 /mnt/project-files/agent-sportif/data/api-basketball/games_nba_<season>.json.gz
 (downloaded once with --fetch; the key comes from API_FOOTBALL_KEY, the same
 API-Sports account, and is never printed). Pre-season, All-Star and
-exhibition games are dropped (teams with fewer than 40 games in a season).
+exhibition games are dropped (teams with fewer than 40 games over all seasons).
 
 Protocol: chronological walk-forward, the model is refitted every 7 days on
 games strictly before the refit day. Test = seasons 2023-24, 2024-25, 2025-26
@@ -69,13 +69,17 @@ def fetch(seasons: list[str]) -> None:
 
 def load() -> list[Game]:
     games = []
+    seasons = []
     for s in SEASONS:
         path = CACHE / f"games_nba_{s}.json.gz"
-        if not path.exists():
-            continue
-        rows = json.load(gzip.open(path, "rt"))["response"]
-        finished = [g for g in rows if g["status"]["short"] in ("FT", "AOT")]
-        count = Counter(t for g in finished for t in (g["teams"]["home"]["name"], g["teams"]["away"]["name"]))
+        if path.exists():
+            rows = json.load(gzip.open(path, "rt"))["response"]
+            seasons.append([g for g in rows if g["status"]["short"] in ("FT", "AOT")])
+    # Real NBA teams play 40+ games in a full season; counted over all seasons so the
+    # current, barely started one is kept.
+    count = Counter(t for finished in seasons for g in finished
+                    for t in (g["teams"]["home"]["name"], g["teams"]["away"]["name"]))
+    for finished in seasons:
         for g in finished:
             h, a = g["teams"]["home"]["name"], g["teams"]["away"]["name"]
             if count[h] < 40 or count[a] < 40:
