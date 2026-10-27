@@ -560,7 +560,8 @@ def _half_time_scores(comps: list[str], current: dict, docs: dict) -> None:
     from sportai.services.live_page import find_doc
 
     merged = {**current, **docs}
-    days = {d["jour"] for d in merged.values() if d.get("jour") and d.get("statut") == "termine"
+    since = (_date.today() - timedelta(days=2)).isoformat()  # recent days only: older ones are settled already
+    days = {d["jour"] for d in merged.values() if d.get("jour", "") >= since and d.get("statut") == "termine"
             and not d.get("score_mi_temps") and d.get("sport") != "basket"}
     if not days:
         return
