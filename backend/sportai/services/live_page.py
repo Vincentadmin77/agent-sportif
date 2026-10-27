@@ -23,7 +23,8 @@ from sportai.services.dashboard import bet_label, goal_label, scorer_label, sett
 LIVE_NOTE = ("Suivi en direct : probabilités recalculées avec le score, la minute, les cartons rouges et les "
              "occasions (xG) quand le flux les donne. Information seulement, pas une sélection.")
 STAT_NAMES = {"Total Shots": "tirs", "Shots on Goal": "tirs_cadres", "Ball Possession": "possession",
-              "Corner Kicks": "corners", "expected_goals": "xg"}
+              "Corner Kicks": "corners", "expected_goals": "xg", "Yellow Cards": "jaunes", "Red Cards": "rouges"}
+CARDS = ("jaunes", "rouges")  # the feed gives null for no card: 0 (settles the cards bets, services/comptages.py)
 FINISHED = {"FT", "AET", "PEN"}
 ODDS_NOTE = ("Cotes en direct du flux API-Football (pas forcément un bookmaker français). Modèle du direct non "
              "validé sur matchs passés : le joueur pro n'y mise qu'à l'essai (mise divisée par deux, un pari en direct "
@@ -57,7 +58,9 @@ def stats_by_side(stats: list[dict], home_id: int) -> dict[str, list]:
         i = 0 if block["team"]["id"] == home_id else 1
         for s in block.get("statistics", []):
             name = STAT_NAMES.get(s.get("type"))
-            if name and s.get("value") not in (None, ""):
+            if name in CARDS and s.get("value") in (None, ""):
+                out.setdefault(name, [None, None])[i] = 0
+            elif name and s.get("value") not in (None, ""):
                 v = s["value"]
                 v = int(v.rstrip("%")) if isinstance(v, str) and v.endswith("%") else float(v) if name == "xg" else v
                 out.setdefault(name, [None, None])[i] = v
