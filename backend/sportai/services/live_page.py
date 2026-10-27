@@ -243,6 +243,9 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
         doc["feuille_de_match"] = {**sheet, "maj": now.isoformat()}
         doc["buteurs"] = {**(doc.get("buteurs") or {}), "marques": sheet["buts"]}
     doc["score"] = f"{hg} - {ag}"
+    ht = (fx.get("score") or {}).get("halftime") or {}
+    if ht.get("home") is not None and ht.get("away") is not None:  # settles the half-time bets
+        doc["score_mi_temps"] = f"{int(ht['home'])} - {int(ht['away'])}"
     doc["minute"] = int(snap.minute)
     doc["passages"] = {**(doc.get("passages") or {}), "direct": now.isoformat()}
     direct = {"minute": int(snap.minute), "periode": status, "score": doc["score"],
