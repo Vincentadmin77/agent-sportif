@@ -439,7 +439,8 @@ def count_markets(competition: str, raw: list[dict], window, fixtures: list[dict
         if fx is not None:
             home, away = fx.home, fx.away
         try:
-            rows = price_counts(item, home, away, competition, now, str(cache_dir()))
+            rows = price_counts(item, home, away, competition, now, str(cache_dir()),
+                                getattr(fx, "referee", None) if fx is not None else None)
         except (ValueError, TypeError, KeyError, OSError) as e:
             print(f"count markets unavailable for {f['match']} ({str(e)[:120]})", file=sys.stderr)
             rows = []

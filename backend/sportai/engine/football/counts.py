@@ -170,6 +170,20 @@ def settle(kind: str, sel: str, line: float | None, h: int, a: int) -> str:
     return "gagne" if (n > line if sel == "over" else n < line) else "perdu"
 
 
+# The referee (owner 2026-10-28, "est-ce que la Top confiance tient compte de l'arbitre ?"): both teams' expected
+# cards and the total are multiplied by the referee's cards per match in the league, pulled towards the league
+# average by REFEREE_SHRINK matches, over that average. Backtest scripts/backtest_referee.py on the same 2,614
+# matches: better on 14 of the 29 cards bets, worse on none (docs/18-corners-cartons-tirs.md).
+REFEREE_SHRINK = 20.0
+REFEREE_STATS = ("cartons", "jaunes")
+
+
+def referee_factor(cards: float, matches: int, league_mean: float) -> float:
+    if not league_mean:
+        return 1.0
+    return (cards + REFEREE_SHRINK * league_mean) / (matches + REFEREE_SHRINK) / league_mean
+
+
 class CountModel:
     """Walk-forward team averages of one count statistic for one league."""
 

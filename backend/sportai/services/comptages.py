@@ -6,6 +6,7 @@ Team averages come from the API-Football cache the daily goals refresh fills (th
 docs/18-corners-cartons-tirs.md), replayed as in the backtest. A team with fewer than 3 home (or away) matches known,
 or whose last known match is older than STALE_DAYS (statistics not refreshed), gets no price. The bookmaker margin is
 removed on complete groups of one bookmaker (median over the bookmakers), otherwise the market's chance is 1 / odds.
+Cards bets are scaled by the match's referee (counts.referee_factor, since 2026-10-28).
 """
 
 from __future__ import annotations
@@ -19,11 +20,13 @@ from statistics import median
 
 from sportai.connectors.teams import normalise
 from sportai.engine.football import counts
+from sportai.services.contexte import referee_keys
 
 LEAGUE_IDS = {61: "FR1", 39: "EN1", 140: "ES1", 78: "DE1", 135: "IT1", 71: "BR1", 203: "TR1"}
 FINISHED = ("FT", "AET", "PEN")
 STALE_DAYS = 45
 SUMMARY = "comptages_resume.json.gz"
+SUMMARY_VERSION = 2  # 2: the referee of each match
 FEED_TYPES = {"Corner Kicks": "corners", "Yellow Cards": "jaunes", "Red Cards": "rouges", "Total Shots": "tirs",
               "Shots on Goal": "tirs_cadres"}
 
@@ -52,7 +55,8 @@ def history(folder: str, day: str) -> dict[str, list[dict]]:
     try:
         with gzip.open(summary, "rt") as f:
             saved = json.load(f)
-        if saved.get("jour") == day and saved.get("fichiers") == len(files):  # new statistics: read again
+        if (saved.get("jour") == day and saved.get("fichiers") == len(files)
+                and saved.get("version") == SUMMARY_VERSION):  # new statistics: read again
             return {c: [{**m, "kickoff": datetime.fromisoformat(m["kickoff"])} for m in ms]
                     for c, ms in saved["ligues"].items()}
     except (OSError, ValueError, KeyError):
@@ -81,12 +85,13 @@ def history(folder: str, day: str) -> dict[str, list[dict]]:
                 continue
             out.setdefault(comp, {})[f["fixture"]["id"]] = {
                 "kickoff": f["fixture"]["date"].replace("Z", "+00:00"),
-                "home": f["teams"]["home"]["name"], "away": f["teams"]["away"]["name"], "stats": sides}
+                "home": f["teams"]["home"]["name"], "away": f["teams"]["away"]["name"], "stats": sides,
+                "referee": f["fixture"].get("referee")}
     ligues = {c: sorted(ms.values(), key=lambda m: m["kickoff"]) for c, ms in out.items()}
     try:
         tmp = summary.with_suffix(".tmp")
         with gzip.open(tmp, "wt") as f:
-            json.dump({"jour": day, "fichiers": len(files), "ligues": ligues}, f)
+            json.dump({"jour": day, "fichiers": len(files), "version": SUMMARY_VERSION, "ligues": ligues}, f)
         tmp.replace(summary)
     except OSError:
         pass
@@ -94,9 +99,9 @@ def history(folder: str, day: str) -> dict[str, list[dict]]:
 
 
 @lru_cache(maxsize=16)
-def model(folder: str, day: str, comp: str, stat: str) -> tuple[counts.CountModel, dict[str, datetime]] | None:
+def model(folder: str, day: str, comp: str, stat: str) -> tuple[counts.CountModel, dict[str, datetime], dict] | None:
     """The count model of a league replayed on every known match (league averages and dispersion refreshed weekly on
-    the 3 previous years, as in the backtest), and each team's last known match."""
+    the 3 previous years, as in the backtest), each team's last known match, and each referee's (count, matches)."""
     ms = []
     for m in history(folder, day).get(comp, []):
         h, a = stat_value(stat, m["stats"]["home"]), stat_value(stat, m["stats"]["away"])
@@ -104,7 +109,7 @@ def model(folder: str, day: str, comp: str, stat: str) -> tuple[counts.CountMode
             ms.append({**m, "h": h, "a": a})
     if len(ms) < 200:
         return None
-    cm, week, last = counts.CountModel(), None, {}
+    cm, week, last, refs = counts.CountModel(), None, {}, {}
     days = [m["kickoff"].date().toordinal() for m in ms]
     lo = 0
     for i, m in enumerate(ms):
@@ -117,10 +122,15 @@ def model(folder: str, day: str, comp: str, stat: str) -> tuple[counts.CountMode
             week = wk
         cm.add(m)
         last[m["home"]] = last[m["away"]] = m["kickoff"]
+        key = referee_keys(m.get("referee"))
+        if key:
+            r = refs.setdefault(key[1], [0, 0])
+            r[0] += m["h"] + m["a"]
+            r[1] += 1
     while days[lo] < days[-1] - 3 * 365:
         lo += 1
     cm.refit(ms[lo:])
-    return cm, last
+    return cm, last, refs
 
 
 def _team(name: str, known) -> str | None:
@@ -131,7 +141,7 @@ def _team(name: str, known) -> str | None:
 
 
 def price_counts(item: dict, home: str, away: str, competition: str, now: datetime,
-                 folder: str) -> list[dict]:
+                 folder: str, referee: str | None = None) -> list[dict]:
     rows_by: dict[tuple, dict] = {}
     by_book: dict[tuple, dict[str, float]] = {}
     for bk in item.get("bookmakers") or []:
@@ -158,7 +168,7 @@ def price_counts(item: dict, home: str, away: str, competition: str, now: dateti
         got = model(folder, day, competition, stat)
         if got is None:
             continue
-        cm, last = got
+        cm, last, refs = got
         h, a = _team(home, cm.hf), _team(away, cm.af)
         if (h is None or a is None or any(now - last.get(t, now - timedelta(days=999)) > timedelta(days=STALE_DAYS)
                                           for t in (h, a))):
@@ -166,7 +176,14 @@ def price_counts(item: dict, home: str, away: str, competition: str, now: dateti
         mean, raw = cm.expected(h, a), cm.raw(h, a)
         if mean is None:
             continue
-        p = counts.win_prob(kind, sel, line, *mean, cm.r, cm.r_total, cm.total_mean(sum(raw)))
+        total, ref = cm.total_mean(sum(raw)), None
+        key = referee_keys(referee) if stat in counts.REFEREE_STATS else None
+        if key:  # the referee's cards per match in this league (none known: factor 1)
+            s, n = refs.get(key[1], (0, 0))
+            f = counts.referee_factor(s, n, cm.lh + cm.la)
+            mean, total = (mean[0] * f, mean[1] * f), total * f
+            ref = {"nom": referee.split(",")[0].strip(), "matchs": n, "facteur": round(f, 3)}
+        p = counts.win_prob(kind, sel, line, *mean, cm.r, cm.r_total, total)
         sides = counts.GROUPS.get(kind, ("over", "under"))
         fair = [(1 / odds[sel]) / sum(1 / odds[s] for s in sides)
                 for (book, st, k, ln), odds in by_book.items()
@@ -177,7 +194,7 @@ def price_counts(item: dict, home: str, away: str, competition: str, now: dateti
                      "bookmaker": b["bookmaker"], "proba": round(p, 4), "proba_marche": round(pm, 4),
                      "proba_marche_brute": not fair, "valeur": round(p * b["cote"] - 1, 4),
                      "moyennes": [round(mean[0], 2), round(mean[1], 2)],
-                     "valide": counts.validated(stat, kind, sel, line)})
+                     "valide": counts.validated(stat, kind, sel, line), **({"arbitre": ref} if ref else {})})
     return sorted(rows, key=lambda r: -r["valeur"])
 
 

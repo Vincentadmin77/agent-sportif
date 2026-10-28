@@ -70,7 +70,7 @@ def load(comp: str, fetcher: Fetcher, stat: str) -> list[dict]:
                 out.append({"fid": fid, "comp": comp, "season": season,
                             "kickoff": datetime.fromisoformat(f["fixture"]["date"].replace("Z", "+00:00")),
                             "home": f["teams"]["home"]["name"], "away": f["teams"]["away"]["name"],
-                            "h": int(val["home"]), "a": int(val["away"])})
+                            "h": int(val["home"]), "a": int(val["away"]), "referee": f["fixture"].get("referee")})
     out.sort(key=lambda m: (m["kickoff"], m["fid"]))
     return out
 

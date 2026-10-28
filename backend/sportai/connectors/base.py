@@ -43,6 +43,7 @@ class Fixture:
     away_goals: int | None = None
     home_id: int | None = None  # the provider's team ids, when it has them (API-Football: squads for the scorer market)
     away_id: int | None = None
+    referee: str | None = None  # API-Football: "Daniele Doveri, Italy" (scales the cards bets, services/comptages.py)
 
 
 @dataclass(frozen=True)
