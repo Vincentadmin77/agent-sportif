@@ -280,6 +280,7 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         shutil.copy(STATE_DB, work)
     os.environ["DATABASE_URL"] = f"sqlite:///{work}"
     os.environ["DATA_MODE"] = "real"
+    _reset_settings()  # the basketball pass above may have read the settings before DATABASE_URL was set
     from alembic import command
     from alembic.config import Config
 
@@ -326,6 +327,14 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+def _reset_settings() -> None:
+    from sportai.config import get_settings
+    from sportai.db.session import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
 
 
 def _basket_prematch(comps: list[str], page: str | None, out: str, now: datetime, passage: str,
