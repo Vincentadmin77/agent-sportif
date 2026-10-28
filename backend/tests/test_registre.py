@@ -136,3 +136,37 @@ def test_the_m_chooses_once_from_the_45_min_pass_and_keeps_it_apart():
     assert f["pari"] == "Victoire A" and f["resultat"] == "gagne" and f["gain_unite"] == 0.55
     rep = R.report([reg], min_group=1)
     assert rep["reel"]["global"]["positions"] == 0 and rep["le_m_a_blanc"]["global"]["validees"] == 1
+
+
+def test_visa_lights():
+    assert R.visa({"pari": "x", "proba": 0.62, "proba_marche": 0.63})["feu"] == "vert"
+    assert R.visa({"pari": "x", "proba": 0.55, "proba_marche": 0.54})["feu"] == "orange"
+    assert R.visa({"pari": "x", "proba": 0.50, "proba_marche": 0.49})["feu"] == "rouge"
+    assert R.visa({"pari": "x", "proba": 0.60, "proba_marche": 0.52})["feu"] == "rouge"  # model far above
+    assert R.visa({"pari": "x", "proba": 0.39, "proba_marche": 0.50})["feu"] == "rouge"  # model far below
+    assert R.visa({"pari": None}) is None
+
+
+def test_opinions_side_by_side_then_who_was_right():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "a_venir",
+         "passages": {"m45": at(18).isoformat()},
+         "contexte": {"absences_effet": {"phrases": ["A sans son buteur."]}},
+         "tous_marches": {"analyses": [{"pari": "Victoire A", "cote": 1.55, "proba": 0.6, "proba_marche": 0.62}]}}
+    day = pron(cote=1.84)
+    day["paris_retenus"]["m1"].update(proba=0.55, proba_marche=0.54)
+    reg = R.update({}, day, {"m1": m}, at(18), "abc")
+    a = reg["avis"]["m1"]
+    assert a["officielle"]["pari"] == "Plus de 2,5 buts" and a["visa_m"]["feu"] == "orange"
+    assert a["choix_m"]["pari"] == "Victoire A" and a["enqueteur"] == ["A sans son buteur."]
+    day["paris_retenus"]["m1"]["resultat"] = "perdu"
+    reg = R.update(reg, day, {"m1": {**m, "statut": "termine", "score": "1 - 0"}}, at(22), "abc")
+    a = reg["avis"]["m1"]
+    assert a["visa_m"]["feu"] == "orange" and "non validée" in a["bilan"] and "Choix du M validé" in a["bilan"]
+
+
+def test_basket_opinions():
+    b = {"paris_retenus": {"7": {"match": "C - D", "competition": "NBA", "coup_envoi": "2026-10-29T23:00:00Z",
+                                 "pari": "Moins de 230,5 points dans le match", "cote": 1.8, "proba": 0.60,
+                                 "proba_marche": 0.524}}}
+    reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, b, at(18))
+    assert reg["avis"]["basket-7"]["visa_m"]["feu"] == "rouge" and reg["avis"]["basket-7"]["sport"] == "basket"

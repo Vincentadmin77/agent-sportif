@@ -4,7 +4,8 @@
     python scripts/mathematicien.py importer --page PAGE --out OUT     # rebuilt history, flagged "recalcule"
     python scripts/mathematicien.py rapport --page PAGE [--out FILE]
 
-PAGE holds the page's collections as ArtifactData `list` saves them (matchs/, pronostic/, registre/). `registre` and
+PAGE holds the page's collections as ArtifactData `list` saves them (matchs/, pronostic/, registre/, and
+basket_pronostic/ for the basketball opinions). `registre` and
 `importer` write OUT/registre/<jour>.json, to write in the page's `registre` collection (doc_id = the day). No API call.
 """
 
@@ -58,7 +59,9 @@ def main() -> None:
     if a.cmd == "registre":
         matchs = _load(a.page, "matchs")
         days = [a.jour] if a.jour else [d for d, p in prons.items() if not p.get("recalcule")]
-        _write(a.out, {d: R.update(regs.get(d) or {}, prons[d], matchs, now, _code_version())
+        bprons = _load(a.page, "basket_pronostic")
+        _write(a.out, {d: R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, _code_version()),
+                                        bprons.get(d) or {}, now)
                        for d in days if d in prons and not prons[d].get("recalcule")})
     elif a.cmd == "importer":
         _write(a.out, {d: R.import_rebuilt(p) for d, p in prons.items()

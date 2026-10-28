@@ -73,7 +73,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
     """The day's registry document after one pass: new frozen positions recorded, closing odds and results added."""
     day = pron.get("jour")
     reg = {"jour": day, "sport": sport, "fiches": {k: dict(v) for k, v in (registre.get("fiches") or {}).items()},
-           "cibles": dict(registre.get("cibles") or {})}
+           "cibles": dict(registre.get("cibles") or {}),
+           "avis": {k: dict(v) for k, v in (registre.get("avis") or {}).items()}}
     if pron.get("recalcule"):
         return reg  # rebuilt history: see import_rebuilt
     r = rules()
@@ -124,7 +125,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
                 f["clv"] = round(f["cote_prise"] / cote - 1, 4) if f.get("cote_prise") else None
         if f.get("resultat") in SETTLED and not f.get("live_a_blanc"):
             f["gain_unite"] = _gain(f)
-    return m_records(live_records(reg, matchs, code_version), matchs, now, code_version)
+    reg = m_records(live_records(reg, matchs, code_version), matchs, now, code_version)
+    return avis_records(reg, pron, matchs, now)
 
 
 def import_rebuilt(pron: dict, sport: str = "foot") -> dict:
@@ -390,4 +392,116 @@ def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: s
             res = settle_score(key, *sc) if sc and key else None
             if res in SETTLED:
                 f["resultat"], f["gain_unite"] = res, _gain({**f, "resultat": res})
+    return reg
+
+
+# --- "Avis par match" (owner 2026-10-28 14:35: "une page d'échange en admin pour que les agents échangent sur leurs
+# choix et leurs désaccords ... que chacun puisse donner son avis"). For each match of the day, side by side, the real
+# opinions only (no staged dialogue): the official position with the model's and the market's chance, the
+# Enquêteur's context alerts, the M's visa on the official position and the M's own choice; after the match, who was
+# right. Updated at every registry run until kick-off, then frozen; the outcome is added once the match is over.
+VISA_RED_UNDER = 0.50  # market chance under this: a coin flip at best
+VISA_GREEN_FROM = 0.60
+VISA_MODEL_OVER = 0.06  # model this far above the market: 50 % in 128 positions and on 5 seasons
+VISA_MODEL_UNDER = 0.10  # model this far below: it does not believe its own position
+
+
+def visa(p: dict | None) -> dict | None:
+    """The M's light on a position {proba, proba_marche}: vert / orange / rouge and why."""
+    if not p or not p.get("pari"):
+        return None
+    mod, mkt = p.get("proba"), p.get("proba_marche")
+    if not isinstance(mkt, (int, float)):
+        return {"feu": "orange", "raison": "Pas de chance des bookmakers pour juger."}
+    if mkt < VISA_RED_UNDER:
+        return {"feu": "rouge", "raison": f"Les bookmakers ne la voient qu'à {mkt:.0%}."}
+    if isinstance(mod, (int, float)) and mod - mkt >= VISA_MODEL_OVER:
+        return {"feu": "rouge", "raison": f"Notre modèle ({mod:.0%}) est bien plus optimiste que les bookmakers ({mkt:.0%}) : "
+                                          "ce profil ne passe qu'une fois sur deux."}
+    if isinstance(mod, (int, float)) and mkt - mod >= VISA_MODEL_UNDER:
+        return {"feu": "rouge", "raison": f"Notre modèle ({mod:.0%}) n'y croit pas, les bookmakers {mkt:.0%}."}
+    if mkt >= VISA_GREEN_FROM:
+        return {"feu": "vert", "raison": f"Les bookmakers la voient à {mkt:.0%}, le modèle est d'accord."}
+    return {"feu": "orange", "raison": f"Les bookmakers la voient à {mkt:.0%} : un peu plus d'une chance sur deux."}
+
+
+def enqueteur(m: dict) -> list[str]:
+    """The context alerts of the match document (absences, referee, rotation, weather, runs), as written by the passes."""
+    c = m.get("contexte") or {}
+    out = list((c.get("absences_effet") or {}).get("phrases") or [])
+    ref = c.get("arbitre") or {}
+    if ref.get("profil") not in (None, "inconnu", "moyen") and ref.get("phrase"):
+        out.append(ref["phrase"])
+    for side in ("domicile", "exterieur"):
+        nxt = (c.get("prochain_match") or {}).get(side) or {}
+        if nxt.get("risque_rotation") in ("élevé", "moyen") and nxt.get("phrase"):
+            out.append(nxt["phrase"])
+        out += ((c.get("series") or {}).get(side) or {}).get("phrases") or []
+    if (c.get("meteo") or {}).get("effet") and c["meteo"].get("phrase"):
+        out.append(c["meteo"]["phrase"])
+    return out
+
+
+def _side(p: dict | None, keys: tuple = ("pari", "cote", "proba", "proba_marche", "niveau", "resultat")) -> dict | None:
+    return {k: p.get(k) for k in keys} if p and p.get("pari") else None
+
+
+def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, sport: str = "foot") -> dict:
+    av = reg.setdefault("avis", {})
+    for mid, m in matchs.items():
+        if m.get("jour") != reg.get("jour"):
+            continue
+        ko = _aware(m.get("coup_envoi"))
+        off = (pron.get("paris_retenus") or {}).get(mid)
+        a = av.get(mid) or {"match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
+                            "coup_envoi": m.get("coup_envoi"), "sport": sport}
+        if ko and now < ko:  # opinions can still change until kick-off
+            a["officielle"] = _side(off)
+            a["visa_m"] = visa(off)
+            a["enqueteur"] = enqueteur(m) if sport == "foot" else []
+            a["maj"] = now.isoformat()
+            if sport == "foot" and not (off or {}).get("pari"):
+                a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
+        mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
+        if mf is not None:
+            a["choix_m"] = {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
+                            "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat")}
+        res_off = (off or {}).get("resultat") if (off or {}).get("resultat") in SETTLED else None
+        if res_off and a.get("officielle"):
+            a["officielle"]["resultat"] = res_off
+        if m.get("statut") == "termine" and "bilan" not in a and (res_off or (a.get("choix_m") or {}).get("resultat")):
+            a["bilan"] = _who_was_right(a)
+        av[mid] = a
+    return reg
+
+
+def _who_was_right(a: dict) -> str:
+    o, c, v = a.get("officielle") or {}, a.get("choix_m") or {}, (a.get("visa_m") or {}).get("feu")
+    parts = []
+    if o.get("resultat") in ("gagne", "perdu"):
+        ok = o["resultat"] == "gagne"
+        parts.append(f"Position officielle {'validée' if ok else 'non validée'}"
+                     + ({"vert": ", le feu vert du M était juste" if ok else ", malgré le feu vert du M",
+                         "rouge": ", le feu rouge du M était juste" if not ok else ", malgré le feu rouge du M"}.get(v, "") or "") + ".")
+    if c.get("resultat") in ("gagne", "perdu"):
+        parts.append(f"Choix du M {'validé' if c['resultat'] == 'gagne' else 'non validé'}.")
+    return " ".join(parts)
+
+
+def basket_avis(reg: dict, bpron: dict, now: datetime) -> dict:
+    """The basketball matches of the day in the same "avis" list (official position and the M's visa; no M choice nor
+    Enquêteur yet), keyed basket-<id>."""
+    av = reg.setdefault("avis", {})
+    for mid, p in (bpron.get("paris_retenus") or {}).items():
+        key, ko = f"basket-{mid}", _aware(str(p.get("coup_envoi") or "").replace("Z", "+00:00"))
+        a = av.get(key) or {"match": p.get("match"), "competition": p.get("competition"), "coup_envoi": p.get("coup_envoi"),
+                            "sport": "basket"}
+        if ko and now < ko:
+            a["officielle"], a["visa_m"], a["enqueteur"], a["maj"] = _side(p), visa(p), [], now.isoformat()
+            if not p.get("pari"):
+                a["sans_position"] = p.get("raison") or "Aucune position retenue sur ce match."
+        if p.get("resultat") in SETTLED and a.get("officielle"):
+            a["officielle"]["resultat"] = p["resultat"]
+            a.setdefault("bilan", _who_was_right(a))
+        av[key] = a
     return reg

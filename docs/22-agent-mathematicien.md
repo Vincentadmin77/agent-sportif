@@ -58,3 +58,11 @@ plus probable, à 60 % ou plus ; sinon `pari: null` et la raison. Fiche `<jour>|
 changée ensuite, réglée au final, mesurée à part (`le_m_a_blanc`). Le même passage fige `cibles[<match>]` : les 5
 positions les plus probables (≥ 70 %) trop courtes avant le match, avec leur cote valable (au moins 1,50).
 Collection `registre/<jour>` : `fiches` (positions officielles, `choix_m`, `live_a_blanc`, recalculées) et `cibles`.
+
+## Avis par match (Vincent 28/10 14:35, page admin)
+`registre/<jour>.avis[<match_id>]` (basket : `basket-<id>`), recalculé à chaque exécution du registre jusqu'au coup
+d'envoi puis figé : `officielle` (pari, cote, proba = modèle, proba_marche, niveau, resultat), `visa_m` {feu
+vert|orange|rouge, raison}, `choix_m` (dès le passage H−45), `enqueteur` (phrases du contexte : absents, arbitre marqué,
+rotation, séries, météo), `sans_position` ; après le match `bilan` (qui avait raison). Feu : rouge si marché < 50 %,
+modèle ≥ 6 pts au-dessus ou ≥ 10 pts en dessous du marché ; vert si marché ≥ 60 % ; orange sinon. Seuils tirés du
+bilan 11-27/10 et de la rétro 5 saisons, non validés comme veto. Avis réels côte à côte, aucun dialogue inventé.
