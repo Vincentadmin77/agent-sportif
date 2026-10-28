@@ -304,7 +304,7 @@ def _utc(ko: datetime) -> str:
 def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
     """The bets a game offers (median odds over the books): the validated ones at 1.50 to 2.30, and the 5 best
     unvalidated ones by value that pass football's care for unvalidated markets."""
-    keep, trials = [], []
+    keep, trials, spares = [], [], []
     for r in rows:
         cote = r.get("cote_mediane", r["cote"])
         if cote < MIN_ODDS:
@@ -321,10 +321,12 @@ def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
             continue
         if (val < TRIAL_MIN_VALUE or r["proba"] < TRIAL_MIN_PROBA or cote > TRIAL_MAX_ODDS
                 or abs(r["proba"] - r["proba_marche"]) > MAX_DIVERGENCE):
+            if MIN_ODDS <= cote <= TRIAL_MAX_ODDS:  # only for a game's forced choice (owner 2026-10-28 evening)
+                spares.append({**b, "validation": NON_VALIDE, "_secours": True})
             continue
         trials.append({**b, "validation": NON_VALIDE})
     # the closest to the bookmakers first among those with value (a large gap is more often the model's error)
-    return keep + sorted(trials, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME]
+    return keep + sorted(trials, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME] + spares
 
 
 def _phrases(comp: str, pred: Prediction | None, home: str, away: str, rows: list[dict]) -> list[str]:
@@ -649,7 +651,8 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
     most likely validated "Confiance élevée" bet. matchs: the basket_matchs documents (page + this pass);
     offers: the bets of the games analysed by this pass."""
     from sportai.services.pronostic import (COUNT_MARGIN, FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
-                                            SELECTIONS_PER_DAY, _correct, blended, pick_ok)
+                                            SELECTIONS_PER_DAY, _correct, blended, pick_ok,
+                                            FORCE_CHOICE, PICK_ODDS, PICK_MIN_CHANCE)
 
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -669,7 +672,13 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
             picks[mid] = settle_pick({**prev, "fige": True}, m)
             continue
         if mid in offers and not _started(m, ko, now):
-            ok = [b for b in offers[mid] if _correct({**b, "_divergence_max": MAX_DIVERGENCE}) and pick_ok(b)]
+            ok = [b for b in offers[mid] if not b.get("_secours") and _correct({**b, "_divergence_max": MAX_DIVERGENCE})
+                  and pick_ok(b)]
+            forced = False
+            if not ok and FORCE_CHOICE:  # a choice on every game (owner 2026-10-28 evening), never a player bet
+                spare = [b for b in offers[mid] if PICK_ODDS[0] <= b["cote"] <= PICK_ODDS[1]
+                         and not b["basket"]["marche"].startswith("joueur_") and b.get("proba_marche") is not None]
+                ok, forced = spare, bool(spare)
             if ok:
                 b = None
                 for t in sorted({TIERS.get(x["basket"]["marche"], 2) for x in ok}):
@@ -680,7 +689,10 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
                 picks[mid] = {"pari": b["pari"], "marche": b["marche"], **base, "cote": b["cote"],
                               "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
                               "niveau": "Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne",
-                              "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"]}
+                              "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"],
+                              **({"choix_impose": True} if forced else {})}
+                if forced and c < PICK_MIN_CHANCE:
+                    picks[mid]["niveau"] = "Confiance faible"
             else:
                 picks[mid] = {"pari": None, **base, "raison": NO_PICK}
             continue

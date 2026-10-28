@@ -787,7 +787,11 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                 "paris_retenus": picks, "selections": selections,
                 "combines": build_combos(picks, selections, previous, now, page, started) if COMBOS else [],
                 "regle": PICKS_NOTE,
-                "classement_selections": SELECTION_RANK, "avertissement": WARNING_PICKS}
+                "classement_selections": SELECTION_RANK, "avertissement": WARNING_PICKS,
+                # owner 2026-10-28 17:54 Paris: the positions first taken on foreign bookmakers' odds (cards...) kept
+                # "entre parenthèses", settled like the others but outside the official ratio
+                **({"positions_entre_parentheses": {k: _settle_leg(v, page) for k, v in paren.items()}}
+                   if (paren := previous.get("positions_entre_parentheses")) else {})}
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
     kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]
