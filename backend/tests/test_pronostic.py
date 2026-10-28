@@ -345,7 +345,7 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
             l("c-d", "Victoire c", 1.60, 0.68, 0.63), l("e-f", "Victoire f", 2.10, 0.52, 0.48),
             l("g-h", "Victoire g", 2.60, 0.45, 0.40),  # odds above 2.20: no bet on g-h
             l("i-j", "Victoire i", 1.80, 0.66, 0.54),  # model 12 points above the bookmakers: no bet
-            l("k-l", "Victoire k", 1.55, 0.70, 0.68), l("m-n", "Victoire m", 1.65, 0.66, 0.62),
+            l("k-l", "Victoire k", 1.45, 0.70, 0.68), l("m-n", "Victoire m", 1.65, 0.66, 0.62),
             {**l("o-p", "p : moins de 1,5 buts", 1.70, 0.66, 0.62)},  # a team's under: paused
             l("q-r", "Victoire q", 2.80, 0.53, 0.50)]  # no upper limit when the chance is there
     doc = build_pronostic(legs, {}, None, now, "matin")
@@ -355,7 +355,7 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28():
     assert picks["2026-10-28-a-b"]["niveau"] == "Confiance élevée"
     assert picks["2026-10-28-e-f"]["niveau"] == "Confiance moyenne"
     assert picks["2026-10-28-q-r"]["pari"] == "Victoire q"
-    for mid in ("g-h", "i-j", "o-p", "k-l"):  # k-l: odds of 1.55, under 1.60
+    for mid in ("g-h", "i-j", "o-p", "k-l"):  # k-l: odds of 1.45, under 1.50
         assert picks[f"2026-10-28-{mid}"]["pari"] is None and picks[f"2026-10-28-{mid}"]["raison"]
     # the day's top pick: the most likely bet
     assert [(s["match"], s["titre"]) for s in doc["selections"]] == [("c-d", "Top confiance du jour")]
@@ -425,3 +425,12 @@ def test_no_both_teams_no_and_no_under_half_a_goal():
     assert pick_ok({**base, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})
     assert pick_ok({**base, "pari": "1re mi-temps : Lazio moins de 1,5 buts", "mi_temps": {**half, "ligne": 1.5}})
     assert not pick_ok({**base, "pari": "Moins de 0,5 buts"})
+
+
+def test_match_bets_from_1_50_but_top_pick_from_1_60():
+    now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
+    lg = {**leg("k-l", "Moins de 3,5 buts", 1.55, 0.72, 0.68, 4), "match_id": "2026-10-28-k-l",
+          "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": 0.72}
+    doc = build_pronostic([lg], {}, None, now, "matin")
+    assert doc["paris_retenus"]["2026-10-28-k-l"]["pari"] == "Moins de 3,5 buts"  # owner 2026-10-28: from 1.50
+    assert doc["selections"] == []  # the Top confiance stays at 1.60 or more

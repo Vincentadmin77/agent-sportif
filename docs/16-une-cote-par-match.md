@@ -9,7 +9,7 @@ d'avant reste tel quel.
 
 Règles (sportai/services/pronostic.py, `PICK_*`) :
 
-- cote de 1,60 au moins, sans plafond (Vincent, 27/10 12:52 : « la cote mini est de 1.60 mais pas de cote max ») :
+- cote de 1,50 au moins depuis le 28/10 (1,60 avant), sans plafond (Vincent, 27/10 12:52 : « pas de cote max » ; 28/10 10:28 : « le meilleur ratio possible et une régularité » : rejeu du 11 au 26/10, 62 % des cotes retenues passées à 1,50 contre 54 % à 1,60 ; les 18 cotes entre 1,50 et 1,59 : 14 passées). Le Top confiance du jour reste à 1,60 minimum (4 passées, 0 perdue à 1,60 ; 6 passées, 3 perdues à 1,50) :
   une grosse cote passe seulement si sa chance est vraiment forte (« les agents sont là pour trouver du réalisme, pas
   du rêve ») ;
 - confiance = moitié chance du modèle (après la correction de la revue), moitié chance des bookmakers ; au moins 50 %,
