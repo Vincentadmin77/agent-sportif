@@ -239,10 +239,19 @@ def top_ok(pick: dict) -> bool:
         and not pick.get("buteur")
 
 
+# Owner 2026-10-28 15:57: three axes first, "il faut rester là-dessus de base": the result (win, double chance, draw
+# no bet), the number of goals in the match, both teams score. Other markets only when none of these qualifies.
+PRIORITY_MARKETS = {"Résultat du match", "Double chance", "Remboursé si nul", "Nombre de buts",
+                    "Les deux équipes marquent"}
+
+
 def _best(ok: list[dict]) -> dict | None:
     """Scorer positions rank like counts: COUNT_MARGIN surer than the best result/goals position, or, with none,
     taken when they passed their own rule (scorer_pick_ok)."""
     key = lambda l: (blended(l), l["cote"])
+    first = [l for l in ok if l.get("marche") in PRIORITY_MARKETS and not l.get("mi_temps")]
+    if first:  # owner 2026-10-28: result, goals in the match, both teams score first; the rest only without them
+        return max(first, key=key)
     main = [l for l in ok if not l.get("comptage") and not l.get("buteur")]
     count = max((l for l in ok if l.get("comptage") or l.get("buteur")), key=key, default=None)
     if main:

@@ -248,7 +248,8 @@ def price(pred: Prediction, quotes: dict[tuple, dict[str, float]]) -> list[dict]
         rows.append({"marche_cle": market, "selection": sel, "ligne": line, "cote": round(shown_best, 2),
                      "cote_mediane": round(shown_med, 2), "proba": round(p, 4),
                      "proba_marche": round(sum(fair) / len(fair), 4), "valeur": round(p * best - 1, 4),
-                     "valeur_mediane": round(p * med - 1, 4), "n_bookmakers": len(books)})
+                     "valeur_mediane": round(p * med - 1, 4), "n_bookmakers": len(books),
+                     **({"cote_reference": round(med, 2)} if shown_med != med else {})})
     return sorted(rows, key=lambda r: -r["valeur"])
 
 
@@ -313,7 +314,8 @@ def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
         b = {"pari": label(r["marche_cle"], r["selection"], r["ligne"], home, away),
              "marche": MARKET_NAMES[r["marche_cle"]], "cote": cote, "proba": r["proba"],
              "proba_marche": r["proba_marche"], "valeur": val, "valide": ok,
-             "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"]}}
+             "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"]},
+             **({"cote_reference": r["cote_reference"]} if "cote_reference" in r else {})}
         if ok:
             keep.append(b)
             continue
