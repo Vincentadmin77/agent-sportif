@@ -56,3 +56,11 @@ def test_position_taken_at_the_french_price():
     assert (got["cote"], got["bookmaker"], got["cote_reference"]) == (1.72, "pmu_fr", 1.92) and "_cle" not in got
     assert french_price(dict(leg), {}) is None  # no French site: no position on this bet
     assert french_price({"cote": 1.62, "bookmaker": "Bet365"}, {"totals:under@3.5": [1.72, "pmu_fr"]}) is None  # cards
+
+
+def test_french_double_chance_and_draw_no_bet_mapping():
+    from sportai.connectors.the_odds_api import _map
+    assert _map("draw_no_bet", {"name": "Parma"}, "Parma", "Udinese") == ("dnb", "home", None)
+    assert _map("double_chance", {"name": "Parma or Draw"}, "Parma", "Udinese") == ("double_chance", "1X", None)
+    assert _map("double_chance", {"name": "Draw/Away"}, "Parma", "Udinese") == ("double_chance", "X2", None)
+    assert _map("double_chance", {"name": "Parma or Udinese"}, "Parma", "Udinese") == ("double_chance", "12", None)

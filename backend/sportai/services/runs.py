@@ -21,7 +21,8 @@ from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
-from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events, french_only, is_french
+from sportai.connectors.the_odds_api import (FRENCH_EXTRA_MARKETS, FRENCH_EXTRA_WITHIN, TheOddsApiProvider,
+                                             fixtures_from_events, french_only, is_french)
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import COTE_MIN, SelectionConfig
 from sportai.engine.football import dixon_coles as dc
@@ -234,6 +235,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                 try:
                     odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions="fr", markets="h2h,totals")
                     quotes += [q for q in odds_p.odds(competition) if is_french(q.bookmaker)]
+                    if FRENCH_EXTRA_MARKETS:
+                        quotes += [q for q in _french_extra(odds_p, competition, window, now) if is_french(q.bookmaker)]
                     _mark(db, odds_p.name, quota=odds_p.last_quota)
                     odds_source = "+".join(x for x in (odds_source, odds_p.name) if x)
                 except ProviderUnavailable as e:  # no French odds: nothing will be proposed on this league
@@ -462,6 +465,20 @@ def count_markets(competition: str, raw: list[dict], window, fixtures: list[dict
         out.append({**f, "comptages_cotes": rows,
                     "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in FEED]}
                    if rows else f)
+    return out
+
+
+def _french_extra(odds_p: TheOddsApiProvider, competition: str, fixtures, now: datetime):
+    """Double chance, draw no bet and both teams score at the French sites, for the matches of the last pass."""
+    events = {(normalise(e["home_team"]), normalise(e["away_team"])): e["id"] for e in odds_p.last_events}
+    out = []
+    for f in fixtures:
+        event_id = events.get((normalise(f.home), normalise(f.away)))
+        if f.status == "scheduled" and now < f.kickoff <= now + FRENCH_EXTRA_WITHIN and event_id:
+            try:
+                out += odds_p.event_odds(competition, event_id, FRENCH_EXTRA_MARKETS)
+            except ProviderUnavailable as e:  # the match keeps its 1X2 and totals
+                print(f"French extra markets {f.home} - {f.away}: {str(e)[:120]}", file=sys.stderr)
     return out
 
 

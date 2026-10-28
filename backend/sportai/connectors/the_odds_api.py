@@ -42,6 +42,13 @@ SPORT_KEYS = {
 NBA_SPORT_KEY = "basketball_nba"
 
 
+# The French result and goal markets the league endpoint lacks, read match by match (1 credit a market a match), at
+# the last pass before kick-off only (FRENCH_EXTRA_WITHIN). Checked 2026-10-28 on Parma - Udinese: region fr returns
+# both teams score (NetBet) but no double chance nor draw no bet, so only btts is asked (1 credit a match).
+FRENCH_EXTRA_MARKETS = os.getenv("FRENCH_EXTRA_MARKETS", "btts")
+FRENCH_EXTRA_WITHIN = timedelta(minutes=75)
+
+
 def french_only() -> bool:
     return os.getenv("FRENCH_ODDS_ONLY", "1") != "0"
 
@@ -154,6 +161,16 @@ def _map(key: str, oc: dict, home: str, away: str):
     if key == "btts":
         sel = {"Yes": "yes", "No": "no"}.get(oc["name"])
         return None if sel is None else ("btts", sel, None)
+    if key == "draw_no_bet":
+        sel = {home: "home", away: "away"}.get(oc["name"])
+        return None if sel is None else ("dnb", sel, None)
+    if key == "double_chance":
+        name = oc["name"]
+        sides = frozenset(s for s, words in (("home", (home, "Home")), ("draw", ("Draw", "Tie")), ("away", (away, "Away")))
+                          if any(w in name for w in words))
+        sel = {frozenset({"home", "draw"}): "1X", frozenset({"draw", "away"}): "X2",
+               frozenset({"home", "away"}): "12"}.get(sides)
+        return None if sel is None else ("double_chance", sel, None)
     if key == "totals" and oc.get("point") is not None:
         return ("totals", oc["name"].lower(), float(oc["point"]))
     return None
