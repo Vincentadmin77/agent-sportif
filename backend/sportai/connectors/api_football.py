@@ -205,6 +205,7 @@ class ApiFootballProvider:
             mode="real", status=_STATUS.get(f["fixture"]["status"]["short"], "scheduled"),
             home_goals=f["goals"]["home"], away_goals=f["goals"]["away"],
             home_id=f["teams"]["home"].get("id"), away_id=f["teams"]["away"].get("id"),
+            referee=f["fixture"].get("referee"),
         )
 
 

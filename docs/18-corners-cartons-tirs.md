@@ -47,6 +47,30 @@ Les résultats bruts sont dans `backtest-corners.json`, `backtest-cartons.json`,
 - **Paris retenus.** Les paris validés rejoignent les autres paris validés du match. Les autres sont « à l'essai », avec les mêmes règles que la mi-temps.
 - **Règlement.** Par l'agent, sur les statistiques finales du suivi en direct (`direct.stats` de la page : corners, tirs, tirs cadrés, cartons jaunes et rouges). La page ne règle pas elle-même ces paris.
 
+## Arbitre (28 octobre 2026)
+
+**Question de Vincent :** « est-ce que la Top confiance tient compte de l'arbitre ? » (Genoa - Juventus, cartons moins de 4,5, arbitre Doveri). Avant ce jour, non : l'arbitre n'était qu'une phrase du contexte.
+
+**Facteur arbitre.** Les cartons attendus des deux équipes et du match sont multipliés par un facteur : les cartons par match de l'arbitre dans le championnat, rapprochés de la moyenne du championnat de l'équivalent de 20 matchs, divisés par cette moyenne. Un arbitre inconnu a un facteur de 1. Sur l'échantillon, le facteur va de 0,89 à 1,10 (10e et 90e centiles).
+
+**Backtest.** Le script est `backend/scripts/backtest_referee.py`. Il reprend les mêmes 2 614 matchs et le même calcul semaine par semaine, et compare pari par pari le modèle avec arbitre au modèle sans arbitre.
+
+Résultats selon la force du rapprochement vers la moyenne :
+
+| Rapprochement | Nettement mieux | Moins bien |
+|---|---|---|
+| 5 matchs | 2 paris sur 29 | aucun |
+| 10 matchs | 6 sur 29 | aucun |
+| 20 matchs | 14 sur 29 (totaux 2,5 à 5,5, cartons de l'équipe à l'extérieur) | aucun |
+
+Les cartons jaunes seuls donnent le même résultat : 14 sur 29 à 20 matchs.
+
+La valeur de 20 a été choisie sur ces mêmes saisons de test, donc le gain est un peu optimiste. Les résultats sont dans `backtest-arbitre-cartons.json` et `backtest-arbitre-jaunes.json`.
+
+**En production.** L'arbitre vient du flux des matchs (`Fixture.referee`). L'historique de chaque arbitre est compté sur les matchs du cache, par championnat. Chaque ligne de cartons porte `arbitre` {nom, matchs, facteur}.
+
+Exemple : Genoa - Juventus, avec Doveri (104 matchs, facteur 0,91). Pour « cartons moins de 4,5 », le modèle passe de 64,7 % à 71,1 %, contre 66,0 % pour les bookmakers.
+
 ## Résultats détaillés
 
 « Zone ≥ 60 % » : les matchs où le modèle donnait au moins 60 %, c'est-à-dire ce qu'aurait donné une Confiance élevée (prédit → observé).

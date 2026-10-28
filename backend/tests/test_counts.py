@@ -72,3 +72,31 @@ def test_pricing_from_the_cache(tmp_path, monkeypatch):
     assert all(r["marche"] == "Corners" for r in rows)
     # statistics not refreshed for months: no price
     assert price_counts(item, "A", "B", "FR1", start + timedelta(days=600), str(tmp_path)) == []
+
+
+def test_a_strict_referee_raises_the_cards_chances(tmp_path, monkeypatch):
+    from sportai.services import comptages
+
+    teams = ["A", "B", "C", "D"]
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    ms = []
+    for i in range(400):
+        h, a = teams[i % 4], teams[(i + 1 + i // 4) % 4]
+        if h == a:
+            continue
+        strict = i % 2 == 0
+        stats = {"home": {"jaunes": 3 if strict else 1}, "away": {"jaunes": 3 if strict else 1}}
+        ms.append({"kickoff": start + timedelta(days=i), "home": h, "away": a, "stats": stats,
+                   "referee": "Paul Strict, France" if strict else "Luc Doux, France"})
+    monkeypatch.setattr(comptages, "history", lambda folder, day: {"FR1": ms})
+    comptages.model.cache_clear()
+    item = {"bookmakers": [{"name": "X", "bets": [
+        {"name": "Cards Over/Under", "values": [{"value": "Over 4.5", "odd": "1.90"}, {"value": "Under 4.5", "odd": "1.90"}]}]}]}
+    now = start + timedelta(days=401)
+    p = {ref: {r["pari"]: r for r in price_counts(item, "A", "B", "FR1", now, str(tmp_path), ref)}
+         for ref in (None, "P. Strict", "Luc Doux, France", "Inconnu Total")}
+    comptages.model.cache_clear()
+    over = "Cartons : plus de 4,5 dans le match"
+    assert p["P. Strict"][over]["proba"] > p[None][over]["proba"] > p["Luc Doux, France"][over]["proba"]
+    assert p["P. Strict"][over]["arbitre"]["facteur"] > 1 and "arbitre" not in p[None][over]
+    assert p["Inconnu Total"][over]["arbitre"]["facteur"] == 1.0
