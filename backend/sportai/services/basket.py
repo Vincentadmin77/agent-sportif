@@ -314,7 +314,8 @@ def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
                 or abs(r["proba"] - r["proba_marche"]) > MAX_DIVERGENCE):
             continue
         trials.append({**b, "validation": NON_VALIDE})
-    return keep + sorted(trials, key=lambda b: -b["valeur"])[:TRIAL_PER_GAME]
+    # the closest to the bookmakers first among those with value (a large gap is more often the model's error)
+    return keep + sorted(trials, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME]
 
 
 def _phrases(comp: str, pred: Prediction | None, home: str, away: str, rows: list[dict]) -> list[str]:
@@ -392,7 +393,7 @@ def player_bets(roster: BP.Roster, game: dict, odds_entry: dict) -> list[dict]:
                     "valeur": r["valeur_mediane"], "valide": False, "validation": NON_VALIDE,
                     "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"],
                                "joueur_id": r["joueur_id"]}})
-    return out[:TRIAL_PER_GAME]
+    return sorted(out, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME]
 
 
 def _box(game_id: str, m: dict) -> list[dict] | None:
@@ -432,6 +433,11 @@ def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict |
     win = {r["selection"]: r["cote_mediane"] for r in rows if r["marche_cle"] == "winner"}
     if {"home", "away"} <= win.keys():
         doc["cotes_1x2"] = {"domicile": win["home"], "exterieur": win["away"]}
+    # house closing odds: rewritten at every pass before tip-off, so the last one (45 min before) is the closing line,
+    # to measure the model against the market over the coming weeks
+    doc["cotes_cloture"] = {"maj": now.isoformat(), "lignes": [
+        {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"], "cote": r["cote_mediane"],
+         "proba_marche": r["proba_marche"], "proba": r["proba"]} for r in rows]}
     return doc, bets(comp, rows, home, away)
 
 
