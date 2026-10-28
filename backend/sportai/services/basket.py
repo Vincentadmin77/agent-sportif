@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from sportai.connectors.api_basketball import DROPPED, FINISHED, LIVE, NOT_STARTED, kickoff, season_for
 from sportai.engine.basketball.ratings import Game, Prediction, RatingsModel, rest_flags
+from sportai.services import basket_players as BP
 
 CACHE = Path(os.getenv("BASKET_CACHE", "/mnt/project-files/agent-sportif/data/api-basketball"))
 CACHE_MAX_AGE = timedelta(hours=6)
@@ -335,6 +336,73 @@ def _phrases(comp: str, pred: Prediction | None, home: str, away: str, rows: lis
     return out
 
 
+# ---------------------------------------------------------------- player bets (NBA, services/basket_players.py)
+# Player points, 3-pointers, rebounds, points+assists, points+rebounds+assists and points milestones, priced by the
+# player model on every cached box score. All "non validé", same care as the other unvalidated markets.
+PLAYER_COMPS = ("NBA",)
+PLAYER_LEAGUE = 12  # the feed's NBA league id
+BOX_BUDGET = 40  # box scores fetched at most per pass (about 10 to 15 new games a night)
+
+
+def fetch_boxes(api, season, games: list[dict], budget: int = BOX_BUDGET) -> int:
+    """Box scores of finished games missing from the shared cache (players_nba_<season>.json.gz)."""
+    path = BP._path(str(season))
+    store = json.load(gzip.open(path, "rt")) if path.exists() else {}
+    todo = [g["id"] for g in games if g["status"]["short"] in FINISHED and str(g["id"]) not in store][:budget]
+    got = 0
+    for gid in todo:
+        try:
+            box = api.player_stats(gid)
+        except Exception as e:  # noqa: BLE001 - the next pass retries
+            print(f"box score {gid} unavailable ({str(e)[:80]})", file=sys.stderr)
+            continue
+        if box:
+            store[str(gid)] = box
+            got += 1
+    if got:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        with gzip.open(tmp, "wt") as f:
+            json.dump(store, f)
+        tmp.replace(path)
+    return got
+
+
+def _roster(api, comp: str, day: date, raw: list[list[dict]]) -> BP.Roster | None:
+    try:
+        seasons = [str(s) for s in _seasons(comp, day)]
+        fetch_boxes(api, seasons[-1], raw[-1])
+        return BP.Roster(seasons, dict(zip(seasons, raw)))
+    except Exception as e:  # noqa: BLE001 - the game bets stay without the player ones
+        print(f"{comp} player model unavailable ({str(e)[:120]})", file=sys.stderr)
+        return None
+
+
+def player_bets(roster: BP.Roster, game: dict, odds_entry: dict) -> list[dict]:
+    rows = BP.price(roster, [game["teams"]["home"]["id"], game["teams"]["away"]["id"]],
+                    BP.parse_odds(odds_entry.get("bookmakers") or []))
+    out = []
+    for r in rows:
+        cote = r["cote_mediane"]
+        if (cote < MIN_ODDS or cote > TRIAL_MAX_ODDS or r["valeur_mediane"] < TRIAL_MIN_VALUE
+                or abs(r["proba"] - r["proba_marche"]) > MAX_DIVERGENCE):
+            continue
+        out.append({"pari": BP.label(r), "marche": BP.MARKET_NAMES[r["marche_cle"].removeprefix("joueur_")],
+                    "cote": cote, "proba": r["proba"], "proba_marche": r["proba_marche"],
+                    "valeur": r["valeur_mediane"], "valide": False, "validation": NON_VALIDE,
+                    "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"],
+                               "joueur_id": r["joueur_id"]}})
+    return out[:TRIAL_PER_GAME]
+
+
+def _box(game_id: str, m: dict) -> list[dict] | None:
+    try:
+        path = BP._path(str(season_for("NBA", date.fromisoformat(m["jour"]))))
+        return json.load(gzip.open(path, "rt")).get(str(game_id)) if path.exists() else None
+    except Exception:  # noqa: BLE001 - settled at a later pass
+        return None
+
+
 def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict | None, current: dict | None,
               now: datetime) -> tuple[dict, list[dict]]:
     """basket_matchs/<id> of a game not started yet, merged into what earlier passes wrote, and the bets it offers."""
@@ -387,6 +455,7 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
         raw = [(load_season(api, comp, s, i == HISTORY_SEASONS - 1, now), i == HISTORY_SEASONS - 1)
                for i, s in enumerate(_seasons(comp, day))]
         preds = predictions(history_games(raw, comp), games)
+        roster = _roster(api, comp, day, [r for r, _ in raw]) if comp in PLAYER_COMPS else None
         for g in games:
             key = doc_key(g)
             odds = None
@@ -396,6 +465,8 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
                 except Exception as e:  # noqa: BLE001 - the game is still listed, without odds
                     print(f"odds unavailable for game {key} ({str(e)[:120]})", file=sys.stderr)
             docs[key], offers[key] = build_doc(comp, g, preds.get(g["id"]), odds, current.get(key), now)
+            if roster is not None and odds:
+                offers[key] += player_bets(roster, g, odds)
         notes.append(f"{comp} completed ({len(games)} match(s))")
     return docs, offers, notes
 
@@ -462,6 +533,12 @@ def update_scores(api, comps: list[str], current: dict[str, dict], now: datetime
                 new = follow(g, current[key], now)
                 if new is not None:
                     docs[key] = new
+        done = [g for g in games if g["status"]["short"] in FINISHED and (g.get("league") or {}).get("id") == PLAYER_LEAGUE]
+        if done:
+            try:
+                fetch_boxes(api, season_for("NBA", day), done)
+            except Exception as e:  # noqa: BLE001 - the player bets are settled at a later pass
+                print(f"basket box scores {day}: {str(e)[:120]}", file=sys.stderr)
     return docs
 
 
@@ -486,6 +563,9 @@ def settle_pick(pick: dict, m: dict | None) -> dict:
     r = pick.get("regle") or {}
     if m.get("statut") != "termine" or not m.get("score") or not r:
         return pick
+    if str(r.get("marche", "")).startswith("joueur_"):
+        res = BP.settle({**r, "marche_cle": r["marche"]}, _box(pick["match_id"], m))
+        return {**pick, "resultat": res} if res else pick
     hp, ap = (int(x) for x in str(m["score"]).replace(" ", "").split("-"))
     return {**pick, "resultat": settle(r["marche"], r["selection"], r["ligne"], hp, ap)}
 

@@ -417,3 +417,21 @@ def test_plan_schedules_basketball_steps():
     assert steps[("2026-10-27T19:30:00+00:00", "m15")] == ["IT1"]
     assert ap._basket_final_days({"x": {"sport": "basket", "jour": "2026-10-27"}}, {},
                                  datetime(2026, 10, 28, 4, 30, tzinfo=timezone.utc)) == ["2026-10-27"]
+
+
+def test_player_bets_kept_in_range_and_settled_from_the_box_score(monkeypatch):
+    rows = [{"marche_cle": "joueur_pts", "joueur": "J. Doe", "joueur_id": "7", "selection": "over", "ligne": 20.5,
+             "cote_mediane": c, "proba": p, "proba_marche": pm, "valeur_mediane": round(p * c - 1, 4)}
+            for c, p, pm in ((1.90, 0.58, 0.52), (2.60, 0.45, 0.40), (1.80, 0.62, 0.45))]
+    monkeypatch.setattr(basket.BP, "price", lambda roster, ids, quotes: rows)
+    game = {"id": 5, "teams": {"home": {"id": 1}, "away": {"id": 2}}}
+    out = basket.player_bets(None, game, {"bookmakers": []})
+    assert [b["cote"] for b in out] == [1.90]  # 2.60 over 2.30, the third too far from the bookmakers
+    assert out[0]["pari"] == "J. Doe : plus de 20,5 points" and not out[0]["valide"]
+    pick = {"pari": out[0]["pari"], "match_id": "5", "regle": out[0]["basket"]}
+    box = [{"player": {"id": 7}, "minutes": "34:10", "points": 24}]
+    monkeypatch.setattr(basket, "_box", lambda gid, m: box)
+    done = {"statut": "termine", "score": "110-100", "jour": "2026-10-28"}
+    assert basket.settle_pick(pick, done)["resultat"] == "gagne"
+    monkeypatch.setattr(basket, "_box", lambda gid, m: None)
+    assert "resultat" not in basket.settle_pick(pick, done)  # box score not fetched yet: settled later

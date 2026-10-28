@@ -47,7 +47,12 @@ Un passage basket seul écrit aussi `etat.json` et `manifest.json` (`matchs: []`
   et marché d'accord), figée au passage H−45 (ou au coup d'envoi) puis reprise telle quelle de `basket_pronostic`.
   Marchés les plus fiables d'abord (`TIERS`) : vainqueur et handicap, puis 1er quart-temps, puis totaux de points ;
   un marché moins fiable n'est retenu que s'il est au moins 10 points plus sûr (`COUNT_MARGIN`). Plus de Top
-  confiance ni de combiné (`SELECTIONS_PER_DAY = 0` côté foot, code gardé). `valide` n'est
+  confiance ni de combiné (`SELECTIONS_PER_DAY = 0` côté foot, code gardé).
+- Positions joueurs NBA (`services/basket_players.py`, depuis le 28/10) : points, paniers à 3 points, rebonds,
+  points + passes, points + rebonds + passes et paliers de points, ajoutées aux candidates de chaque match NBA
+  (« non validé », cote 1,50-2,30, valeur ≥ 3 %, écart ≤ 10 points avec les bookmakers, 5 au plus par match, rang 2
+  comme les totaux). Les feuilles de match manquantes sont téléchargées à chaque passage (`fetch_boxes`, 40 au plus,
+  cache `players_nba_<saison>.json.gz`) et servent au règlement : joueur absent = remboursé. `valide` n'est
   vrai que pour le vainqueur NBA. Hors bilan officiel.
 - Règlement : `scores --final` et `live` mettent à jour statut et score de `basket_matchs` et écrivent `resultat`
   (gagne / perdu / rembourse) sur chaque pari retenu de `basket_pronostic`.
