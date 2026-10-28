@@ -277,11 +277,23 @@ def _forced(legs: list[dict]) -> dict | None:
                 and not (l.get("mi_temps") and blended(l) < HALF_MIN_CHANCE))
     ok = [l for l in legs if allowed(l)]
     first = [l for l in ok if l.get("marche") in PRIORITY_MARKETS and not l.get("mi_temps")]
-    return max(first or ok, key=lambda l: (blended(l), l["cote"]), default=None)
+    # owner 2026-10-28 17:57 Paris: "on reste vraiment sur ces axes-là" on the French odds; the rest goes in brackets
+    return max(first, key=lambda l: (blended(l), l["cote"]), default=None)
+
+
+def _brackets(foreign: list[dict], page: dict[str, dict], previous: dict, now: datetime, day, started) -> dict:
+    """Owner 2026-10-28: beside each French position, the position the same analysis takes on any bookmaker and any
+    market, "entre parenthèses": settled like the others, outside the official ratio. Fixed with the match."""
+    old = previous.get("positions_entre_parentheses") or {}
+    picks, _ = build_picks(foreign, page, {"paris_retenus": old}, now, day, started, lambda l: False, force=False)
+    out = {k: {**v, "entre_parentheses": True} for k, v in picks.items() if v.get("pari")}
+    for k, v in old.items():  # an earlier bracketed position of a match no longer analysed stays and settles
+        out.setdefault(k, _settle_leg(v, page))
+    return out
 
 
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
-                started, blocked) -> tuple[dict[str, dict], list[dict]]:
+                started, blocked, force: bool = True) -> tuple[dict[str, dict], list[dict]]:
     """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's official pick(s)."""
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -306,7 +318,7 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         if best:
             picks[mid] = {**_pick(best), "fige": frozen(best)}
             continue
-        forced = _forced([l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]) if FORCE_CHOICE else None
+        forced = _forced([l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]) if FORCE_CHOICE and force else None
         if forced:
             c = blended(forced)
             picks[mid] = {**_pick(forced), "fige": frozen(forced), "choix_impose": True,
@@ -447,7 +459,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 latest[f["match_id"]] = (run, f)
                 if f["match_id"] in priced:
                     goals_run[f["match_id"]] = run.id
-    legs = []
+    legs, foreign = [], []
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
@@ -588,6 +600,10 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 trials.append({**leg, "validation": NON_VALIDE})
         if french_only():  # French rule (owner 2026-10-28): the same analysis, the position at a French site's price
             fr = f.get("cotes_fr") or {}
+            # the same bets at the price the analysis saw (any bookmaker, any market): the bracketed position
+            mine = [l for l in legs if l["match_id"] == doc_id(ko, home, away)]
+            foreign += [{**l, "_etranger": True} for l in mine + sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
+                        + sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]]
             legs = [l for l in legs if l["match_id"] != doc_id(ko, home, away)] + [
                 x for l in legs if l["match_id"] == doc_id(ko, home, away) if (x := french_price(l, fr))]
             trials = [x for l in trials if (x := french_price(l, fr))]
@@ -597,6 +613,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
         legs += [l for l in spares if PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])]
+    legs += foreign
     for l in legs:
         l.pop("_cle", None)
     return legs
@@ -762,7 +779,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         return status != "a_venir" or datetime.fromisoformat(leg["coup_envoi"]) <= now
 
     spares = [l for l in legs if l.get("_secours")]  # forced choices only (legs_from_db)
-    legs = [l for l in legs if not l.get("_secours")]
+    foreign = [l for l in legs if l.get("_etranger")]  # bracketed positions only (legs_from_db)
+    legs = [l for l in legs if not l.get("_secours") and not l.get("_etranger")]
     open_legs = [l for l in legs if not started(l) and _correct(l)]
     notes = []
     # a team that may rest players tonight for its next match: the bets needing it to win or score are kept out of
@@ -790,8 +808,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                 "classement_selections": SELECTION_RANK, "avertissement": WARNING_PICKS,
                 # owner 2026-10-28 17:54 Paris: the positions first taken on foreign bookmakers' odds (cards...) kept
                 # "entre parenthèses", settled like the others but outside the official ratio
-                **({"positions_entre_parentheses": {k: _settle_leg(v, page) for k, v in paren.items()}}
-                   if (paren := previous.get("positions_entre_parentheses")) else {})}
+                **({"positions_entre_parentheses": paren} if (paren := _brackets(foreign, page, previous, now, day,
+                                                                                  started)) else {})}
 
     # Top 3: keep what was shown for matches under way, fill the rest from the matches to come.
     kept = [_settle_leg({**l, "verrouille": True}, page) for l in previous.get("top3") or [] if started(l)]
