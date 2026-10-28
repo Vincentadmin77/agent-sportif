@@ -88,7 +88,7 @@ def live_match(score="0 - 0", statut="en_direct"):
 
 def test_targets_give_the_odds_from_which_a_short_bet_is_worth_it():
     t = R.targets(live_match())
-    assert t["Plus de 1,5 buts"]["cote_valable"] == round(1.03 / 0.78, 2) and "Victoire A" not in t
+    assert t["Plus de 1,5 buts"]["cote_valable"] == 1.50 and "Victoire A" not in t  # never under the 1.50 floor
     assert t["Joe Nine buteur"]["cote_valable"] == round(1.03 / 0.475, 2)
 
 
@@ -108,10 +108,31 @@ def test_live_note_only_when_worth_it_and_in_his_match():
 
 def test_live_notes_go_to_the_registry_apart_and_settle():
     m = {**live_match(score="1 - 1", statut="termine"), "feuille_de_match": {"buts": []}}
-    m["live_a_blanc"] = [{"pari": "Plus de 1,5 buts", "p_avant": 0.78, "cote_avant": 1.25, "cote_valable": 1.32,
+    m["live_a_blanc"] = [{"pari": "Plus de 1,5 buts", "p_avant": 0.78, "cote_avant": 1.25, "cote_valable": 1.50,
                           "heure": at(20).isoformat(), "minute": 46, "score": "0 - 0", "cote": 2.25, "p_direct": 0.5}]
     reg = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(23), "abc")
     (f,) = reg["fiches"].values()
     assert f["live_a_blanc"] and f["resultat"] == "gagne" and f["gain_unite"] == 1.25
     rep = R.report([reg], min_group=1)
     assert rep["reel"]["global"]["positions"] == 0 and rep["direct_a_blanc"]["global"]["validees"] == 1
+
+
+def test_the_m_chooses_once_from_the_45_min_pass_and_keeps_it_apart():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "a_venir",
+         "tous_marches": {"analyses": [
+             {"pari": "Victoire A", "cote": 1.55, "proba": 0.6, "proba_marche": 0.62},
+             {"pari": "Plus de 2,5 buts", "cote": 1.60, "proba": 0.6, "proba_marche": 0.61},
+             {"pari": "Victoire B", "cote": 6.0, "proba": 0.15, "proba_marche": 0.14}]}}
+    day = {"jour": "2026-10-29", "paris_retenus": {}}
+    assert R.update({}, day, {"m1": m}, at(17), "abc")["fiches"] == {}  # no 45 min pass yet
+    m["passages"] = {"m45": at(18).isoformat()}
+    reg = R.update({}, day, {"m1": m}, at(18), "abc")
+    f = reg["fiches"]["2026-10-29|m1|M"]
+    assert f["pari"] == "Victoire A" and f["choix_m"] and f["p_marche"] == 0.62
+    assert reg["cibles"] == {"m1": []}  # nothing very likely priced under 1.50 here
+    m["tous_marches"]["analyses"][1]["proba_marche"] = 0.70  # later odds never change the choice
+    reg = R.update(reg, day, {"m1": {**m, "statut": "termine", "score": "2 - 0"}}, at(22), "abc")
+    f = reg["fiches"]["2026-10-29|m1|M"]
+    assert f["pari"] == "Victoire A" and f["resultat"] == "gagne" and f["gain_unite"] == 0.55
+    rep = R.report([reg], min_group=1)
+    assert rep["reel"]["global"]["positions"] == 0 and rep["le_m_a_blanc"]["global"]["validees"] == 1

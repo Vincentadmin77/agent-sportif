@@ -50,3 +50,11 @@ reçoit sa **cote valable** = 1,03 / chance (`registre.targets`). En direct, à 
 défaut au moins un tir ; sans forme connue : laissé). Le registre les reprend (`live_a_blanc: true`, réglées au
 final) et le rapport les mesure à part (`direct_a_blanc`). Jamais affiché, jamais compté comme position. Seuils non
 testés : on juge après 100 cas.
+
+## Les choix du M à blanc (Vincent 28/10 14:04 : un onglet comme le joueur pro)
+À la première exécution du registre après le passage H−45 et avant le coup d'envoi, chaque match reçoit la position
+du M (`registre.m_choice`) : marchés résultat et buts, cote 1,50-2,30, la sélection que le marché sans marge voit la
+plus probable, à 60 % ou plus ; sinon `pari: null` et la raison. Fiche `<jour>|<match>|M`, `choix_m: true`, jamais
+changée ensuite, réglée au final, mesurée à part (`le_m_a_blanc`). Le même passage fige `cibles[<match>]` : les 5
+positions les plus probables (≥ 70 %) trop courtes avant le match, avec leur cote valable (au moins 1,50).
+Collection `registre/<jour>` : `fiches` (positions officielles, `choix_m`, `live_a_blanc`, recalculées) et `cibles`.

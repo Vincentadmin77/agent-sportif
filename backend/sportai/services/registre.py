@@ -72,7 +72,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
            sport: str = "foot") -> dict:
     """The day's registry document after one pass: new frozen positions recorded, closing odds and results added."""
     day = pron.get("jour")
-    reg = {"jour": day, "sport": sport, "fiches": {k: dict(v) for k, v in (registre.get("fiches") or {}).items()}}
+    reg = {"jour": day, "sport": sport, "fiches": {k: dict(v) for k, v in (registre.get("fiches") or {}).items()},
+           "cibles": dict(registre.get("cibles") or {})}
     if pron.get("recalcule"):
         return reg  # rebuilt history: see import_rebuilt
     r = rules()
@@ -81,7 +82,7 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
             continue
         rid = record_id(day, p.get("match_id"), p["pari"])
         same_match = [f for f in reg["fiches"].values()
-                      if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc")]
+                      if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc") and not f.get("choix_m")]
         if rid not in reg["fiches"] and same_match:  # the match already has a frozen position: log, never replace
             first = same_match[0]
             log = {"heure": now.isoformat(), "champ": "pari", "avant": first["pari"], "apres": p["pari"]}
@@ -110,7 +111,7 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
         if p.get("resultat") in SETTLED:
             f["resultat"] = p["resultat"]
     for f in reg["fiches"].values():
-        if f.get("live_a_blanc"):
+        if f.get("live_a_blanc") or f.get("choix_m"):
             continue
         m = matchs.get(f["match_id"]) or {}
         ko = _aware(f.get("coup_envoi"))
@@ -123,7 +124,7 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
                 f["clv"] = round(f["cote_prise"] / cote - 1, 4) if f.get("cote_prise") else None
         if f.get("resultat") in SETTLED and not f.get("live_a_blanc"):
             f["gain_unite"] = _gain(f)
-    return live_records(reg, matchs, code_version)
+    return m_records(live_records(reg, matchs, code_version), matchs, now, code_version)
 
 
 def import_rebuilt(pron: dict, sport: str = "foot") -> dict:
@@ -198,7 +199,8 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     """Real records and rebuilt ones measured apart, overall and per confidence level, market and competition."""
     fiches = [f for reg in registres for f in (reg.get("fiches") or {}).values()]
     out = {}
-    for label, rows in (("reel", [f for f in fiches if not f.get("recalcule") and not f.get("live_a_blanc")]),
+    for label, rows in (("reel", [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m"))]),
+                        ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")]),
                         ("recalcule", [f for f in fiches if f.get("recalcule")]),
                         ("direct_a_blanc", [f for f in fiches if f.get("live_a_blanc")])):
         part = {"global": measures(rows)}
@@ -236,13 +238,19 @@ def _blend(r: dict) -> float | None:
 
 def targets(doc: dict) -> dict[str, dict]:
     """The match's very likely bets too short to take before kick-off, with the odds from which each is worth it."""
+    from sportai.engine.football.markets import is_quarter
+    from sportai.services.revue import _keys, famille
+
     out = {}
+    keys = _keys(doc.get("domicile") or "", doc.get("exterieur") or "")
     rows = ((doc.get("tous_marches") or {}).get("analyses") or []) + ((doc.get("buts") or {}).get("marches") or [])
     for r in rows:
-        b, cote = _blend(r), r.get("cote")
-        if r.get("pari") and b and b >= TARGET_CHANCE and isinstance(cote, (int, float)) and cote < LIVE_ODDS[0]:
+        b, cote, key = _blend(r), r.get("cote"), keys.get(r.get("pari"))
+        if key is None or is_quarter(key.line) or famille(key.market, key.selection, key.line) not in M_FAMILIES:
+            continue  # result and goal markets only, as the M's own choices
+        if b and b >= TARGET_CHANCE and isinstance(cote, (int, float)) and cote < LIVE_ODDS[0]:
             out.setdefault(r["pari"], {"pari": r["pari"], "p_avant": round(b, 4), "cote_avant": cote,
-                                       "cote_valable": round((1 + MARGIN) / b, 2)})
+                                       "cote_valable": round(max(LIVE_ODDS[0], (1 + MARGIN) / b), 2)})
     for r in (doc.get("buteurs") or {}).get("cotes") or []:
         b, cote = _blend(r), r.get("cote")
         if r.get("joueur") and b and b >= SCORER_TARGET_CHANCE and isinstance(cote, (int, float)):
@@ -319,4 +327,65 @@ def live_records(reg: dict, matchs: dict[str, dict], code_version: str) -> dict:
                 res = _settle_live(n, m)
                 if res:
                     f["resultat"], f["gain_unite"] = res, _gain({**f, "resultat": res})
+    return reg
+
+
+# --- The M's own choices, à blanc (owner 2026-10-28 14:04: "un onglet comme le joueur pro ... ses choix avant le
+# match et en live pour voir ce qu'il voit et aurait fait"). The rule replayed on 5 seasons (docs/22): one position a
+# match, on result and goal markets, the selection the de-vigged market sees most likely, odds 1.50-2.30, market chance
+# >= M_MIN_MARKET. Chosen once, at the first registry run from the 45 min pass on (line-ups out), before kick-off;
+# kept apart (choix_m), never counted with the official positions. Admin tab only.
+M_MIN_MARKET = 0.60
+M_ODDS = (1.50, 2.30)
+M_FAMILIES = frozenset({"victoire", "nul", "double_chance", "rembourse_si_nul", "btts_oui", "plus_1_5", "plus_2_5",
+                        "plus_3_5", "moins_1_5", "moins_2_5", "moins_3_5", "handicap_asiatique", "equipe_plus_0_5",
+                        "equipe_plus_1_5"})
+
+
+def m_choice(m: dict) -> dict | None:
+    """The M's position on a match document, or None when no bet of the rule exists."""
+    from sportai.engine.football.markets import is_quarter
+    from sportai.services.revue import _keys, famille
+
+    keys = _keys(m.get("domicile") or "", m.get("exterieur") or "")
+    best = None
+    rows = ((m.get("tous_marches") or {}).get("analyses") or []) + ((m.get("buts") or {}).get("marches") or [])
+    for r in rows:
+        key, cote, pm = keys.get(r.get("pari")), r.get("cote"), r.get("proba_marche")
+        if key is None or not isinstance(cote, (int, float)) or not isinstance(pm, (int, float)) or is_quarter(key.line):
+            continue
+        fam = famille(key.market, key.selection, key.line)
+        if fam in M_FAMILIES and M_ODDS[0] <= cote <= M_ODDS[1] and pm >= M_MIN_MARKET and (best is None or pm > best[0]):
+            best = (pm, r, fam)
+    if best is None:
+        return None
+    pm, r, fam = best
+    return {"pari": r["pari"], "marche": r.get("marche"), "famille": fam, "cote_prise": r["cote"], "p_marche": pm,
+            "p_modele": r.get("proba"), "bookmaker": r.get("bookmaker")}
+
+
+def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: str) -> dict:
+    for mid, m in matchs.items():
+        if m.get("jour") != reg.get("jour"):
+            continue
+        rid = f"{reg['jour']}|{mid}|M"
+        ko = _aware(m.get("coup_envoi"))
+        if rid not in reg["fiches"] and ko and now < ko and (m.get("passages") or {}).get("m45"):
+            c = m_choice(m)
+            reg.setdefault("cibles", {})[mid] = sorted(targets(m).values(), key=lambda t: -t["p_avant"])[:5]
+            reg["fiches"][rid] = {
+                "id": rid, "jour": reg["jour"], "sport": reg.get("sport", "foot"), "agent": "le M (à blanc)",
+                "decision": now.isoformat(), "match_id": mid, "match": f"{m.get('domicile')} - {m.get('exterieur')}",
+                "competition": m.get("competition"), "coup_envoi": m.get("coup_envoi"), "recalcule": False,
+                "choix_m": True, "version_regles": f"M>={M_MIN_MARKET}", "version_code": code_version,
+                **(c or {"pari": None, "raison": "Aucune position à 1,50-2,30 que le marché voit à 60 % ou plus."})}
+        f = reg["fiches"].get(rid)
+        if f and f.get("pari") and "resultat" not in f and m.get("statut") == "termine":
+            from sportai.engine.football.markets import settle_score
+            from sportai.services.revue import _keys, _score
+
+            sc, key = _score(m), _keys(m.get("domicile") or "", m.get("exterieur") or "").get(f["pari"])
+            res = settle_score(key, *sc) if sc and key else None
+            if res in SETTLED:
+                f["resultat"], f["gain_unite"] = res, _gain({**f, "resultat": res})
     return reg
