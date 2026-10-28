@@ -192,7 +192,7 @@ def test_the_m_chooses_on_every_nba_game_then_settles_it():
     reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(18), {"7": bm})
     a = reg["avis"]["basket-7"]
     assert a["choix_m"]["pari"] is None and "C +7,5 points (handicap) à 1,71" in a["choix_m"]["raison"]
-    assert a["choix_m"]["feu"] == "orange"
+    assert a["choix_m"]["feu"] == "orange" and a["choix_m"]["choix_55"]["pari"] == "C +7,5 points (handicap)"
     assert a["sans_position"]
     bm["cotes_cloture"]["lignes"][1]["proba_marche"] = 0.61
     reg = R.basket_avis(reg, {}, at(20), {"7": bm})
@@ -211,3 +211,16 @@ def test_a_match_added_after_kick_off_still_gets_the_opinions_out_of_the_ratios(
     a, f = reg["avis"]["m1"], reg["fiches"]["2026-10-29|m1|M"]
     assert a["tardif"] and a["visa_m"]["feu"] and a["choix_m"]["pari"] == "Victoire A"
     assert f["enregistre_apres_coup_envoi"] and R.report([reg])["le_m_a_blanc"]["global"]["positions"] == 0
+
+
+def test_the_nba_55_choice_is_settled_and_counted_apart():
+    bm = {"jour": "2026-10-29", "domicile": "C", "exterieur": "D", "coup_envoi": "2026-10-29T23:00:00Z",
+          "passages": {"m45": "2026-10-29T22:15:00+00:00"}, "statut": "a_venir",
+          "cotes_cloture": {"lignes": [{"marche": "total", "selection": "under", "ligne": 230.5, "cote": 1.8,
+                                        "proba": 0.55, "proba_marche": 0.56}]}}
+    reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(22), {"7": bm})
+    reg = R.basket_avis(reg, {}, datetime(2026, 10, 30, 3, tzinfo=timezone.utc),
+                        {"7": {**bm, "statut": "termine", "score": "110-115"}})
+    assert reg["avis"]["basket-7"]["choix_m"]["choix_55"]["resultat"] == "gagne"
+    rep = R.report([reg], min_group=1)
+    assert rep["le_m_nba_55"]["global"]["validees"] == 1 and rep["le_m_a_blanc"]["global"]["positions"] == 0

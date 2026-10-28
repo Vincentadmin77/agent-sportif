@@ -204,6 +204,9 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     for label, rows in (("reel", [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m"))]),
                         ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")
                                           and not f.get("enregistre_apres_coup_envoi")]),
+                        ("le_m_nba_55", [{**f["choix_55"], "sport": "basket", "competition": f.get("competition")}
+                                         for f in fiches if f.get("choix_55")
+                                         and not f.get("enregistre_apres_coup_envoi")]),
                         ("recalcule", [f for f in fiches if f.get("recalcule")]),
                         ("direct_a_blanc", [f for f in fiches if f.get("live_a_blanc")])):
         part = {"global": measures(rows)}
@@ -520,7 +523,9 @@ def _m_side(mf: dict) -> dict:
         if mf.get("pari") else visa({"pari": best.get("pari"), "proba_marche": best.get("p_marche")})
     return {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
             "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat"),
-            "feu": (lit or {}).get("feu", "rouge" if not mf.get("pari") else None)}
+            "feu": (lit or {}).get("feu", "rouge" if not mf.get("pari") else None),
+            **({"choix_55": {k: mf["choix_55"].get(k) for k in ("pari", "cote_prise", "p_marche", "resultat")}}
+               if mf.get("choix_55") else {})}
 
 
 def _who_was_right(a: dict) -> str:
@@ -534,6 +539,9 @@ def _who_was_right(a: dict) -> str:
     if c.get("resultat") in ("gagne", "perdu"):
         parts.append(f"Choix du M {'validé' if c['resultat'] == 'gagne' else 'non validé'}.")
     return " ".join(parts)
+
+
+NBA_SECOND_TIER = 0.55
 
 
 def basket_m_options(bm: dict) -> list[dict]:
@@ -561,7 +569,10 @@ def basket_m_choice(bm: dict) -> dict:
     best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche")} if opts else None
     reason = (_pass_reason(best) if best else
               "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,50 et 2,30.")
-    return {"pari": None, "raison": reason, "meilleure_option": best}
+    # the French books give one handicap and one total per game, set near 50/50: the 55 % choice is noted apart
+    # (owner 2026-10-28 20:56 "il ne voit pas assez de propositions"), to judge that threshold on ~100 games
+    extra = {"choix_55": dict(opts[0])} if opts and opts[0]["p_marche"] >= NBA_SECOND_TIER else {}
+    return {"pari": None, "raison": reason, "meilleure_option": best, **extra}
 
 
 def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_version: str) -> dict:
@@ -587,6 +598,13 @@ def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_ve
             hp, ap = (int(x) for x in str(bm["score"]).replace(" ", "").split("-"))
             f["resultat"] = settle(f["marche"], f["selection"], f.get("ligne"), hp, ap)
             f["gain_unite"] = _gain(f)
+        c = f.get("choix_55")
+        if c and "resultat" not in c and bm.get("statut") == "termine" and bm.get("score"):
+            from sportai.services.basket import settle
+
+            hp, ap = (int(x) for x in str(bm["score"]).replace(" ", "").split("-"))
+            c["resultat"] = settle(c["marche"], c["selection"], c.get("ligne"), hp, ap)
+            c["gain_unite"] = _gain(c)
     return reg
 
 
