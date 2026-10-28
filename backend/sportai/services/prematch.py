@@ -58,6 +58,12 @@ GOALS_HAIRCUT = 0.02
 GOALS_MODEL_DC = f"{dc.MODEL_NAME} {dc.MODEL_VERSION}"
 GoalsLookup = Callable[[str, str], tuple[dict[str, float] | None, str | None]]
 
+# Missing key players (docs/22-absences.md): the factors of absence_lookup move only these result markets, priced from a
+# corrected score matrix. Totals, team totals, both teams to score, exact scores, half-time and every other market keep
+# the uncorrected expected goals: the study found no gain there (worse over/under without centring).
+RESULT_MARKETS = ("1x2", "double_chance", "dnb", "asian_handicap", "euro_handicap")
+AbsenceLookup = Callable[[Fixture], tuple[float, float] | None]
+
 
 class MixedModeError(ValueError):
     pass
@@ -73,6 +79,7 @@ class FixtureAnalysis:
     likely_score: tuple[int, int, float] | None = None  # estimated final score (most likely outcome, then score) and its probability
     goals_model: str | None = None  # which model priced btts / totals
     goals_model_note: str | None = None  # why the enriched model was not used, when it was not
+    absence_factors: tuple[float, float] | None = None  # missing key players: (home, away) multipliers, result markets only
 
 
 @dataclass
@@ -98,10 +105,14 @@ def run_prematch(
     goals_lookup: GoalsLookup | None = None,
     goals_model_label: str | None = None,
     calibration: dc.RateCalibration | None = None,
+    absence_lookup: AbsenceLookup | None = None,
 ) -> PrematchReport:
     """goals_lookup(home, away) -> (enriched probabilities by market label, None) or (None, reason): when
     given, btts and over/under 1.5 / 2.5 / 3.5 are priced by the enriched goals model (fallback: Dixon-Coles).
-    calibration: correction of the fitted expected goals (Champions League, see runs.UCL_CALIBRATION)."""
+    calibration: correction of the fitted expected goals (Champions League, see runs.UCL_CALIBRATION).
+    absence_lookup(fixture) -> (f_home, f_away) or None: missing key players (services/lineups.absence_factor); the
+    factors multiply the expected goals of the result markets only (RESULT_MARKETS). None, or no answer for a
+    fixture, changes nothing. The stored expected goals stay uncorrected (totals, half-time, scorers use them)."""
     now = now or datetime.now(timezone.utc)
     cfg = cfg or SelectionConfig()
     modes = {r.mode for r in history} | {f.mode for f in fixtures} | {q.mode for q in quotes}
@@ -140,21 +151,32 @@ def run_prematch(
         enriched, note = goals_lookup(fx.home, fx.away) if goals_lookup else (None, None)
         if enriched:
             model_only.update({k: round(v, 4) for k, v in enriched.items()})
-        samples = np.stack(model.sample_score_matrices(h, a, n=n_samples, seed=zlib.crc32(f"{h}|{a}".encode())))
+        seed = zlib.crc32(f"{h}|{a}".encode())
+        samples = np.stack(model.sample_score_matrices(h, a, n=n_samples, seed=seed))
+        factors = absence_lookup(fx) if absence_lookup else None
+        if factors is not None and all(abs(float(f) - 1.0) < 1e-12 for f in factors):
+            factors = None
+        if factors is not None:  # same seed: the same parameter draws, only the two rates move
+            central_r = model.score_matrix(h, a, factors=factors)
+            samples_r = np.stack(model.sample_score_matrices(h, a, n=n_samples, seed=seed, factors=factors))
+        else:
+            central_r, samples_r = central, samples
         fq = by_event.get(fx.provider_event_id, [])
         fa = FixtureAnalysis(fx, lam_mu, probabilities=dict(model_only), n_quotes=len(fq),
                              goals_model=(goals_model_label or "enriched") if enriched else GOALS_MODEL_DC,
-                             goals_model_note=None if enriched else note)
-        fa.likely_score = likely_score(central)
+                             goals_model_note=None if enriched else note,
+                             absence_factors=(float(factors[0]), float(factors[1])) if factors is not None else None)
+        fa.likely_score = likely_score(central_r)  # its outcome follows the result markets' probabilities
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)
         for key, best in _best_prices(fq, now).items():
+            m, ms = (central_r, samples_r) if key.market in RESULT_MARKETS else (central, samples)
             try:
-                out = outcome(central, key)
+                out = outcome(m, key)
             except (ValueError, KeyError):
                 continue  # a selection the score model cannot price (the feed's parser should not emit it)
-            win_samples = outcomes(samples, key)[0]
+            win_samples = outcomes(ms, key)[0]
             if enriched and key.label() in enriched:
                 p = float(enriched[key.label()])
                 win_samples = np.clip((p + win_samples - out.win) * (1 - GOALS_HAIRCUT), 0.0, 1.0)

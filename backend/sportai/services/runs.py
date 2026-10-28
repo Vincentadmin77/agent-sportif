@@ -123,10 +123,12 @@ def _mark(db: DB, provider: str, error: str | None = None, quota: dict | None = 
 
 def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by: str,
                      mode: str | None = None, now: datetime | None = None, goal_markets: bool = False,
-                     max_hours_ahead: float | None = None) -> AnalysisRun:
+                     max_hours_ahead: float | None = None, absence_lookup=None) -> AnalysisRun:
     """goal_markets: also fetch "both teams to score" and totals odds, match by match, for the matches
     inside the analysis window (costs 2 credits per match; used at the 45 min pass).
-    max_hours_ahead: widen the analysis window (the 8 am pass covers every match of the day)."""
+    max_hours_ahead: widen the analysis window (the 8 am pass covers every match of the day).
+    absence_lookup(fixture) -> (f_home, f_away) or None: missing key players, result markets only
+    (prematch.run_prematch, docs/22-absences.md); league matches only, the study did not cover the European cups."""
     now = now or datetime.now(timezone.utc)
     mode = mode or settings.data_mode
     cfg = selection_config(db)
@@ -244,7 +246,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                 goals_label = book.data["model"]
         report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now, goals_lookup=goals_lookup,
                               goals_model_label=goals_label,
-                              calibration=UCL_CALIBRATION if competition in EUROPEAN_CUPS else None)
+                              calibration=UCL_CALIBRATION if competition in EUROPEAN_CUPS else None,
+                              absence_lookup=absence_lookup if competition not in EUROPEAN_CUPS else None)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()
@@ -261,6 +264,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes,
                      "likely_score": f.likely_score, "goals_model": f.goals_model,
                      "goals_model_note": f.goals_model_note,
+                     **({"absence_factors": list(f.absence_factors)} if f.absence_factors else {}),
                      # bets of the odds feed the score model cannot price: listed with their odds, "non analysé"
                      **({"non_analyses": unpriced[f.fixture.provider_event_id]}
                         if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}

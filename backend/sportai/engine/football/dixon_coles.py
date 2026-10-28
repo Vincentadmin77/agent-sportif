@@ -88,35 +88,44 @@ class DixonColesModel:
     def knows(self, team: str) -> bool:
         return self.matches_per_team.get(team, 0) >= self.config.min_matches_per_team
 
-    def expected_goals(self, home: str, away: str) -> tuple[float, float]:
-        return self._calibrated(*_rates(self._params(), self.index[home], self.index[away], len(self.teams)))
+    def expected_goals(self, home: str, away: str, factors: tuple[float, float] | None = None) -> tuple[float, float]:
+        """factors: optional (f_home, f_away) multiplying each side's rate after the calibration (missing key
+        players, services/lineups.absence_factor); rho is unchanged. None changes nothing."""
+        lam_mu = self._calibrated(*_rates(self._params(), self.index[home], self.index[away], len(self.teams)))
+        return _with_factors(lam_mu, factors)
 
     def _calibrated(self, lam: float, mu: float) -> tuple[float, float]:
         return self.calibration.apply(lam, mu) if self.calibration is not None else (lam, mu)
 
-    def score_matrix(self, home: str, away: str) -> np.ndarray:
-        lam, mu = self.expected_goals(home, away)
+    def score_matrix(self, home: str, away: str, factors: tuple[float, float] | None = None) -> np.ndarray:
+        lam, mu = self.expected_goals(home, away, factors)
         return score_matrix(lam, mu, self.rho, self.config.max_goals)
 
     def sample_score_matrices(
-        self, home: str, away: str, n: int = 400, seed: int = 0
+        self, home: str, away: str, n: int = 400, seed: int = 0, factors: tuple[float, float] | None = None
     ) -> list[np.ndarray]:
-        """Score matrices under parameter uncertainty (Laplace approximation)."""
+        """Score matrices under parameter uncertainty (Laplace approximation); factors as in expected_goals."""
         if self.covariance is None:
-            return [self.score_matrix(home, away)]
+            return [self.score_matrix(home, away, factors)]
         rng = np.random.default_rng(seed)
         theta = self._params()
         draws = rng.multivariate_normal(theta, self.covariance, size=n, method="eigh")
         i, j, k = self.index[home], self.index[away], len(self.teams)
         out = []
         for d in draws:
-            lam, mu = self._calibrated(*_rates(d, i, j, k))
+            lam, mu = _with_factors(self._calibrated(*_rates(d, i, j, k)), factors)
             rho = float(np.clip(d[-1], -0.3, 0.3))
             out.append(score_matrix(lam, mu, rho, self.config.max_goals))
         return out
 
     def _params(self) -> np.ndarray:
         return np.concatenate([self.attack, self.defence, [self.intercept, self.home_adv, self.rho]])
+
+
+def _with_factors(lam_mu: tuple[float, float], factors: tuple[float, float] | None) -> tuple[float, float]:
+    if factors is None:
+        return lam_mu
+    return lam_mu[0] * float(factors[0]), lam_mu[1] * float(factors[1])
 
 
 def score_matrix(lam: float, mu: float, rho: float, max_goals: int = 10) -> np.ndarray:
