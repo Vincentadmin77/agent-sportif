@@ -26,3 +26,17 @@ d'argent sur le site.
 - La cote stockée est la meilleure du marché mondial, pas celle d'un bookmaker français : rendement flatteur.
 - La vraie cote de clôture demande un passage d'avant-match après H−45 (sinon la CLV n'est pas calculée).
 - Le basket n'a pas encore de `paris_retenus` figés comparables : à brancher quand son format sera stable.
+
+## Règle « chance du marché ≥ 60 % » rejouée sur 5 saisons (28/10, hypothèse, pas en production)
+`scripts/replay_marche.py`. Une position par match, la plus probable selon le marché sans marge (cotes de clôture
+moyennes football-data, 1X2, plus/moins 2,5, handicap asiatique demi-ligne), cote 1,50-2,30. Rien n'est ajusté sur les
+données : les seuils sont fixés d'avance. 6 championnats (sans Brésil ni coupes), 2022-23 à 2026-27 (au 26/10).
+
+| Seuil | Positions | Réussite | Annoncé | Cote moy. | Rendement mise égale | Semaines < 50 % |
+| --- | --- | --- | --- | --- | --- | --- |
+| ≥ 60 % | 1 541 | 64,2 % | 61,7 % | 1,54 | −1,1 % | 8 / 80 |
+| ≥ 55 % | 4 609 | 60,8 % | 58,8 % | 1,62 | −1,8 % | 16 / 156 |
+| ≥ 50 % | 7 955 | 57,7 % | 56,2 % | 1,70 | −2,5 % | 23 / 157 |
+
+Par saison (≥ 60 %) : 64,5 / 68,5 / 58,4 / 63,5 / 74,4 % (78 positions). Réussite régulière et un peu au-dessus de
+l'annoncé, mais pas d'avantage financier prouvé sur le prix moyen.
