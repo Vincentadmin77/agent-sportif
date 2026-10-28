@@ -427,3 +427,16 @@ def test_no_both_teams_no_and_no_under_half_a_goal():
     assert pick_ok({**sure, "pari": "1re mi-temps : Lazio moins de 1,5 buts", "mi_temps": {**half, "ligne": 1.5}})
     assert not pick_ok({**base, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})
     assert not pick_ok({**base, "pari": "Moins de 0,5 buts"})
+
+
+def test_result_and_goals_before_counts():
+    from sportai.services.pronostic import _best, top_ok
+
+    goal = {"pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.58, "proba_marche": 0.56}
+    cards = {"pari": "Cartons : moins de 4,5", "cote": 1.62, "proba": 0.66, "proba_marche": 0.65,
+             "comptage": {"stat": "cartons"}}
+    assert _best([goal, cards]) is goal  # 65.5 % is not 10 points surer than 57 %
+    sure = {**cards, "proba": 0.70, "proba_marche": 0.69}
+    assert _best([goal, sure]) is sure
+    assert _best([cards]) is cards and _best([{**cards, "proba": 0.58, "proba_marche": 0.58}]) is None
+    assert not top_ok(cards) and top_ok(goal)

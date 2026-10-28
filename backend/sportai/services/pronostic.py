@@ -203,9 +203,25 @@ def _pick(leg: dict) -> dict:
     return out
 
 
+# Result and goals markets first (owner 2026-10-28: cards, corners... are "vraiment très aléatoire"): a count bet
+# (cards, corners, fouls, shots) is a match's bet only when it is COUNT_MARGIN surer than its best result/goals bet,
+# or, with none, a "Confiance élevée" one; it is never the Top confiance nor in the selected combo.
+COUNT_MARGIN = 0.10
+
+
 def top_ok(pick: dict) -> bool:
-    """Basketball (owner 2026-10-27): a market no backtest validated is never the Top confiance."""
-    return pick.get("sport") != "basket" or bool(pick.get("valide"))
+    """Basketball (owner 2026-10-27): a market no backtest validated is never the Top confiance. Counts: never."""
+    return (pick.get("sport") != "basket" or bool(pick.get("valide"))) and not pick.get("comptage")
+
+
+def _best(ok: list[dict]) -> dict | None:
+    key = lambda l: (blended(l), l["cote"])
+    main = [l for l in ok if not l.get("comptage")]
+    count = max((l for l in ok if l.get("comptage")), key=key, default=None)
+    if main:
+        best = max(main, key=key)
+        return count if count and blended(count) >= blended(best) + COUNT_MARGIN else best
+    return count if count and blended(count) >= PICK_HIGH else None
 
 
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
@@ -228,8 +244,8 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
             picks[mid] = _settle_leg({**prev, "fige": True}, page)
             continue
         ok = [l for l in by_match.get(mid, []) if not started(l) and _correct(l) and pick_ok(l) and not blocked(l)]
-        if ok:
-            best = max(ok, key=lambda l: (blended(l), l["cote"]))
+        best = _best(ok)
+        if best:
             picks[mid] = {**_pick(best), "fige": frozen(best)}
             continue
         m = page.get(mid) or {}
@@ -287,7 +303,7 @@ def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict 
             kept.append({**combo([{**l, "fige": True} for l in legs], True), "retenu": bool(c.get("retenu"))})
     used = {l["match_id"] for c in kept for l in c["jambes"]} | {s["match_id"] for s in selections}
     free = sorted((p for p in picks.values() if p.get("pari") and not p.get("fige") and p["match_id"] not in used),
-                  key=lambda p: (p["confiance"], p["cote"]), reverse=True)
+                  key=lambda p: (not p.get("comptage"), p["confiance"], p["cote"]), reverse=True)
     fresh = []
     while free:
         first = free.pop(0)
@@ -297,7 +313,8 @@ def build_combos(picks: dict[str, dict], selections: list[dict], previous: dict 
             fresh.append({**combo([first, mate], False), "retenu": False})
     # owner 2026-10-27 15:40: the selected combo is two "Confiance élevée" bets (other than the best single)
     room = COMBOS_PER_DAY - sum(1 for c in kept if c["retenu"])
-    for c in [c for c in fresh if all(l["confiance"] >= SELECTION_MIN_CONF for l in c["jambes"])][:max(0, room)]:
+    for c in [c for c in fresh if all(l["confiance"] >= SELECTION_MIN_CONF and not l.get("comptage")
+                                      for l in c["jambes"])][:max(0, room)]:
         c["retenu"] = True
     return kept + fresh
 
