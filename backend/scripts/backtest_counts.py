@@ -106,9 +106,9 @@ def main() -> None:
                 mean = model.expected(m["home"], m["away"], m["kickoff"])
                 if mean is not None:
                     total = model.total_mean(sum(model.raw(m["home"], m["away"])))
-                rows.append({"comp": comp, "season": m["season"], "mean": mean,
-                             "p": probs_for(a.stat, *mean, model.r, model.r_total, total),
-                             "ref": ((cY[hi] - cY[lo]) / (hi - lo)).tolist(), "y": Y[i].tolist()})
+                    rows.append({"comp": comp, "season": m["season"], "mean": mean,
+                                 "p": probs_for(a.stat, *mean, model.r, model.r_total, total),
+                                 "ref": ((cY[hi] - cY[lo]) / (hi - lo)).tolist(), "y": Y[i].tolist()})
             model.add(m)
         disp[comp] = {"equipe": round(model.r, 2), "total": round(model.r_total, 2)}
         print(f"{comp}: {len(ms)} matches with {a.stat}, {sum(r['comp'] == comp for r in rows)} predicted, "

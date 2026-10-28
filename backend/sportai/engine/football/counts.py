@@ -101,6 +101,7 @@ NOT_VALIDATED = {
     "cartons": {"1x2:home", "1x2:draw"},
     "jaunes": {"away:over@3.5", "away:under@3.5", "1x2:home", "1x2:draw"},
     "tirs": {"total:over@20.5", "total:under@20.5", "total:over@22.5", "total:under@22.5", "1x2:draw"},
+    "fautes": set(),  # backtest of 2026-10-28: every tested fouls bet beats the league frequency
     "tirs_cadres": {"total:over@8.5", "total:under@8.5", "total:over@9.5", "total:under@9.5", "total:over@10.5",
                     "total:under@10.5"},
 }
@@ -123,9 +124,11 @@ FEED = {
     "Away Team Yellow Cards": ("jaunes", "away"),
     "Total Shots": ("tirs", "total"), "Shots.1x2": ("tirs", "1x2"),
     "Total ShotOnGoal": ("tirs_cadres", "total"), "ShotOnTarget 1x2": ("tirs_cadres", "1x2"),
+    "Fouls. Total": ("fautes", "total"), "Fouls. Home Total": ("fautes", "home"), "Fouls. Away Total": ("fautes", "away"),
+    "Fouls. 1x2": ("fautes", "1x2"),
 }
 NAMES = {"corners": "Corners", "cartons": "Cartons", "jaunes": "Cartons jaunes", "tirs": "Tirs",
-         "tirs_cadres": "Tirs cadrés"}
+         "tirs_cadres": "Tirs cadrés", "fautes": "Fautes"}
 GROUPS = {"1x2": ("home", "draw", "away")}
 
 
@@ -173,9 +176,11 @@ def settle(kind: str, sel: str, line: float | None, h: int, a: int) -> str:
 # The referee (owner 2026-10-28, "est-ce que la Top confiance tient compte de l'arbitre ?"): both teams' expected
 # cards and the total are multiplied by the referee's cards per match in the league, pulled towards the league
 # average by REFEREE_SHRINK matches, over that average. Backtest scripts/backtest_referee.py on the same 2,614
-# matches: better on 14 of the 29 cards bets, worse on none (docs/18-corners-cartons-tirs.md).
+# matches: better on 14 of the 29 cards bets, worse on none (docs/18-corners-cartons-tirs.md). Extended 2026-10-28
+# ("l'arbitre doit toujours être pris en compte") to the statistics where it also does better and never worse: fouls
+# (7 of 27) and corners (4 of 35); shots are worse with it (6 of 29), shots on target unchanged: left out.
 REFEREE_SHRINK = 20.0
-REFEREE_STATS = ("cartons", "jaunes")
+REFEREE_STATS = ("cartons", "jaunes", "fautes", "corners")
 
 
 def referee_factor(cards: float, matches: int, league_mean: float) -> float:

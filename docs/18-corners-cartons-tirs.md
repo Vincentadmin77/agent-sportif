@@ -71,6 +71,25 @@ La valeur de 20 a été choisie sur ces mêmes saisons de test, donc le gain est
 
 Exemple : Genoa - Juventus, avec Doveri (104 matchs, facteur 0,91). Pour « cartons moins de 4,5 », le modèle passe de 64,7 % à 71,1 %, contre 66,0 % pour les bookmakers.
 
+### L'arbitre sur tous les paris (28 octobre 2026, suite)
+
+**Demande de Vincent :** « l'arbitre a un rôle dans chaque match, il doit toujours être pris en compte ». La règle : chaque effet de l'arbitre est testé sur les matchs passés. Il entre dans le calcul seulement s'il fait mieux. Sinon, il reste affiché dans le contexte du match (la phrase arbitre donne déjà ses cartons et ses penalties par match).
+
+**Fautes.** Les paris fautes du flux (total, fautes d'une équipe, qui fait le plus de fautes) sont maintenant étudiés avec le même modèle. Sans arbitre, les 27 paris testés battent la fréquence du championnat (`backtest-fautes.json`) : ils sont tous « validés ».
+
+**Arbitre, même méthode (rapprochement de 20 matchs) :**
+
+| Statistique | Nettement mieux | Moins bien | Décision |
+|---|---|---|---|
+| Cartons | 14 paris sur 29 | aucun | branché |
+| Cartons jaunes | 14 sur 29 | aucun | branché |
+| Fautes | 7 sur 27 (totaux 24,5 et 26,5, fautes de l'équipe à l'extérieur) | aucun | branché |
+| Corners | 4 sur 35 | aucun | branché (effet faible) |
+| Tirs | aucun | 6 sur 29 | non branché |
+| Tirs cadrés | aucun | aucun | non branché |
+
+**Cartons rouges et penalties** (`backend/scripts/backtest_rare.py`, `backtest-evenements-rares.json`, environ 2 700 matchs de test). Les paris concernés sont « carton rouge dans le match », « carton rouge en 1re mi-temps », « l'équipe marque un penalty » et « l'équipe rate un penalty ». Ni l'historique des équipes ni celui de l'arbitre ne font mieux que la simple fréquence du championnat. Avec 20 matchs de rapprochement, l'arbitre fait même moins bien sur 4 des 6 paris ; avec 100 matchs, il ne fait que rejoindre la fréquence. Ces événements sont trop rares pour qu'un arbitre se distingue vraiment. L'arbitre reste donc affiché dans le contexte, sans toucher au calcul. Ces paris ont de toute façon des cotes de 5 à 13 pour le « oui » et sous 1,10 pour le « non », hors des règles de sélection.
+
 ## Résultats détaillés
 
 « Zone ≥ 60 % » : les matchs où le modèle donnait au moins 60 %, c'est-à-dire ce qu'aurait donné une Confiance élevée (prédit → observé).

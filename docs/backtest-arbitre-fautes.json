@@ -1,0 +1,472 @@
+{
+ "generated": "2026-10-28T08:50:37.245140+00:00",
+ "stat": "fautes",
+ "shrink": 20.0,
+ "n_test": 2614,
+ "facteur": {
+  "moyenne": 1.006,
+  "p10": 0.945,
+  "p90": 1.053
+ },
+ "marches": {
+  "total:over@20.5": {
+   "ecart_brier": -4e-05,
+   "ic95": [
+    -0.00212,
+    0.00189
+   ],
+   "ecart_logloss": -0.00078,
+   "par_championnat": {
+    "FR1": -0.0065,
+    "EN1": 0.00014,
+    "ES1": 0.00021,
+    "DE1": 0.01187,
+    "IT1": -0.00058,
+    "BR1": -0.0026
+   },
+   "verdict": "pareil"
+  },
+  "total:over@22.5": {
+   "ecart_brier": -0.00112,
+   "ic95": [
+    -0.00355,
+    0.00128
+   ],
+   "ecart_logloss": -0.00259,
+   "par_championnat": {
+    "FR1": -0.00659,
+    "EN1": -0.00432,
+    "ES1": -0.0045,
+    "DE1": 0.01561,
+    "IT1": 0.00105,
+    "BR1": -0.00388
+   },
+   "verdict": "pareil"
+  },
+  "total:over@24.5": {
+   "ecart_brier": -0.00329,
+   "ic95": [
+    -0.00568,
+    -0.00076
+   ],
+   "ecart_logloss": -0.00739,
+   "par_championnat": {
+    "FR1": -0.01022,
+    "EN1": -0.00486,
+    "ES1": -0.00467,
+    "DE1": 0.01111,
+    "IT1": -0.00073,
+    "BR1": -0.0067
+   },
+   "verdict": "mieux"
+  },
+  "total:over@26.5": {
+   "ecart_brier": -0.00458,
+   "ic95": [
+    -0.00692,
+    -0.00215
+   ],
+   "ecart_logloss": -0.00964,
+   "par_championnat": {
+    "FR1": -0.00866,
+    "EN1": -0.00252,
+    "ES1": -0.00469,
+    "DE1": 0.00814,
+    "IT1": -0.00487,
+    "BR1": -0.00993
+   },
+   "verdict": "mieux"
+  },
+  "total:under@20.5": {
+   "ecart_brier": -4e-05,
+   "ic95": [
+    -0.00212,
+    0.00189
+   ],
+   "ecart_logloss": -0.00078,
+   "par_championnat": {
+    "FR1": -0.0065,
+    "EN1": 0.00014,
+    "ES1": 0.00021,
+    "DE1": 0.01187,
+    "IT1": -0.00058,
+    "BR1": -0.0026
+   },
+   "verdict": "pareil"
+  },
+  "total:under@22.5": {
+   "ecart_brier": -0.00112,
+   "ic95": [
+    -0.00355,
+    0.00128
+   ],
+   "ecart_logloss": -0.00259,
+   "par_championnat": {
+    "FR1": -0.00659,
+    "EN1": -0.00432,
+    "ES1": -0.0045,
+    "DE1": 0.01561,
+    "IT1": 0.00105,
+    "BR1": -0.00388
+   },
+   "verdict": "pareil"
+  },
+  "total:under@24.5": {
+   "ecart_brier": -0.00329,
+   "ic95": [
+    -0.00568,
+    -0.00076
+   ],
+   "ecart_logloss": -0.00739,
+   "par_championnat": {
+    "FR1": -0.01022,
+    "EN1": -0.00486,
+    "ES1": -0.00467,
+    "DE1": 0.01111,
+    "IT1": -0.00073,
+    "BR1": -0.0067
+   },
+   "verdict": "mieux"
+  },
+  "total:under@26.5": {
+   "ecart_brier": -0.00458,
+   "ic95": [
+    -0.00692,
+    -0.00215
+   ],
+   "ecart_logloss": -0.00964,
+   "par_championnat": {
+    "FR1": -0.00866,
+    "EN1": -0.00252,
+    "ES1": -0.00469,
+    "DE1": 0.00814,
+    "IT1": -0.00487,
+    "BR1": -0.00993
+   },
+   "verdict": "mieux"
+  },
+  "home:over@9.5": {
+   "ecart_brier": 0.00118,
+   "ic95": [
+    -0.00028,
+    0.00259
+   ],
+   "ecart_logloss": 0.00235,
+   "par_championnat": {
+    "FR1": -0.00059,
+    "EN1": 0.00091,
+    "ES1": 0.00061,
+    "DE1": 0.0065,
+    "IT1": 5e-05,
+    "BR1": 0.00068
+   },
+   "verdict": "pareil"
+  },
+  "home:under@9.5": {
+   "ecart_brier": 0.00118,
+   "ic95": [
+    -0.00028,
+    0.00259
+   ],
+   "ecart_logloss": 0.00235,
+   "par_championnat": {
+    "FR1": -0.00059,
+    "EN1": 0.00091,
+    "ES1": 0.00061,
+    "DE1": 0.0065,
+    "IT1": 5e-05,
+    "BR1": 0.00068
+   },
+   "verdict": "pareil"
+  },
+  "home:over@10.5": {
+   "ecart_brier": 0.00066,
+   "ic95": [
+    -0.0011,
+    0.00245
+   ],
+   "ecart_logloss": 0.0011,
+   "par_championnat": {
+    "FR1": -0.00303,
+    "EN1": 0.00042,
+    "ES1": -0.00097,
+    "DE1": 0.00604,
+    "IT1": 0.00181,
+    "BR1": 0.00032
+   },
+   "verdict": "pareil"
+  },
+  "home:under@10.5": {
+   "ecart_brier": 0.00066,
+   "ic95": [
+    -0.0011,
+    0.00245
+   ],
+   "ecart_logloss": 0.0011,
+   "par_championnat": {
+    "FR1": -0.00303,
+    "EN1": 0.00042,
+    "ES1": -0.00097,
+    "DE1": 0.00604,
+    "IT1": 0.00181,
+    "BR1": 0.00032
+   },
+   "verdict": "pareil"
+  },
+  "home:over@11.5": {
+   "ecart_brier": -0.00104,
+   "ic95": [
+    -0.00298,
+    0.00089
+   ],
+   "ecart_logloss": -0.0025,
+   "par_championnat": {
+    "FR1": -0.00797,
+    "EN1": -0.00043,
+    "ES1": -0.00179,
+    "DE1": 0.00613,
+    "IT1": 0.00088,
+    "BR1": -0.00221
+   },
+   "verdict": "pareil"
+  },
+  "home:under@11.5": {
+   "ecart_brier": -0.00104,
+   "ic95": [
+    -0.00298,
+    0.00089
+   ],
+   "ecart_logloss": -0.0025,
+   "par_championnat": {
+    "FR1": -0.00797,
+    "EN1": -0.00043,
+    "ES1": -0.00179,
+    "DE1": 0.00613,
+    "IT1": 0.00088,
+    "BR1": -0.00221
+   },
+   "verdict": "pareil"
+  },
+  "home:over@12.5": {
+   "ecart_brier": -0.00145,
+   "ic95": [
+    -0.00337,
+    0.00047
+   ],
+   "ecart_logloss": -0.00309,
+   "par_championnat": {
+    "FR1": -0.00611,
+    "EN1": 0.00025,
+    "ES1": -0.00257,
+    "DE1": 0.00592,
+    "IT1": 0.00024,
+    "BR1": -0.00419
+   },
+   "verdict": "pareil"
+  },
+  "home:under@12.5": {
+   "ecart_brier": -0.00145,
+   "ic95": [
+    -0.00337,
+    0.00047
+   ],
+   "ecart_logloss": -0.00309,
+   "par_championnat": {
+    "FR1": -0.00611,
+    "EN1": 0.00025,
+    "ES1": -0.00257,
+    "DE1": 0.00592,
+    "IT1": 0.00024,
+    "BR1": -0.00419
+   },
+   "verdict": "pareil"
+  },
+  "away:over@9.5": {
+   "ecart_brier": -0.00037,
+   "ic95": [
+    -0.00183,
+    0.00108
+   ],
+   "ecart_logloss": -0.00096,
+   "par_championnat": {
+    "FR1": -0.00105,
+    "EN1": -0.0049,
+    "ES1": -0.00106,
+    "DE1": 0.00757,
+    "IT1": -0.00034,
+    "BR1": -0.00071
+   },
+   "verdict": "pareil"
+  },
+  "away:under@9.5": {
+   "ecart_brier": -0.00037,
+   "ic95": [
+    -0.00183,
+    0.00108
+   ],
+   "ecart_logloss": -0.00096,
+   "par_championnat": {
+    "FR1": -0.00105,
+    "EN1": -0.0049,
+    "ES1": -0.00106,
+    "DE1": 0.00757,
+    "IT1": -0.00034,
+    "BR1": -0.00071
+   },
+   "verdict": "pareil"
+  },
+  "away:over@10.5": {
+   "ecart_brier": -0.0014,
+   "ic95": [
+    -0.0031,
+    0.00031
+   ],
+   "ecart_logloss": -0.00373,
+   "par_championnat": {
+    "FR1": -0.00378,
+    "EN1": -0.00326,
+    "ES1": -0.00243,
+    "DE1": 0.00737,
+    "IT1": -0.00114,
+    "BR1": -0.00288
+   },
+   "verdict": "pareil"
+  },
+  "away:under@10.5": {
+   "ecart_brier": -0.0014,
+   "ic95": [
+    -0.0031,
+    0.00031
+   ],
+   "ecart_logloss": -0.00373,
+   "par_championnat": {
+    "FR1": -0.00378,
+    "EN1": -0.00326,
+    "ES1": -0.00243,
+    "DE1": 0.00737,
+    "IT1": -0.00114,
+    "BR1": -0.00288
+   },
+   "verdict": "pareil"
+  },
+  "away:over@11.5": {
+   "ecart_brier": -0.0024,
+   "ic95": [
+    -0.00428,
+    -0.00055
+   ],
+   "ecart_logloss": -0.00537,
+   "par_championnat": {
+    "FR1": -0.00523,
+    "EN1": -0.00423,
+    "ES1": -0.00358,
+    "DE1": 0.00672,
+    "IT1": -0.00294,
+    "BR1": -0.00326
+   },
+   "verdict": "mieux"
+  },
+  "away:under@11.5": {
+   "ecart_brier": -0.0024,
+   "ic95": [
+    -0.00428,
+    -0.00055
+   ],
+   "ecart_logloss": -0.00537,
+   "par_championnat": {
+    "FR1": -0.00523,
+    "EN1": -0.00423,
+    "ES1": -0.00358,
+    "DE1": 0.00672,
+    "IT1": -0.00294,
+    "BR1": -0.00326
+   },
+   "verdict": "mieux"
+  },
+  "away:over@12.5": {
+   "ecart_brier": -0.00157,
+   "ic95": [
+    -0.00355,
+    0.00031
+   ],
+   "ecart_logloss": -0.00334,
+   "par_championnat": {
+    "FR1": -0.00584,
+    "EN1": -0.00306,
+    "ES1": -0.00283,
+    "DE1": 0.00729,
+    "IT1": -0.00219,
+    "BR1": -0.00165
+   },
+   "verdict": "pareil"
+  },
+  "away:under@12.5": {
+   "ecart_brier": -0.00157,
+   "ic95": [
+    -0.00355,
+    0.00031
+   ],
+   "ecart_logloss": -0.00334,
+   "par_championnat": {
+    "FR1": -0.00584,
+    "EN1": -0.00306,
+    "ES1": -0.00283,
+    "DE1": 0.00729,
+    "IT1": -0.00219,
+    "BR1": -0.00165
+   },
+   "verdict": "pareil"
+  },
+  "1x2:home": {
+   "ecart_brier": 0.0,
+   "ic95": [
+    -8e-05,
+    8e-05
+   ],
+   "ecart_logloss": -1e-05,
+   "par_championnat": {
+    "FR1": -5e-05,
+    "EN1": 6e-05,
+    "ES1": 1e-05,
+    "DE1": 0.00013,
+    "IT1": -1e-05,
+    "BR1": -7e-05
+   },
+   "verdict": "pareil"
+  },
+  "1x2:draw": {
+   "ecart_brier": 2e-05,
+   "ic95": [
+    -2e-05,
+    5e-05
+   ],
+   "ecart_logloss": 0.0001,
+   "par_championnat": {
+    "FR1": 7e-05,
+    "EN1": 2e-05,
+    "ES1": 0.0,
+    "DE1": 2e-05,
+    "IT1": -4e-05,
+    "BR1": 2e-05
+   },
+   "verdict": "pareil"
+  },
+  "1x2:away": {
+   "ecart_brier": -9e-05,
+   "ic95": [
+    -0.00017,
+    -0.0
+   ],
+   "ecart_logloss": -0.00019,
+   "par_championnat": {
+    "FR1": 6e-05,
+    "EN1": -0.00021,
+    "ES1": -3e-05,
+    "DE1": -2e-05,
+    "IT1": -0.00013,
+    "BR1": -0.00013
+   },
+   "verdict": "mieux"
+  }
+ }
+}

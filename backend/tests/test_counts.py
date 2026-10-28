@@ -13,6 +13,9 @@ def test_feed_values_map_to_count_bets():
     assert counts.map_value("Shots.1x2", "Draw") == ("tirs", "1x2", "draw", None)
     assert counts.map_value("Corners Over Under", "Over 10") is None  # whole line: refunds, left out
     assert counts.map_value("Corners Race To", "Draw 9") is None
+    assert counts.map_value("Fouls. Total", "Under 24.5") == ("fautes", "total", "under", 24.5)
+    assert counts.label("fautes", "away", "over", 11.5, "Lens", "Metz") == "Fautes Metz : plus de 11,5"
+    assert counts.validated("fautes", "1x2", "away", None) and "fautes" in counts.REFEREE_STATS
 
 
 def test_labels_settlement_and_validation():
