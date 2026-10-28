@@ -208,11 +208,14 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     # Each market requested costs one credit: totals only when that market is enabled.
                     odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
                                                 bookmakers=settings.odds_bookmakers,
-                                                markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
+                                                markets="h2h,totals" if "totals" in cfg.enabled_markets or french_only()
+                                                else "h2h")
                     quotes = odds_p.odds(competition)
                     _mark(db, odds_p.name, quota=odds_p.last_quota)
                     if fixtures is None:
                         fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
+                    if french_only() and FRENCH_EXTRA_MARKETS:  # the French rule's extra markets, last pass only
+                        quotes += [q for q in _french_extra(odds_p, competition, fixtures, now) if is_french(q.bookmaker)]
                     if goal_markets:
                         quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
                     odds_source = odds_p.name

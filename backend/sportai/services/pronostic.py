@@ -265,6 +265,7 @@ def _best(ok: list[dict]) -> dict | None:
 # A match where no bet passes pick_ok still gets one: the surest bet at PICK_ODDS on the French price, the three
 # priority axes first, never a removed market (both teams score: no, under 0.5, a team's under), marked choix_impose.
 FORCE_CHOICE = True
+PRIORITY_KEYS = ("1x2", "double_chance", "dnb", "totals", "btts")
 
 
 def _forced(legs: list[dict]) -> dict | None:
@@ -298,7 +299,8 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         if prev and prev.get("pari") and (prev.get("fige") or frozen(prev)):
             picks[mid] = _settle_leg({**prev, "fige": True}, page)
             continue
-        ok = [l for l in by_match.get(mid, []) if not started(l) and _correct(l) and pick_ok(l) and not blocked(l)
+        ok = [l for l in by_match.get(mid, []) if not l.get("_secours") and not started(l) and _correct(l)
+              and pick_ok(l) and not blocked(l)
               and (not l.get("buteur") or frozen(l))]  # a scorer: only once fixed, line-up read (45 min)
         best = _best(ok)
         if best:
@@ -466,7 +468,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 CandidateRow.market.not_in(VALIDATED_MARKETS))))
         div = cfg.get("max_market_divergence", 0.10)
         trial_ok = cfg.get("trial_markets", TRIAL_MARKETS_DEFAULT)
-        trials, goal_trials = [], []
+        trials, goal_trials, spares = [], [], []
         for c in rows:
             if c.odds < COTE_MIN:  # never proposed (owner, 2026-10-22)
                 continue
@@ -487,15 +489,19 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 valide = c.selection != "draw" and UCL_ODDS[0] <= c.odds <= UCL_ODDS[1]
             # A de-vigged two-way price estimates the chance of winning when the bet is not refunded.
             p_cmp = fix["p_cmp"]
+            spare = False  # failed the care for unvalidated markets: only a match's forced choice may use it
             if not valide and not (paper and c.market in enabled):
                 if goal and not paper:  # goal bets: their own rules (GOAL_* above)
                     if (is_quarter(c.line) or ev <= GOAL_MIN_VALUE or c.market_fair_prob is None
                             or min(p_cmp, c.market_fair_prob) < GOAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
                             or abs(p_cmp - c.market_fair_prob) > div):
-                        continue
+                        spare = True
                 elif (is_quarter(c.line) or ev < TRIAL_MIN_VALUE or c.market_fair_prob is None
                         or p_win < TRIAL_MIN_PROBA or c.odds > TRIAL_MAX_ODDS
                         or abs(p_cmp - c.market_fair_prob) > div):
+                    spare = True
+                if spare and (not FORCE_CHOICE or is_quarter(c.line) or c.market_fair_prob is None
+                              or c.market not in PRIORITY_KEYS):
                     continue
             leg = {
                 "match_id": doc_id(ko, home, away), "match": f["match"],
@@ -516,7 +522,9 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 leg.update(proba_brute=round(c.p_win, 4), valeur_brute=round(c.ev, 4), correction=fix["ratio"])
             if fix["ratio_marche"] != 1.0 and fix["proba_marche"] is not None:
                 leg["proba_marche_corrigee"] = fix["proba_marche"]
-            if not leg["valide"] and not (paper and c.market in enabled):
+            if spare:
+                spares.append({**leg, "validation": NON_VALIDE, "_secours": True})
+            elif not leg["valide"] and not (paper and c.market in enabled):
                 leg["validation"] = NON_VALIDE
                 (goal_trials if goal and not paper else trials).append(leg)
             else:
@@ -583,10 +591,12 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
             legs = [l for l in legs if l["match_id"] != doc_id(ko, home, away)] + [
                 x for l in legs if l["match_id"] == doc_id(ko, home, away) if (x := french_price(l, fr))]
             trials = [x for l in trials if (x := french_price(l, fr))]
+            spares = [x for l in spares if (x := french_price(l, fr))]
             goal_trials = [x for l in goal_trials if (x := french_price(l, fr))]
         # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
+        legs += [l for l in spares if PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])]
     for l in legs:
         l.pop("_cle", None)
     return legs
@@ -751,6 +761,8 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         status = (page.get(leg["match_id"]) or {}).get("statut", "a_venir")
         return status != "a_venir" or datetime.fromisoformat(leg["coup_envoi"]) <= now
 
+    spares = [l for l in legs if l.get("_secours")]  # forced choices only (legs_from_db)
+    legs = [l for l in legs if not l.get("_secours")]
     open_legs = [l for l in legs if not started(l) and _correct(l)]
     notes = []
     # a team that may rest players tonight for its next match: the bets needing it to win or score are kept out of
@@ -766,7 +778,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
                      + f" Les paris qui demandent à {team} de gagner ou de marquer beaucoup sont écartés des idées.")
 
     if f"{day:%Y-%m-%d}" >= PER_MATCH_FROM:  # one bet per match, the day's top pick among them (owner, 2026-10-27)
-        picks, selections = build_picks(legs, page, previous, now, day, started,
+        picks, selections = build_picks(legs + spares, page, previous, now, day, started,
                                         lambda l: rotation_block(l, page) is not None)
         n = sum(1 for p in picks.values() if p.get("pari"))
         notes.append(f"{n} match(s) avec une cote retenue sur {len(picks)}." if picks else
