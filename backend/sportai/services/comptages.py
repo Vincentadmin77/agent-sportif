@@ -6,7 +6,7 @@ Team averages come from the API-Football cache the daily goals refresh fills (th
 docs/18-corners-cartons-tirs.md), replayed as in the backtest. A team with fewer than 3 home (or away) matches known,
 or whose last known match is older than STALE_DAYS (statistics not refreshed), gets no price. The bookmaker margin is
 removed on complete groups of one bookmaker (median over the bookmakers), otherwise the market's chance is 1 / odds.
-Cards bets are scaled by the match's referee (counts.referee_factor, since 2026-10-28).
+Cards, fouls and corners bets are scaled by the match's referee (counts.referee_factor, since 2026-10-28).
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ LEAGUE_IDS = {61: "FR1", 39: "EN1", 140: "ES1", 78: "DE1", 135: "IT1", 71: "BR1"
 FINISHED = ("FT", "AET", "PEN")
 STALE_DAYS = 45
 SUMMARY = "comptages_resume.json.gz"
-SUMMARY_VERSION = 2  # 2: the referee of each match
+SUMMARY_VERSION = 3  # 2: the referee of each match, 3: fouls
 FEED_TYPES = {"Corner Kicks": "corners", "Yellow Cards": "jaunes", "Red Cards": "rouges", "Total Shots": "tirs",
-              "Shots on Goal": "tirs_cadres"}
+              "Shots on Goal": "tirs_cadres", "Fouls": "fautes"}
 
 
 def stat_value(stat: str, side: dict) -> int | None:

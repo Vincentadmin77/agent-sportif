@@ -1,0 +1,331 @@
+{
+ "generated": "2026-10-28T08:51:39.233978+00:00",
+ "n_test": 2687,
+ "ref_shrink": 20.0,
+ "marches": {
+  "rouge:match": {
+   "observe": 0.179,
+   "equipes_vs_ligue": {
+    "ecart_brier": 0.001152,
+    "ic95": [
+     -0.000464,
+     0.002715
+    ],
+    "ecart_logloss": 0.003042,
+    "par_championnat": {
+     "FR1": 0.00033,
+     "EN1": -0.00051,
+     "ES1": 0.00512,
+     "DE1": -0.00262,
+     "IT1": 0.00443,
+     "BR1": -0.00021
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": 0.0004,
+    "ic95": [
+     -0.00075,
+     0.001546
+    ],
+    "ecart_logloss": 0.001265,
+    "par_championnat": {
+     "FR1": 0.0037,
+     "EN1": 0.00057,
+     "ES1": -0.00066,
+     "DE1": 0.00104,
+     "IT1": -0.00238,
+     "BR1": 0.00074
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": 0.001552,
+    "ic95": [
+     -0.000545,
+     0.003576
+    ],
+    "ecart_logloss": 0.004307,
+    "par_championnat": {
+     "FR1": 0.00403,
+     "EN1": 7e-05,
+     "ES1": 0.00447,
+     "DE1": -0.00158,
+     "IT1": 0.00206,
+     "BR1": 0.00053
+    },
+    "mieux": false
+   }
+  },
+  "rouge_mt:match": {
+   "observe": 0.0607,
+   "equipes_vs_ligue": {
+    "ecart_brier": 0.001006,
+    "ic95": [
+     0.000422,
+     0.001578
+    ],
+    "ecart_logloss": 0.009081,
+    "par_championnat": {
+     "FR1": 0.00073,
+     "EN1": -0.0001,
+     "ES1": 0.00277,
+     "DE1": -1e-05,
+     "IT1": 0.00137,
+     "BR1": 0.00096
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": 0.00054,
+    "ic95": [
+     7.9e-05,
+     0.000988
+    ],
+    "ecart_logloss": 0.004577,
+    "par_championnat": {
+     "FR1": 0.00053,
+     "EN1": 0.00037,
+     "ES1": 0.00064,
+     "DE1": 0.00053,
+     "IT1": 0.00019,
+     "BR1": 0.00082
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": 0.001546,
+    "ic95": [
+     0.000855,
+     0.002222
+    ],
+    "ecart_logloss": 0.013658,
+    "par_championnat": {
+     "FR1": 0.00127,
+     "EN1": 0.00027,
+     "ES1": 0.00341,
+     "DE1": 0.00052,
+     "IT1": 0.00156,
+     "BR1": 0.00178
+    },
+    "mieux": false
+   }
+  },
+  "pen_marque:home": {
+   "observe": 0.1243,
+   "equipes_vs_ligue": {
+    "ecart_brier": 0.00128,
+    "ic95": [
+     -2.5e-05,
+     0.002591
+    ],
+    "ecart_logloss": 0.005491,
+    "par_championnat": {
+     "FR1": 0.00027,
+     "EN1": -0.00034,
+     "ES1": 0.00131,
+     "DE1": 0.00132,
+     "IT1": 0.00342,
+     "BR1": 0.00144
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": 0.001187,
+    "ic95": [
+     0.000621,
+     0.00178
+    ],
+    "ecart_logloss": 0.004958,
+    "par_championnat": {
+     "FR1": 0.00097,
+     "EN1": 0.00152,
+     "ES1": 0.00104,
+     "DE1": 0.00019,
+     "IT1": 0.00212,
+     "BR1": 0.00109
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": 0.002467,
+    "ic95": [
+     0.000951,
+     0.003973
+    ],
+    "ecart_logloss": 0.01045,
+    "par_championnat": {
+     "FR1": 0.00124,
+     "EN1": 0.00118,
+     "ES1": 0.00235,
+     "DE1": 0.00152,
+     "IT1": 0.00553,
+     "BR1": 0.00253
+    },
+    "mieux": false
+   }
+  },
+  "pen_marque:away": {
+   "observe": 0.093,
+   "equipes_vs_ligue": {
+    "ecart_brier": 0.001397,
+    "ic95": [
+     0.000469,
+     0.002349
+    ],
+    "ecart_logloss": 0.007487,
+    "par_championnat": {
+     "FR1": 0.00231,
+     "EN1": 0.00214,
+     "ES1": -0.00015,
+     "DE1": 0.00112,
+     "IT1": 0.00279,
+     "BR1": 0.00072
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": 0.000604,
+    "ic95": [
+     0.000124,
+     0.001091
+    ],
+    "ecart_logloss": 0.002853,
+    "par_championnat": {
+     "FR1": 0.0005,
+     "EN1": 0.00097,
+     "ES1": 0.00091,
+     "DE1": 0.00112,
+     "IT1": -0.00014,
+     "BR1": 0.00044
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": 0.002,
+    "ic95": [
+     0.000911,
+     0.003089
+    ],
+    "ecart_logloss": 0.01034,
+    "par_championnat": {
+     "FR1": 0.00281,
+     "EN1": 0.00311,
+     "ES1": 0.00075,
+     "DE1": 0.00224,
+     "IT1": 0.00265,
+     "BR1": 0.00116
+    },
+    "mieux": false
+   }
+  },
+  "pen_rate:home": {
+   "observe": 0.0063,
+   "equipes_vs_ligue": {
+    "ecart_brier": -1.3e-05,
+    "ic95": [
+     -7.4e-05,
+     6.1e-05
+    ],
+    "ecart_logloss": 0.003076,
+    "par_championnat": {
+     "FR1": -1e-05,
+     "EN1": 7e-05,
+     "ES1": -0.00027,
+     "DE1": 0.00011,
+     "IT1": 0.0,
+     "BR1": 3e-05
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": -3e-06,
+    "ic95": [
+     -1.9e-05,
+     1.6e-05
+    ],
+    "ecart_logloss": 0.001074,
+    "par_championnat": {
+     "FR1": 2e-05,
+     "EN1": 2e-05,
+     "ES1": -3e-05,
+     "DE1": -1e-05,
+     "IT1": -2e-05,
+     "BR1": 0.0
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": -1.6e-05,
+    "ic95": [
+     -8e-05,
+     6.1e-05
+    ],
+    "ecart_logloss": 0.00415,
+    "par_championnat": {
+     "FR1": 1e-05,
+     "EN1": 9e-05,
+     "ES1": -0.0003,
+     "DE1": 0.0001,
+     "IT1": -2e-05,
+     "BR1": 3e-05
+    },
+    "mieux": false
+   }
+  },
+  "pen_rate:away": {
+   "observe": 0.0033,
+   "equipes_vs_ligue": {
+    "ecart_brier": 4.7e-05,
+    "ic95": [
+     1.3e-05,
+     8.6e-05
+    ],
+    "ecart_logloss": 0.00105,
+    "par_championnat": {
+     "FR1": 1e-05,
+     "EN1": 2e-05,
+     "ES1": -4e-05,
+     "DE1": 0.0002,
+     "IT1": 8e-05,
+     "BR1": 5e-05
+    },
+    "mieux": false
+   },
+   "arbitre_vs_equipes": {
+    "ecart_brier": -2e-05,
+    "ic95": [
+     -4.9e-05,
+     1.3e-05
+    ],
+    "ecart_logloss": 0.000955,
+    "par_championnat": {
+     "FR1": -4e-05,
+     "EN1": 1e-05,
+     "ES1": -1e-05,
+     "DE1": -0.00011,
+     "IT1": -0.0,
+     "BR1": 0.0
+    },
+    "mieux": false
+   },
+   "arbitre_vs_ligue": {
+    "ecart_brier": 2.7e-05,
+    "ic95": [
+     -1.1e-05,
+     7.5e-05
+    ],
+    "ecart_logloss": 0.002004,
+    "par_championnat": {
+     "FR1": -3e-05,
+     "EN1": 3e-05,
+     "ES1": -6e-05,
+     "DE1": 9e-05,
+     "IT1": 8e-05,
+     "BR1": 5e-05
+    },
+    "mieux": false
+   }
+  }
+ }
+}

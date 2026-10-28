@@ -5,10 +5,12 @@ cards per match in the league before that day, pulled towards the league average
 league average; both teams' expected cards and the total are multiplied by it. Compared bet by bet with the model
 without the referee (paired Brier difference, bootstrap 95 % interval), on the same matches.
 
-    python3 backtest_referee.py cartons [--shrink 20]
+    python3 backtest_referee.py cartons|jaunes|fautes|corners|tirs|tirs_cadres [--shrink 20]
 
 Results (2026-10-28, 2,614 test matches): shrink 5 better on 2 of 29 bets, 10 on 6, 20 on 14, worse on none in
-each case; 20 kept (chosen on the test seasons themselves: optimistic). Yellow cards only: 14 of 29 at 20.
+each case; 20 kept (chosen on the test seasons themselves: optimistic). Yellow cards only: 14 of 29 at 20. Other
+statistics at 20: fouls 7 of 27 better, corners 4 of 35, none worse (both kept); shots 6 of 29 worse, shots on
+target unchanged (left out).
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ from sportai.services.contexte import referee_keys  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("stat", choices=["cartons", "jaunes"])
+    ap.add_argument("stat", choices=list(STATS))
     ap.add_argument("--shrink", type=float, default=cnt.REFEREE_SHRINK)
     ap.add_argument("--leagues", nargs="+", default=list(LEAGUES))
     a = ap.parse_args()

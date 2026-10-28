@@ -23,7 +23,8 @@ from sportai.services.dashboard import bet_label, goal_label, scorer_label, sett
 LIVE_NOTE = ("Suivi en direct : probabilités recalculées avec le score, la minute, les cartons rouges et les "
              "occasions (xG) quand le flux les donne. Information seulement, pas une sélection.")
 STAT_NAMES = {"Total Shots": "tirs", "Shots on Goal": "tirs_cadres", "Ball Possession": "possession",
-              "Corner Kicks": "corners", "expected_goals": "xg", "Yellow Cards": "jaunes", "Red Cards": "rouges"}
+              "Corner Kicks": "corners", "expected_goals": "xg", "Yellow Cards": "jaunes", "Red Cards": "rouges",
+              "Fouls": "fautes"}
 CARDS = ("jaunes", "rouges")  # the feed gives null for no card: 0 (settles the cards bets, services/comptages.py)
 FINISHED = {"FT", "AET", "PEN"}
 ODDS_NOTE = ("Cotes en direct du flux API-Football (pas forcément un bookmaker français). Modèle du direct non "
