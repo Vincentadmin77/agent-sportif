@@ -85,28 +85,39 @@ class Roster:
 
     def __init__(self, seasons: list[str], games_by_season: dict[str, list[dict]]):
         self.model = P.PlayerModel()
+        self.defense = P.TeamDefense()
         self.names: dict[str, str] = {}
+        self.team_of: dict[str, int] = {}
         self.recent: dict[int, list[set[str]]] = defaultdict(list)  # team id -> players of its games, oldest first
         rows = []
         for s in seasons:
             if not _path(s).exists():
                 continue
-            ts = {g["id"]: g["timestamp"] for g in games_by_season.get(s, [])}
+            gm = {g["id"]: g for g in games_by_season.get(s, [])}
             for gid, box in json.load(gzip.open(_path(s), "rt")).items():
-                if int(gid) in ts:
-                    rows.append((ts[int(gid)], box))
+                if int(gid) in gm:
+                    rows.append((gm[int(gid)]["timestamp"], gm[int(gid)], box))
         rows.sort(key=lambda x: x[0])
-        for _, box in rows:
+        for _, g, box in rows:
+            h, a = g["teams"]["home"]["id"], g["teams"]["away"]["id"]
             teams: dict[int, set[str]] = defaultdict(set)
+            conceded = {h: defaultdict(float), a: defaultdict(float)}
             for r in box:
                 pid = str(r["player"]["id"])
                 ln = _line(r)
                 self.names[pid] = r["player"]["name"]
                 if ln.minutes > 0:
                     self.model.update(pid, ln)
-                    teams[r["team"]["id"]].add(pid)
+                    t = r["team"]["id"]
+                    teams[t].add(pid)
+                    self.team_of[pid] = t
+                    if t in (h, a):
+                        for st in P.STATS:
+                            conceded[a if t == h else h][st] += getattr(ln, st)
             for t, ps in teams.items():
                 self.recent[t] = (self.recent[t] + [ps])[-2:]
+            for t in (h, a):
+                self.defense.update(t, conceded[t])
 
     def candidates(self, team_ids: list[int]) -> dict[str, str]:
         out = {}
@@ -177,7 +188,8 @@ def parse_odds(bookmakers: list[dict]) -> dict[tuple, dict[str, float]]:
 
 
 def price(roster: Roster, team_ids: list[int], quotes: dict[tuple, dict[str, float]]) -> list[dict]:
-    """Each quoted player line with the model's chance, the bookmakers' de-vigged chance and the median odds."""
+    """Each quoted player line with the model's chance, the bookmakers' de-vigged chance and the median odds.
+    team_ids = [home, away]: each player's expectation is adjusted to what the opponent concedes."""
     cands = roster.candidates(team_ids)
     ids: dict[str, str | None] = {}
     rows = []
@@ -191,7 +203,9 @@ def price(roster: Roster, team_ids: list[int], quotes: dict[tuple, dict[str, flo
         fair = [(1 / o) / (1 / o + 1 / other[b]) for b, o in books.items() if b in other]
         if not fair:  # one-sided quote (points milestones): the usual margin taken off
             fair = [1 / o / MILESTONE_MARGIN for o in books.values()]
-        exp = roster.model.expected(pid)
+        team = roster.team_of.get(pid)
+        opp = team_ids[1] if team == team_ids[0] else team_ids[0]
+        exp = roster.model.expected(pid, opp=roster.defense.factor(opp), home=team == team_ids[0])
         p_over = roster.model.p_over(exp[m], m, line)
         p = p_over if side == "over" else 1 - p_over
         med = median(books.values())
