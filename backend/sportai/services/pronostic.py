@@ -261,6 +261,24 @@ def _best(ok: list[dict]) -> dict | None:
     return max(side, key=key, default=None)
 
 
+# Owner 2026-10-28 16:00: "je veux un choix sur tous les matchs de ce soir ... il y a forcément des choix à faire".
+# A match where no bet passes pick_ok still gets one: the surest bet at PICK_ODDS on the French price, the three
+# priority axes first, never a removed market (both teams score: no, under 0.5, a team's under), marked choix_impose.
+FORCE_CHOICE = True
+
+
+def _forced(legs: list[dict]) -> dict | None:
+    def allowed(l: dict) -> bool:
+        p = l["pari"].lower() + " "
+        return (l.get("proba_marche") is not None and PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])
+                and not l.get("buteur") and "deux équipes marquent : non" not in p and "moins de 0,5 " not in p
+                and not (" : moins de " in l["pari"] and not (l.get("mi_temps") or l.get("comptage")))
+                and not (l.get("mi_temps") and blended(l) < HALF_MIN_CHANCE))
+    ok = [l for l in legs if allowed(l)]
+    first = [l for l in ok if l.get("marche") in PRIORITY_MARKETS and not l.get("mi_temps")]
+    return max(first or ok, key=lambda l: (blended(l), l["cote"]), default=None)
+
+
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
                 started, blocked) -> tuple[dict[str, dict], list[dict]]:
     """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's official pick(s)."""
@@ -285,6 +303,12 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         best = _best(ok)
         if best:
             picks[mid] = {**_pick(best), "fige": frozen(best)}
+            continue
+        forced = _forced([l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]) if FORCE_CHOICE else None
+        if forced:
+            c = blended(forced)
+            picks[mid] = {**_pick(forced), "fige": frozen(forced), "choix_impose": True,
+                          **({"niveau": "Confiance faible"} if c < PICK_MIN_CHANCE else {})}
             continue
         m = page.get(mid) or {}
         doc = (by_match.get(mid) or [{}])[0]
