@@ -192,10 +192,12 @@ def test_the_m_chooses_on_every_nba_game_then_settles_it():
     reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(18), {"7": bm})
     a = reg["avis"]["basket-7"]
     assert a["choix_m"]["pari"] is None and "C +7,5 points (handicap) à 1,71" in a["choix_m"]["raison"]
+    assert a["choix_m"]["feu"] == "orange"
     assert a["sans_position"]
     bm["cotes_cloture"]["lignes"][1]["proba_marche"] = 0.61
     reg = R.basket_avis(reg, {}, at(20), {"7": bm})
     assert reg["avis"]["basket-7"]["choix_m"]["pari"] == "C +7,5 points (handicap)"
+    assert reg["avis"]["basket-7"]["choix_m"]["feu"] == "vert"
     reg = R.basket_avis(reg, {}, datetime(2026, 10, 30, 3, tzinfo=timezone.utc),
                         {"7": {**bm, "statut": "termine", "score": "110-115"}})
     assert reg["avis"]["basket-7"]["choix_m"]["resultat"] == "gagne" and "Choix du M validé" in reg["avis"]["basket-7"]["bilan"]

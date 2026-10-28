@@ -503,8 +503,7 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
                 a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
         if mf is not None:
-            a["choix_m"] = {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
-                            "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat")}
+            a["choix_m"] = _m_side(mf)
         res_off = (off or {}).get("resultat") if (off or {}).get("resultat") in SETTLED else None
         if res_off and a.get("officielle"):
             a["officielle"]["resultat"] = res_off
@@ -512,6 +511,16 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
             a["bilan"] = _who_was_right(a)
         av[mid] = a
     return reg
+
+
+def _m_side(mf: dict) -> dict:
+    """The M's own choice in the opinions, with its light (on its choice, or on its best option when it passes)."""
+    best = mf.get("meilleure_option") or {}
+    lit = visa({"pari": mf.get("pari"), "proba": mf.get("p_modele"), "proba_marche": mf.get("p_marche")}) \
+        if mf.get("pari") else visa({"pari": best.get("pari"), "proba_marche": best.get("p_marche")})
+    return {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
+            "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat"),
+            "feu": (lit or {}).get("feu", "rouge" if not mf.get("pari") else None)}
 
 
 def _who_was_right(a: dict) -> str:
@@ -606,8 +615,7 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
                 a["tardif"] = True
         mf = reg["fiches"].get(f"{reg['jour']}|basket-{mid}|M")
         if mf is not None:
-            a["choix_m"] = {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
-                            "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat")}
+            a["choix_m"] = _m_side(mf)
         if p.get("resultat") in SETTLED and a.get("officielle"):
             a["officielle"]["resultat"] = p["resultat"]
         if (bm.get("statut") == "termine" or p.get("resultat") in SETTLED) and "bilan" not in a \
