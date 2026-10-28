@@ -148,6 +148,7 @@ PER_MATCH_FROM = "2026-10-01"  # owner 2026-10-27 09:31: "comme si nous avions f
 PICK_ODDS = (1.60, None)
 PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50
+HALF_MIN_CHANCE = 0.70  # a half-time bet needs 7 chances in 10 (owner 2026-10-28: "7 a la rigueur ou 8")
 PICK_MODEL_WEIGHT = 0.5
 PICK_HIGH = 0.60  # "Confiance élevée" from here, "Confiance moyenne" below
 # How the day's official pick is chosen among the match bets: "confiance" (most likely first, owner 2026-10-27)
@@ -189,6 +190,8 @@ def pick_ok(leg: dict) -> bool:
     if "deux équipes marquent : non" in leg["pari"]:
         return False
     c = blended(leg)
+    if leg.get("mi_temps") and c < HALF_MIN_CHANCE:  # 45 minutes leave little room: half-time bets need more
+        return False
     return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
 
 

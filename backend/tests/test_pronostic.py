@@ -421,7 +421,9 @@ def test_no_both_teams_no_and_no_under_half_a_goal():
     assert not pick_ok({**base, "pari": "Les deux équipes marquent : non"})
     assert not pick_ok({**base, "pari": "Moins de 2,5 buts et les deux équipes marquent : non"})
     half = {"marche": "ht_team_total_away", "selection": "under", "ligne": 0.5}
-    assert not pick_ok({**base, "pari": "1re mi-temps : Lazio moins de 0,5 buts", "mi_temps": half})
-    assert pick_ok({**base, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})
-    assert pick_ok({**base, "pari": "1re mi-temps : Lazio moins de 1,5 buts", "mi_temps": {**half, "ligne": 1.5}})
+    sure = {"cote": 1.62, "proba": 0.72, "proba_marche": 0.71}  # half-time bets need 70 % (owner 2026-10-28)
+    assert not pick_ok({**sure, "pari": "1re mi-temps : Lazio moins de 0,5 buts", "mi_temps": half})
+    assert pick_ok({**sure, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})
+    assert pick_ok({**sure, "pari": "1re mi-temps : Lazio moins de 1,5 buts", "mi_temps": {**half, "ligne": 1.5}})
+    assert not pick_ok({**base, "pari": "1re mi-temps : Lazio plus de 0,5 buts", "mi_temps": {**half, "selection": "over"}})
     assert not pick_ok({**base, "pari": "Moins de 0,5 buts"})
