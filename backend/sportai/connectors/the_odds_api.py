@@ -32,6 +32,7 @@ SPORT_KEYS = {
     "UEL": "soccer_uefa_europa_league",
     "BR1": "soccer_brazil_campeonato",
     "TR1": "soccer_turkey_super_league",
+    "ENC": "soccer_england_efl_cup",
 }
 
 

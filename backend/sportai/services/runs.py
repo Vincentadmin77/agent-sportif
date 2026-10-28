@@ -70,6 +70,7 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
 
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
+DOMESTIC_CUPS = {"ENC": "EN1"}  # cup -> the league whose history rates its clubs
 # European cups analysed with the cross-league model (owner 2026-10-15: the Europa League too, same rules as the
 # Champions League). Its calibration was fitted on the Champions League only (scripts/backtest_ucl.py).
 EUROPEAN_CUPS = ("UCL", "UEL")
@@ -160,7 +161,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             fixtures_p = ApiFootballProvider(settings.api_football_key)
             backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
             current = fixtures_p.name
-            history, used = load_history(db, competition, now, fixtures_p, backup)
+            # a domestic cup: its clubs are rated on their league's results (owner 2026-10-28: EFL Cup)
+            history, used = load_history(db, DOMESTIC_CUPS.get(competition, competition), now, fixtures_p,
+                                         backup if competition not in DOMESTIC_CUPS else None)
             if competition in EUROPEAN_CUPS:
                 # Clubs of different leagues are only comparable through a model fitted on all of them at once.
                 for dom in UCL_DOMESTIC:
