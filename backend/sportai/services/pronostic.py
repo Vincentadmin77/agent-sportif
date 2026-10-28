@@ -135,7 +135,7 @@ ROTATION_LEVEL = "élevé"
 # PER_MATCH_FROM on, no more combined tickets, bonus ideas or top 3: the review of 11-26 October (54 % of the bets won
 # for 62 % announced) found the model too sure of itself whenever it strays from the bookmakers, the combined
 # tickets and the odds above 2.20 losing most. So a match's bet must have:
-# - odds of 1.60 or more and no upper limit (owner, 2026-10-27 12:52: "la cote mini est de 1.60 mais pas de cote
+# - odds of PICK_ODDS[0] or more (1.60 until 2026-10-28, then 1.50) and no upper limit (owner, 2026-10-27 12:52: "la cote mini est de 1.60 mais pas de cote
 #   max ... si l'algorithme trouve une cote bien plus haute qui a de fortes probabilités il faut l'étudier aussi");
 #   a high odd still has to pass the confidence and agreement rules below (3 bets won out of 20 between 2.20 and 3.00
 #   in the review, when the model alone chose them);
@@ -145,7 +145,9 @@ ROTATION_LEVEL = "élevé"
 # - not a team's "moins de X buts" (6 won out of 14 for 68 % announced), paused until it proves itself.
 # Among those, the most likely; a match without one says why. Each bet is fixed 45 min before its kick-off.
 PER_MATCH_FROM = "2026-10-01"  # owner 2026-10-27 09:31: "comme si nous avions fait comme ça depuis le début"
-PICK_ODDS = (1.60, None)
+PICK_ODDS = (1.50, None)  # owner 2026-10-28 10:28 ("le meilleur ratio possible et une régularité"): replay 11-26/10
+# at 1.50, 62 % of the match bets won against 54 % at 1.60 (the 18 bets between 1.50 and 1.59: 14 won); the Top
+# confiance keeps SELECTION_MIN_ODDS = 1.60 (4 won, 0 lost at 1.60; 6 won, 3 lost at 1.50)
 PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50
 HALF_MIN_CHANCE = 0.70  # a half-time bet needs 7 chances in 10 (owner 2026-10-28: "7 a la rigueur ou 8")
@@ -159,11 +161,11 @@ SELECTION_MIN_ODDS = 1.60
 SELECTION_MIN_CONF = PICK_HIGH  # owner 2026-10-27 14:56: the best single only among "Confiance élevée" bets
 SELECTION_TITLE = "Top confiance du jour"
 PICK_TITLE = "Probabilité retenue"
-NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote d'au moins 1,60 où le modèle et les bookmakers "
-           "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de pari.")
+NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote d'au moins 1,50 où le modèle et les bookmakers "
+           "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de position.")
 PICKS_NOTE = ("Sur chaque match, l'agent retient au plus une cote : celle où le modèle et les bookmakers s'accordent "
-              "le mieux, à 1,60 ou plus. La meilleure confiance simple et la meilleure confiance combiné du jour sont "
-              "choisies parmi elles. "
+              "le mieux, à 1,50 ou plus. La meilleure confiance simple (à 1,60 ou plus) et la meilleure confiance "
+              "combiné du jour sont choisies parmi elles. "
               "Ajoute celles que tu veux à ton carnet. Estimation, jamais une garantie.")
 
 

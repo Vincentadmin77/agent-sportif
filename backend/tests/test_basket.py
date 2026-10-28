@@ -204,7 +204,7 @@ def test_floor_one_bet_per_match_and_top_confiance_only_on_elevee_validated():
     ko = datetime(2026, 10, 28, 0, 0, tzinfo=timezone.utc)
     matchs = {k: _mdoc(ko) for k in "abcd"}
     offers = {
-        "a": [_bet("Victoire H", 1.55, 0.70, 0.66)],  # under 1.60: never retained
+        "a": [_bet("Victoire H", 1.45, 0.70, 0.66)],  # under 1.50: never retained
         "b": [_bet("Plus de 220,5 points dans le match", 1.70, 0.66, 0.62, False, "total", "over", 220.5)],
         "c": [_bet("Victoire H", 1.65, 0.64, 0.61), _bet("Victoire A", 2.6, 0.36, 0.39, sel="away")],
         "d": [_bet("Victoire A", 1.90, 0.56, 0.54, sel="away")],
