@@ -21,7 +21,7 @@ from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
-from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
+from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events, french_only, is_french
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import COTE_MIN, SelectionConfig
 from sportai.engine.football import dixon_coles as dc
@@ -228,6 +228,16 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     if kept:
                         quotes += kept
                         odds_source = "+".join(x for x in (odds_source, fixtures_p.name) if x)
+            # French rule (owner 2026-10-28): positions only on French bookmakers' odds, which API-Football does not
+            # carry. Their 1X2 and totals come from The Odds API, region fr (2 credits a league per pass).
+            if french_only() and window and quotes and TheOddsApiProvider.name not in (odds_source or ""):
+                try:
+                    odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions="fr", markets="h2h,totals")
+                    quotes += [q for q in odds_p.odds(competition) if is_french(q.bookmaker)]
+                    _mark(db, odds_p.name, quota=odds_p.last_quota)
+                    odds_source = "+".join(x for x in (odds_source, odds_p.name) if x)
+                except ProviderUnavailable as e:  # no French odds: nothing will be proposed on this league
+                    _mark(db, TheOddsApiProvider.name, str(e))
             run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))

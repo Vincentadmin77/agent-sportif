@@ -31,6 +31,7 @@ from itertools import combinations
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
+from sportai.connectors.the_odds_api import french_only, is_french
 from sportai.db.models import AnalysisRun, CandidateRow
 from sportai.engine.football.halves import MARKET_NAME as HALF_MARKET, settle as settle_half
 from sportai.services.comptages import settle_count
@@ -540,10 +541,13 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
+        if french_only():  # cards, corners, half-time, scorers: no French bookmaker in our feeds (owner 2026-10-28)
+            trials = [l for l in trials if is_french(l["bookmaker"])]
+            goal_trials = [l for l in goal_trials if is_french(l["bookmaker"])]
         # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
-    return legs
+    return [l for l in legs if not french_only() or is_french(l["bookmaker"])]
 
 
 def _ucl_result(leg: dict) -> bool:

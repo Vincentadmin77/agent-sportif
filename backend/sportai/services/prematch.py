@@ -19,6 +19,7 @@ import numpy as np
 
 from sportai.connectors.base import Fixture, HistoricalResult, OddsQuote
 from sportai.connectors.teams import normalise
+from sportai.connectors.the_odds_api import french_only, is_french
 from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import OPEN_MARKETS, MarketKey, likely_score, market_group, outcome, outcomes
 from sportai.engine.value import Outcome, devig_shin
@@ -214,9 +215,12 @@ def _quotes_by_fixture(fixtures: list[Fixture], quotes: list[OddsQuote]) -> dict
 
 
 def _best_prices(quotes: list[OddsQuote], now: datetime) -> dict[MarketKey, OddsQuote]:
+    """The best odds of each bet, on a French bookmaker only when the French rule is on (connectors/the_odds_api.py):
+    a bet no French site offers gets no candidate."""
     best: dict[MarketKey, OddsQuote] = {}
+    fr = french_only()
     for q in quotes:
-        if q.validation_status != "valid" or (q.expires_at and q.expires_at <= now):
+        if q.validation_status != "valid" or (q.expires_at and q.expires_at <= now) or (fr and not is_french(q.bookmaker)):
             continue
         k = MarketKey(q.market, q.selection, q.line)
         if k not in best or q.odds > best[k].odds:

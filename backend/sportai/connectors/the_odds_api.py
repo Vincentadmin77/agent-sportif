@@ -11,6 +11,7 @@ is forbidden.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -32,6 +33,21 @@ SPORT_KEYS = {
     "BR1": "soccer_brazil_campeonato",
     "TR1": "soccer_turkey_super_league",
 }
+
+
+# Owner, 2026-10-28: positions only on odds a French player can take, i.e. bookmakers licensed in France (ANJ).
+# Their prices come from this feed's region "fr" (Winamax, Betclic, Unibet, PMU, NetBet), keys ending in "_fr";
+# API-Football's bookmakers (Bet365, Pinnacle, 1xBet... and the international Unibet / NetBet) are not French sites.
+# Every bookmaker still counts for the market's de-vigged chance. FRENCH_ODDS_ONLY=0 turns the rule off.
+NBA_SPORT_KEY = "basketball_nba"
+
+
+def french_only() -> bool:
+    return os.getenv("FRENCH_ODDS_ONLY", "1") != "0"
+
+
+def is_french(bookmaker: str | None) -> bool:
+    return str(bookmaker or "").endswith("_fr")
 
 
 class TheOddsApiProvider:
@@ -63,6 +79,14 @@ class TheOddsApiProvider:
         self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
         self.last_events = data
         return list(parse_odds(data, self._validity, live))
+
+    def raw_odds(self, sport_key: str) -> list[dict]:
+        """The feed's events with their bookmakers as returned (any sport key; credits: markets x regions)."""
+        params = {"apiKey": self._key, "markets": self._markets, "oddsFormat": "decimal", "dateFormat": "iso",
+                  "regions": self._regions}
+        data = self._http.get_json(f"/v4/sports/{sport_key}/odds", params, ttl=self._ttl)
+        self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
+        return data
 
     def event_odds(self, competition: str, event_id: str, markets: str = "btts,totals") -> list[OddsQuote]:
         """Odds for one match. "Both teams to score" is only offered here, not on the league endpoint;

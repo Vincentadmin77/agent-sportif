@@ -26,6 +26,7 @@ from pathlib import Path
 from statistics import median
 from zoneinfo import ZoneInfo
 
+from sportai.connectors.the_odds_api import NBA_SPORT_KEY, TheOddsApiProvider, french_only, is_french
 from sportai.connectors.api_basketball import DROPPED, FINISHED, LIVE, NOT_STARTED, kickoff, season_for
 from sportai.engine.basketball.ratings import Game, Prediction, RatingsModel, rest_flags
 from sportai.services import basket_players as BP
@@ -235,6 +236,10 @@ def price(pred: Prediction, quotes: dict[tuple, dict[str, float]]) -> list[dict]
         fair = [(1 / o) / (1 / o + 1 / other[b]) for b, o in books.items() if b in other]
         if not fair:
             continue
+        if french_only():  # odds a French player can take only; every bookmaker still counts for the fair chance
+            books = {b: o for b, o in books.items() if is_french(b)}
+            if not books:
+                continue
         p = model_proba(pred, market, sel, line)
         best = max(books.values())
         med = median(books.values())
@@ -462,6 +467,7 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
                for i, s in enumerate(_seasons(comp, day))]
         preds = predictions(history_games(raw, comp), games)
         roster = _roster(api, comp, day, [r for r, _ in raw]) if comp in PLAYER_COMPS else None
+        fr_events = french_events(comp, notes) if french_only() else None
         for g in games:
             key = doc_key(g)
             odds = None
@@ -470,11 +476,67 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
                     odds = api.game_odds(g["id"])
                 except Exception as e:  # noqa: BLE001 - the game is still listed, without odds
                     print(f"odds unavailable for game {key} ({str(e)[:120]})", file=sys.stderr)
+                if fr_events is not None:
+                    odds = with_french_books(odds, g, fr_events)
             docs[key], offers[key] = build_doc(comp, g, preds.get(g["id"]), odds, current.get(key), now)
-            if roster is not None and odds:
+            if roster is not None and odds and not french_only():  # no French site in the player odds feed
                 offers[key] += player_bets(roster, g, odds)
         notes.append(f"{comp} completed ({len(games)} match(s))")
     return docs, offers, notes
+
+
+def french_events(comp: str, notes: list[str]) -> list[dict]:
+    """The Odds API's NBA games with the French bookmakers' winner, handicap and total (3 credits a pass), the only
+    odds a position may use under the French rule (connectors/the_odds_api.py). [] when unavailable."""
+    from sportai.config import get_settings
+
+    if comp != "NBA":
+        return []
+    try:
+        p = TheOddsApiProvider(get_settings().the_odds_api_key, regions="fr", markets="h2h,spreads,totals")
+        events = p.raw_odds(NBA_SPORT_KEY)
+        notes.append(f"{comp} cotes françaises : {len(events)} match(s), crédits restants "
+                     f"{p.last_quota.get('x-requests-remaining', '?')}")
+        return events
+    except Exception as e:  # noqa: BLE001 - without French odds the games are listed with no position
+        notes.append(f"{comp} cotes françaises indisponibles ({str(e)[:120]})")
+        return []
+
+
+def with_french_books(entry: dict | None, game: dict, events: list[dict]) -> dict | None:
+    """The game's odds entry with the French bookmakers of its Odds API event added in the feed's own format."""
+    from sportai.connectors.teams import normalise
+
+    home, away, ko = normalise(game["teams"]["home"]["name"]), normalise(game["teams"]["away"]["name"]), kickoff(game)
+    ev = next((e for e in events if normalise(e["home_team"]) == home and normalise(e["away_team"]) == away
+               and abs(datetime.fromisoformat(e["commence_time"].replace("Z", "+00:00")) - ko) <= timedelta(hours=3)),
+              None)
+    if ev is None:
+        return entry
+    books = []
+    for bk in ev.get("bookmakers") or []:
+        if not is_french(bk.get("key")):
+            continue
+        bets = []
+        for mk in bk.get("markets") or []:
+            vals = []
+            for oc in mk.get("outcomes") or []:
+                side = "Home" if oc["name"] == ev["home_team"] else "Away" if oc["name"] == ev["away_team"] else None
+                if mk["key"] == "h2h" and side:
+                    vals.append({"value": side, "odd": oc["price"]})
+                elif mk["key"] == "spreads" and side and oc.get("point") is not None:
+                    line = oc["point"] if side == "Home" else -oc["point"]  # the feed's lines are the home side's
+                    vals.append({"value": f"{side} {line:+g}", "odd": oc["price"]})
+                elif mk["key"] == "totals" and oc.get("point") is not None:
+                    vals.append({"value": f"{oc['name']} {oc['point']:g}", "odd": oc["price"]})
+            name = {"h2h": "Home/Away", "spreads": "Asian Handicap", "totals": "Over/Under"}.get(mk["key"])
+            if name and vals:
+                bets.append({"name": name, "values": vals})
+        if bets:
+            books.append({"name": bk["key"], "bets": bets})
+    out = dict(entry or {})
+    out["bookmakers"] = list(out.get("bookmakers") or []) + books
+    return out
 
 
 def quarters(game: dict) -> list[dict]:
