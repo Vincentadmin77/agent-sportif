@@ -1,0 +1,28 @@
+# Agent mathématicien : registre des positions et rapport interne
+
+Demandé par Vincent le 28/10/2026. Le mathématicien ne propose aucune position : il contrôle celles des autres
+agents, tient des comptes honnêtes et teste les idées avant la production. État des lieux et plan :
+https://claude.ai/artifact/5HMHHwjG8xXcP2i5S75GfN
+
+## Registre (étape 1, pas encore branché sur les passages)
+`sportai/services/registre.py`, `scripts/mathematicien.py`. Une fiche par position, écrite une seule fois dès que la
+position est figée (H−45) : heure de décision, cote prise, bookmaker, chances modèle / marché / retenue, version des
+règles (empreinte des constantes `PICK_*` de pronostic.py), version du code. Ensuite seulement : cote de clôture (les
+cotes du document du match si un passage d'avant-match a eu lieu après la décision, sinon `null`), CLV, résultat,
+gain à mise égale (interne). Un changement ultérieur de la position est noté dans `modifications`, jamais appliqué.
+Une fiche vue pour la première fois après le coup d'envoi porte `enregistre_apres_coup_envoi`. L'historique recalculé
+est importé à part (`recalcule: true`, sans heure de décision) et mesuré séparément.
+
+```bash
+python scripts/mathematicien.py registre --page PAGE --out OUT   # après chaque passage H−45 et au final
+python scripts/mathematicien.py importer --page PAGE --out OUT   # une fois : jours recalculés
+python scripts/mathematicien.py rapport  --page PAGE             # rapport du lundi
+```
+PAGE = collections `matchs`, `pronostic`, `registre` sauvées par ArtifactData `list`. OUT/registre/<jour>.json va dans
+la collection `registre` (doc_id = le jour). Aucun appel d'API. Le rendement et les creux restent internes : jamais
+d'argent sur le site.
+
+## Limites connues
+- La cote stockée est la meilleure du marché mondial, pas celle d'un bookmaker français : rendement flatteur.
+- La vraie cote de clôture demande un passage d'avant-match après H−45 (sinon la CLV n'est pas calculée).
+- Le basket n'a pas encore de `paris_retenus` figés comparables : à brancher quand son format sera stable.
