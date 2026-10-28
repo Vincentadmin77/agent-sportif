@@ -346,4 +346,11 @@ def run_refresh(now: datetime, api_key: str | None, max_requests: int = MAX_REQU
                   pairs={c: len(lg["pairs"]) for c, lg in book["leagues"].items()},
                   unknown_teams={c: lg["unknown_teams"] for c, lg in book["leagues"].items() if lg["unknown_teams"]},
                   last_match={c: max(m.kickoff for m in ms).isoformat() for c, ms in history.items() if ms})
+    # the scorer model's player history takes the finished fixtures just downloaded (no request of its own)
+    try:
+        from sportai.services.buteurs import update_history
+
+        report["buteurs_historique"] = update_history(cache_dir())
+    except Exception as e:  # noqa: BLE001 - the scorer history never costs the goals model its refresh
+        report["buteurs_historique"] = f"erreur : {e}"
     return report

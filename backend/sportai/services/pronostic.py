@@ -176,9 +176,27 @@ def blended(leg: dict) -> float:
     return p if pm is None else PICK_MODEL_WEIGHT * p + (1 - PICK_MODEL_WEIGHT) * pm
 
 
+# Anytime scorer as a match's position (docs/23-buteurs-stars.md, 2026-10-28): the history model beat the market's
+# 1/odds out of sample (log-loss 0.61 against 0.68 on 113 offers) but the market is usually dearer than the model at
+# these odds, so the rule is strict: odds within PICK_ODDS, the player a confirmed starter on the official team sheet
+# (read at the 45-min pass, never before), the model SCORER_MIN_EDGE above 1/odds and within SCORER_MAX_GAP of it.
+# Still "non validé" (one qualifying case out of 171 offers in the study); expect 0 to 2 a week.
+SCORER_MIN_EDGE, SCORER_MAX_GAP = 0.03, 0.10
+
+
+def scorer_pick_ok(leg: dict) -> bool:
+    info = leg.get("buteur") or {}
+    implied = 1 / leg["cote"]
+    p = leg.get("_p_cmp", leg["proba"])
+    return (PICK_ODDS[0] <= leg["cote"] <= (PICK_ODDS[1] or leg["cote"]) and info.get("composition") == "titulaire"
+            and p >= implied + SCORER_MIN_EDGE and abs(p - implied) <= SCORER_MAX_GAP)
+
+
 def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
-    if pm is None or leg.get("buteur") or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
+    if leg.get("buteur"):
+        return pm is not None and scorer_pick_ok(leg)
+    if pm is None or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
         return False
     # a team's under goals: paused (review of 2026-10-27)
     if " : moins de " in leg["pari"] and not (leg.get("mi_temps") or leg.get("comptage") or leg.get("basket")):
@@ -213,17 +231,21 @@ COUNT_MARGIN = 0.10
 
 def top_ok(pick: dict) -> bool:
     """Basketball (owner 2026-10-27): a market no backtest validated is never the Top confiance. Counts: never."""
-    return (pick.get("sport") != "basket" or bool(pick.get("valide"))) and not pick.get("comptage")
+    return (pick.get("sport") != "basket" or bool(pick.get("valide"))) and not pick.get("comptage") \
+        and not pick.get("buteur")
 
 
 def _best(ok: list[dict]) -> dict | None:
+    """Scorer positions rank like counts: COUNT_MARGIN surer than the best result/goals position, or, with none,
+    taken when they passed their own rule (scorer_pick_ok)."""
     key = lambda l: (blended(l), l["cote"])
-    main = [l for l in ok if not l.get("comptage")]
-    count = max((l for l in ok if l.get("comptage")), key=key, default=None)
+    main = [l for l in ok if not l.get("comptage") and not l.get("buteur")]
+    count = max((l for l in ok if l.get("comptage") or l.get("buteur")), key=key, default=None)
     if main:
         best = max(main, key=key)
         return count if count and blended(count) >= blended(best) + COUNT_MARGIN else best
-    return count if count and blended(count) >= PICK_HIGH else None
+    side = [l for l in ok if l.get("buteur") or (l.get("comptage") and blended(l) >= PICK_HIGH)]
+    return max(side, key=key, default=None)
 
 
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
@@ -245,7 +267,8 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         if prev and prev.get("pari") and (prev.get("fige") or frozen(prev)):
             picks[mid] = _settle_leg({**prev, "fige": True}, page)
             continue
-        ok = [l for l in by_match.get(mid, []) if not started(l) and _correct(l) and pick_ok(l) and not blocked(l)]
+        ok = [l for l in by_match.get(mid, []) if not started(l) and _correct(l) and pick_ok(l) and not blocked(l)
+              and (not l.get("buteur") or frozen(l))]  # a scorer: only once fixed, line-up read (45 min)
         best = _best(ok)
         if best:
             picks[mid] = {**_pick(best), "fige": frozen(best)}
