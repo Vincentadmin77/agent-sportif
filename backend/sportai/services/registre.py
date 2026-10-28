@@ -460,6 +460,7 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
             a["visa_m"] = visa(off)
             a["enqueteur"] = enqueteur(m) if sport == "foot" else []
             a["maj"] = now.isoformat()
+            a.pop("sans_position", None)
             if sport == "foot" and not (off or {}).get("pari"):
                 a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
@@ -498,6 +499,7 @@ def basket_avis(reg: dict, bpron: dict, now: datetime) -> dict:
                             "sport": "basket"}
         if ko and now < ko:
             a["officielle"], a["visa_m"], a["enqueteur"], a["maj"] = _side(p), visa(p), [], now.isoformat()
+            a.pop("sans_position", None)
             if not p.get("pari"):
                 a["sans_position"] = p.get("raison") or "Aucune position retenue sur ce match."
         if p.get("resultat") in SETTLED and a.get("officielle"):
