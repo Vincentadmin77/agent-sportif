@@ -236,15 +236,17 @@ def price(pred: Prediction, quotes: dict[tuple, dict[str, float]]) -> list[dict]
         fair = [(1 / o) / (1 / o + 1 / other[b]) for b, o in books.items() if b in other]
         if not fair:
             continue
-        if french_only():  # odds a French player can take only; every bookmaker still counts for the fair chance
-            books = {b: o for b, o in books.items() if is_french(b)}
-            if not books:
-                continue
         p = model_proba(pred, market, sel, line)
         best = max(books.values())
         med = median(books.values())
-        rows.append({"marche_cle": market, "selection": sel, "ligne": line, "cote": round(best, 2),
-                     "cote_mediane": round(med, 2), "proba": round(p, 4),
+        shown_best, shown_med = best, med
+        if french_only():  # same analysis on every bookmaker, the price a French site gives (owner 2026-10-28)
+            fr = [o for b, o in books.items() if is_french(b)]
+            if not fr:
+                continue
+            shown_best, shown_med = max(fr), median(fr)
+        rows.append({"marche_cle": market, "selection": sel, "ligne": line, "cote": round(shown_best, 2),
+                     "cote_mediane": round(shown_med, 2), "proba": round(p, 4),
                      "proba_marche": round(sum(fair) / len(fair), 4), "valeur": round(p * best - 1, 4),
                      "valeur_mediane": round(p * med - 1, 4), "n_bookmakers": len(books)})
     return sorted(rows, key=lambda r: -r["valeur"])

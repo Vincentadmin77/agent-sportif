@@ -31,11 +31,11 @@ from itertools import combinations
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from sportai.connectors.the_odds_api import french_only, is_french
+from sportai.connectors.the_odds_api import french_only
 from sportai.db.models import AnalysisRun, CandidateRow
 from sportai.engine.football.halves import MARKET_NAME as HALF_MARKET, settle as settle_half
 from sportai.services.comptages import settle_count
-from sportai.engine.football.markets import VALIDATED_MARKETS, is_quarter
+from sportai.engine.football.markets import VALIDATED_MARKETS, MarketKey, is_quarter
 from sportai.selection.engine import COTE_MIN, TRIAL_MARKETS as TRIAL_MARKETS_DEFAULT
 from sportai.services.dashboard import (
     COMPETITION_NAMES,
@@ -213,7 +213,10 @@ def pick_ok(leg: dict) -> bool:
     c = blended(leg)
     if leg.get("mi_temps") and c < HALF_MIN_CHANCE:  # 45 minutes leave little room: half-time bets need more
         return False
-    return leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE and c * leg["cote"] > 1
+    # value judged on the price the analysis saw over every bookmaker; under the French rule the position is then
+    # taken at the French site's odds, within PICK_ODDS (owner 2026-10-28: "reproduire la même chose")
+    return (leg.get("_p_cmp", leg["proba"]) - pm <= PICK_MAX_GAP and c >= PICK_MIN_CHANCE
+            and c * leg.get("cote_reference", leg["cote"]) > 1)
 
 
 def _pick(leg: dict) -> dict:
@@ -466,6 +469,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 "competition": COMPETITION_NAMES.get(run.competition, run.competition), "coup_envoi": ko.isoformat(),
                 "pari": pari, "marche": marche,
                 "cote": c.odds, "bookmaker": c.bookmaker, "proba": round(p_win, 4),
+                "_cle": MarketKey(c.market, c.selection, c.line).label(),
                 "proba_marche": None if c.market_fair_prob is None else round(c.market_fair_prob, 4),
                 "valeur": round(ev, 4),
                 # goal legs: only over/under 1.5 and 3.5, and only when the enriched goals model priced them
@@ -541,13 +545,30 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
-        if french_only():  # cards, corners, half-time, scorers: no French bookmaker in our feeds (owner 2026-10-28)
-            trials = [l for l in trials if is_french(l["bookmaker"])]
-            goal_trials = [l for l in goal_trials if is_french(l["bookmaker"])]
+        if french_only():  # French rule (owner 2026-10-28): the same analysis, the position at a French site's price
+            fr = f.get("cotes_fr") or {}
+            legs = [l for l in legs if l["match_id"] != doc_id(ko, home, away)] + [
+                x for l in legs if l["match_id"] == doc_id(ko, home, away) if (x := french_price(l, fr))]
+            trials = [x for l in trials if (x := french_price(l, fr))]
+            goal_trials = [x for l in goal_trials if (x := french_price(l, fr))]
         # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
-    return [l for l in legs if not french_only() or is_french(l["bookmaker"])]
+    for l in legs:
+        l.pop("_cle", None)
+    return legs
+
+
+def french_price(leg: dict, fr: dict[str, list]) -> dict | None:
+    """The leg at the best French bookmaker's odds for the same bet (prematch.FixtureAnalysis.french_odds), the
+    price the analysis saw kept as cote_reference; None when no French site offers it at 1.50 or more (cards,
+    corners, half-time, scorers, double chance, draw no bet... are not in the French feed)."""
+    key = leg.pop("_cle", None)
+    got = fr.get(key) if key else None
+    if not got or got[0] < COTE_MIN:
+        return None
+    return {**leg, "cote": got[0], "bookmaker": got[1], "cote_reference": leg["cote"],
+            "bookmaker_reference": leg["bookmaker"]}
 
 
 def _ucl_result(leg: dict) -> bool:

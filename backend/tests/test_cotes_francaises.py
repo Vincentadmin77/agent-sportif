@@ -15,10 +15,8 @@ def _q(book, odds, market="1x2", sel="home", line=None):
 
 def test_best_price_only_on_french_bookmakers(monkeypatch):
     quotes = [_q("Bet365", 1.70), _q("winamax_fr", 1.64), _q("betclic_fr", 1.65), _q("Bet365", 1.62, "cards", "under", 4.5)]
-    monkeypatch.setenv("FRENCH_ODDS_ONLY", "1")
-    best = _best_prices(quotes, NOW)
+    best = _best_prices(quotes, NOW, french=True)
     assert [(k.market, b.bookmaker, b.odds) for k, b in best.items()] == [("1x2", "betclic_fr", 1.65)]
-    monkeypatch.setenv("FRENCH_ODDS_ONLY", "0")
     assert {b.odds for b in _best_prices(quotes, NOW).values()} == {1.70, 1.62}
 
 
@@ -47,5 +45,14 @@ def test_basket_french_books_added_and_priced(monkeypatch):
     monkeypatch.setenv("FRENCH_ODDS_ONLY", "1")
     rows = basket.price(P(), {k: v for k, v in q.items() if k[0] == "winner"})
     home = next(r for r in rows if r["selection"] == "home")
-    assert home["cote"] == 1.70 and home["n_bookmakers"] == 1  # the French price, not Bet365's 1.75
+    assert home["cote"] == 1.70 and home["valeur"] == round(0.62 * 1.75 - 1, 4)  # French price, analysis on all
     assert basket.price(P(), {("winner", "home", None): {"Bet365": 1.75}, ("winner", "away", None): {"Bet365": 2.1}}) == []
+
+
+def test_position_taken_at_the_french_price():
+    from sportai.services.pronostic import french_price
+    leg = {"pari": "Moins de 3,5 buts", "cote": 1.92, "bookmaker": "1xBet", "_cle": "totals:under@3.5"}
+    got = french_price(dict(leg), {"totals:under@3.5": [1.72, "pmu_fr"]})
+    assert (got["cote"], got["bookmaker"], got["cote_reference"]) == (1.72, "pmu_fr", 1.92) and "_cle" not in got
+    assert french_price(dict(leg), {}) is None  # no French site: no position on this bet
+    assert french_price({"cote": 1.62, "bookmaker": "Bet365"}, {"totals:under@3.5": [1.72, "pmu_fr"]}) is None  # cards

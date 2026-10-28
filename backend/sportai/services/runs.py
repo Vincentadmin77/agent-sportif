@@ -275,6 +275,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      "likely_score": f.likely_score, "goals_model": f.goals_model,
                      "goals_model_note": f.goals_model_note,
                      **({"absence_factors": list(f.absence_factors)} if f.absence_factors else {}),
+                     **({"cotes_fr": f.french_odds} if f.french_odds is not None else {}),
                      # bets of the odds feed the score model cannot price: listed with their odds, "non analysé"
                      **({"non_analyses": unpriced[f.fixture.provider_event_id]}
                         if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}

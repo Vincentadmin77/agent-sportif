@@ -81,6 +81,9 @@ class FixtureAnalysis:
     goals_model: str | None = None  # which model priced btts / totals
     goals_model_note: str | None = None  # why the enriched model was not used, when it was not
     absence_factors: tuple[float, float] | None = None  # missing key players: (home, away) multipliers, result markets only
+    # French rule (owner 2026-10-28): the best French bookmaker's odds of each bet, {bet label: [odds, bookmaker]}.
+    # The analysis keeps every bookmaker; a position is then taken at this price only (services/pronostic.py).
+    french_odds: dict[str, list] | None = None
 
 
 @dataclass
@@ -171,6 +174,8 @@ def run_prematch(
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)
+        if french_only():
+            fa.french_odds = {k.label(): [q.odds, q.bookmaker] for k, q in _best_prices(fq, now, french=True).items()}
         for key, best in _best_prices(fq, now).items():
             m, ms = (central_r, samples_r) if key.market in RESULT_MARKETS else (central, samples)
             try:
@@ -214,13 +219,11 @@ def _quotes_by_fixture(fixtures: list[Fixture], quotes: list[OddsQuote]) -> dict
     return out
 
 
-def _best_prices(quotes: list[OddsQuote], now: datetime) -> dict[MarketKey, OddsQuote]:
-    """The best odds of each bet, on a French bookmaker only when the French rule is on (connectors/the_odds_api.py):
-    a bet no French site offers gets no candidate."""
+def _best_prices(quotes: list[OddsQuote], now: datetime, french: bool = False) -> dict[MarketKey, OddsQuote]:
+    """The best odds of each bet; with french=True, on the French bookmakers only (connectors/the_odds_api.py)."""
     best: dict[MarketKey, OddsQuote] = {}
-    fr = french_only()
     for q in quotes:
-        if q.validation_status != "valid" or (q.expires_at and q.expires_at <= now) or (fr and not is_french(q.bookmaker)):
+        if q.validation_status != "valid" or (q.expires_at and q.expires_at <= now) or (french and not is_french(q.bookmaker)):
             continue
         k = MarketKey(q.market, q.selection, q.line)
         if k not in best or q.odds > best[k].odds:
