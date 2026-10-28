@@ -111,7 +111,7 @@ def test_live_notes_go_to_the_registry_apart_and_settle():
     m["live_a_blanc"] = [{"pari": "Plus de 1,5 buts", "p_avant": 0.78, "cote_avant": 1.25, "cote_valable": 1.50,
                           "heure": at(20).isoformat(), "minute": 46, "score": "0 - 0", "cote": 2.25, "p_direct": 0.5}]
     reg = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(23), "abc")
-    (f,) = reg["fiches"].values()
+    (f,) = [x for x in reg["fiches"].values() if x.get("live_a_blanc")]
     assert f["live_a_blanc"] and f["resultat"] == "gagne" and f["gain_unite"] == 1.25
     rep = R.report([reg], min_group=1)
     assert rep["reel"]["global"]["positions"] == 0 and rep["direct_a_blanc"]["global"]["validees"] == 1
@@ -124,9 +124,11 @@ def test_the_m_chooses_once_from_the_45_min_pass_and_keeps_it_apart():
              {"pari": "Plus de 2,5 buts", "cote": 1.60, "proba": 0.6, "proba_marche": 0.61},
              {"pari": "Victoire B", "cote": 6.0, "proba": 0.15, "proba_marche": 0.14}]}}
     day = {"jour": "2026-10-29", "paris_retenus": {}}
-    assert R.update({}, day, {"m1": m}, at(17), "abc")["fiches"] == {}  # no 45 min pass yet
+    early = R.update({}, day, {"m1": m}, at(17), "abc")["fiches"]["2026-10-29|m1|M"]
+    assert early["pari"] == "Victoire A" and not early["fige"]  # a choice already, still open
     m["passages"] = {"m45": at(18).isoformat()}
     reg = R.update({}, day, {"m1": m}, at(18), "abc")
+    assert reg["fiches"]["2026-10-29|m1|M"]["fige"]
     f = reg["fiches"]["2026-10-29|m1|M"]
     assert f["pari"] == "Victoire A" and f["choix_m"] and f["p_marche"] == 0.62
     assert reg["cibles"] == {"m1": []}  # nothing very likely priced under 1.50 here
@@ -170,3 +172,40 @@ def test_basket_opinions():
                                  "proba_marche": 0.524}}}
     reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, b, at(18))
     assert reg["avis"]["basket-7"]["visa_m"]["feu"] == "rouge" and reg["avis"]["basket-7"]["sport"] == "basket"
+
+
+def test_the_m_says_why_it_passes_with_its_best_option():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "a_venir",
+         "tous_marches": {"analyses": [{"pari": "Victoire A", "cote": 1.84, "proba": 0.55, "proba_marche": 0.54}]}}
+    f = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(17), "abc")["fiches"]["2026-10-29|m1|M"]
+    assert f["pari"] is None and f["meilleure_option"]["pari"] == "Victoire A"
+    assert "Victoire A à 1,84" in f["raison"] and "54 %" in f["raison"]
+
+
+def test_the_m_chooses_on_every_nba_game_then_settles_it():
+    bm = {"jour": "2026-10-29", "domicile": "C", "exterieur": "D", "coup_envoi": "2026-10-29T23:00:00Z",
+          "competition": "NBA", "statut": "a_venir", "score": None,
+          "cotes_cloture": {"lignes": [
+              {"marche": "winner", "selection": "away", "ligne": None, "cote": 1.33, "proba": 0.62, "proba_marche": 0.66},
+              {"marche": "handicap", "selection": "home", "ligne": 7.5, "cote": 1.71, "proba": 0.59, "proba_marche": 0.557},
+              {"marche": "total", "selection": "over", "ligne": 234.5, "cote": 1.72, "proba": 0.41, "proba_marche": 0.53}]}}
+    reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(18), {"7": bm})
+    a = reg["avis"]["basket-7"]
+    assert a["choix_m"]["pari"] is None and "C +7,5 points (handicap) à 1,71" in a["choix_m"]["raison"]
+    assert a["sans_position"]
+    bm["cotes_cloture"]["lignes"][1]["proba_marche"] = 0.61
+    reg = R.basket_avis(reg, {}, at(20), {"7": bm})
+    assert reg["avis"]["basket-7"]["choix_m"]["pari"] == "C +7,5 points (handicap)"
+    reg = R.basket_avis(reg, {}, datetime(2026, 10, 30, 3, tzinfo=timezone.utc),
+                        {"7": {**bm, "statut": "termine", "score": "110-115"}})
+    assert reg["avis"]["basket-7"]["choix_m"]["resultat"] == "gagne" and "Choix du M validé" in reg["avis"]["basket-7"]["bilan"]
+
+
+def test_a_match_added_after_kick_off_still_gets_the_opinions_out_of_the_ratios():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "en_cours",
+         "tous_marches": {"analyses": [{"pari": "Victoire A", "cote": 1.55, "proba": 0.6, "proba_marche": 0.62}]}}
+    day = pron(cote=1.84)
+    reg = R.update({}, day, {"m1": m}, at(20), "abc")
+    a, f = reg["avis"]["m1"], reg["fiches"]["2026-10-29|m1|M"]
+    assert a["tardif"] and a["visa_m"]["feu"] and a["choix_m"]["pari"] == "Victoire A"
+    assert f["enregistre_apres_coup_envoi"] and R.report([reg])["le_m_a_blanc"]["global"]["positions"] == 0

@@ -202,7 +202,8 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     fiches = [f for reg in registres for f in (reg.get("fiches") or {}).values()]
     out = {}
     for label, rows in (("reel", [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m"))]),
-                        ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")]),
+                        ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")
+                                          and not f.get("enregistre_apres_coup_envoi")]),
                         ("recalcule", [f for f in fiches if f.get("recalcule")]),
                         ("direct_a_blanc", [f for f in fiches if f.get("live_a_blanc")])):
         part = {"global": measures(rows)}
@@ -344,26 +345,45 @@ M_FAMILIES = frozenset({"victoire", "nul", "double_chance", "rembourse_si_nul", 
                         "equipe_plus_1_5"})
 
 
-def m_choice(m: dict) -> dict | None:
-    """The M's position on a match document, or None when no bet of the rule exists."""
+def m_options(m: dict) -> list[tuple[float, dict, str]]:
+    """Every result and goal bet of the match at odds 1.50-2.30 with the market's chance, most likely first."""
     from sportai.engine.football.markets import is_quarter
     from sportai.services.revue import _keys, famille
 
     keys = _keys(m.get("domicile") or "", m.get("exterieur") or "")
-    best = None
+    out = []
     rows = ((m.get("tous_marches") or {}).get("analyses") or []) + ((m.get("buts") or {}).get("marches") or [])
     for r in rows:
         key, cote, pm = keys.get(r.get("pari")), r.get("cote"), r.get("proba_marche")
         if key is None or not isinstance(cote, (int, float)) or not isinstance(pm, (int, float)) or is_quarter(key.line):
             continue
         fam = famille(key.market, key.selection, key.line)
-        if fam in M_FAMILIES and M_ODDS[0] <= cote <= M_ODDS[1] and pm >= M_MIN_MARKET and (best is None or pm > best[0]):
-            best = (pm, r, fam)
-    if best is None:
+        if fam in M_FAMILIES and M_ODDS[0] <= cote <= M_ODDS[1]:
+            out.append((pm, r, fam))
+    return sorted(out, key=lambda x: -x[0])
+
+
+def _pass_reason(best: dict | None) -> str:
+    if not best:
+        return "Je passe : aucune position de résultat ou de buts entre 1,50 et 2,30."
+    return (f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}".replace(".", ",")
+            + f", n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 60 %).")
+
+
+def m_choice(m: dict) -> dict | None:
+    """The M's position on a match document, or None when no bet of the rule exists."""
+    opts = m_options(m)
+    if not opts or opts[0][0] < M_MIN_MARKET:
         return None
-    pm, r, fam = best
+    pm, r, fam = opts[0]
     return {"pari": r["pari"], "marche": r.get("marche"), "famille": fam, "cote_prise": r["cote"], "p_marche": pm,
             "p_modele": r.get("proba"), "bookmaker": r.get("bookmaker")}
+
+
+def _m_pass(m: dict) -> dict:
+    opts = m_options(m)
+    best = None if not opts else {"pari": opts[0][1]["pari"], "cote_prise": opts[0][1]["cote"], "p_marche": opts[0][0]}
+    return {"pari": None, "raison": _pass_reason(best), "meilleure_option": best}
 
 
 def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: str) -> dict:
@@ -372,7 +392,9 @@ def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: s
             continue
         rid = f"{reg['jour']}|{mid}|M"
         ko = _aware(m.get("coup_envoi"))
-        if rid not in reg["fiches"] and ko and now < ko and (m.get("passages") or {}).get("m45"):
+        prev = reg["fiches"].get(rid)
+        # chosen at every run before kick-off (a choice on every match), frozen once the 45 min pass is in
+        if ko and now < ko and not (prev or {}).get("fige"):
             c = m_choice(m)
             name = f"{m.get('domicile')} - {m.get('exterieur')}"
             reg.setdefault("cibles", {})[mid] = [{**t, "match": name} for t in
@@ -382,7 +404,14 @@ def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: s
                 "decision": now.isoformat(), "match_id": mid, "match": f"{m.get('domicile')} - {m.get('exterieur')}",
                 "competition": m.get("competition"), "coup_envoi": m.get("coup_envoi"), "recalcule": False,
                 "choix_m": True, "version_regles": f"M>={M_MIN_MARKET}", "version_code": code_version,
-                **(c or {"pari": None, "raison": "Aucune position à 1,50-2,30 que le marché voit à 60 % ou plus."})}
+                "fige": bool((m.get("passages") or {}).get("m45")), **(c or _m_pass(m))}
+        elif ko and prev is None:  # first seen after kick-off (a match added late): shown, kept out of the ratios
+            reg["fiches"][rid] = {
+                "id": rid, "jour": reg["jour"], "sport": reg.get("sport", "foot"), "agent": "le M (à blanc)",
+                "decision": now.isoformat(), "match_id": mid, "match": f"{m.get('domicile')} - {m.get('exterieur')}",
+                "competition": m.get("competition"), "coup_envoi": m.get("coup_envoi"), "recalcule": False,
+                "choix_m": True, "version_regles": f"M>={M_MIN_MARKET}", "version_code": code_version, "fige": True,
+                "enregistre_apres_coup_envoi": True, **(m_choice(m) or _m_pass(m))}
         f = reg["fiches"].get(rid)
         if f and f.get("pari") and "resultat" not in f and m.get("statut") == "termine":
             from sportai.engine.football.markets import settle_score
@@ -406,6 +435,10 @@ VISA_MODEL_OVER = 0.06  # model this far above the market: 50 % in 128 positions
 VISA_MODEL_UNDER = 0.10  # model this far below: it does not believe its own position
 
 
+def _pc(x: float) -> str:
+    return f"{round(x * 100)} %"
+
+
 def visa(p: dict | None) -> dict | None:
     """The M's light on a position {proba, proba_marche}: vert / orange / rouge and why."""
     if not p or not p.get("pari"):
@@ -414,15 +447,15 @@ def visa(p: dict | None) -> dict | None:
     if not isinstance(mkt, (int, float)):
         return {"feu": "orange", "raison": "Pas de chance des bookmakers pour juger."}
     if mkt < VISA_RED_UNDER:
-        return {"feu": "rouge", "raison": f"Les bookmakers ne la voient qu'à {mkt:.0%}."}
+        return {"feu": "rouge", "raison": f"Les bookmakers ne la voient qu'à {_pc(mkt)}."}
     if isinstance(mod, (int, float)) and mod - mkt >= VISA_MODEL_OVER:
-        return {"feu": "rouge", "raison": f"Notre modèle ({mod:.0%}) est bien plus optimiste que les bookmakers ({mkt:.0%}) : "
+        return {"feu": "rouge", "raison": f"Notre modèle ({_pc(mod)}) est bien plus optimiste que les bookmakers ({_pc(mkt)}) : "
                                           "ce profil ne passe qu'une fois sur deux."}
     if isinstance(mod, (int, float)) and mkt - mod >= VISA_MODEL_UNDER:
-        return {"feu": "rouge", "raison": f"Notre modèle ({mod:.0%}) n'y croit pas, les bookmakers {mkt:.0%}."}
+        return {"feu": "rouge", "raison": f"Notre modèle ({_pc(mod)}) n'y croit pas, les bookmakers {_pc(mkt)}."}
     if mkt >= VISA_GREEN_FROM:
-        return {"feu": "vert", "raison": f"Les bookmakers la voient à {mkt:.0%}, le modèle est d'accord."}
-    return {"feu": "orange", "raison": f"Les bookmakers la voient à {mkt:.0%} : un peu plus d'une chance sur deux."}
+        return {"feu": "vert", "raison": f"Les bookmakers la voient à {_pc(mkt)}, le modèle est d'accord."}
+    return {"feu": "orange", "raison": f"Les bookmakers la voient à {_pc(mkt)} : un peu plus d'une chance sur deux."}
 
 
 def enqueteur(m: dict) -> list[str]:
@@ -463,6 +496,11 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
             a.pop("sans_position", None)
             if sport == "foot" and not (off or {}).get("pari"):
                 a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
+        elif "maj" not in a:  # first seen after kick-off (a match added late): filled once, flagged
+            a.update(officielle=_side(off), visa_m=visa(off), enqueteur=enqueteur(m) if sport == "foot" else [],
+                     maj=now.isoformat(), tardif=True)
+            if sport == "foot" and not (off or {}).get("pari"):
+                a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
         if mf is not None:
             a["choix_m"] = {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
@@ -489,21 +527,91 @@ def _who_was_right(a: dict) -> str:
     return " ".join(parts)
 
 
-def basket_avis(reg: dict, bpron: dict, now: datetime) -> dict:
-    """The basketball matches of the day in the same "avis" list (official position and the M's visa; no M choice nor
-    Enquêteur yet), keyed basket-<id>."""
+def basket_m_options(bm: dict) -> list[dict]:
+    """The basketball game's winner / handicap / total lines at odds 1.50-2.30 with the market's chance, most likely
+    first (the lines the passes priced on French books: no player bet)."""
+    from sportai.services.basket import label
+
+    out = []
+    for r in (bm.get("cotes_cloture") or {}).get("lignes") or []:
+        cote, pm = r.get("cote"), r.get("proba_marche")
+        if r.get("marche") in ("winner", "handicap", "total") and isinstance(cote, (int, float)) \
+                and isinstance(pm, (int, float)) and M_ODDS[0] <= cote <= M_ODDS[1]:
+            out.append({"pari": label(r["marche"], r["selection"], r.get("ligne"), bm.get("domicile") or "",
+                                      bm.get("exterieur") or ""),
+                        "marche": r["marche"], "selection": r["selection"], "ligne": r.get("ligne"),
+                        "cote_prise": cote, "p_marche": pm, "p_modele": r.get("proba")})
+    return sorted(out, key=lambda o: -o["p_marche"])
+
+
+def basket_m_choice(bm: dict) -> dict:
+    """The M's position on a basketball game (same rule as football: market >= 60 %, 1.50-2.30), or why it passes."""
+    opts = basket_m_options(bm)
+    if opts and opts[0]["p_marche"] >= M_MIN_MARKET:
+        return opts[0]
+    best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche")} if opts else None
+    reason = (_pass_reason(best) if best else
+              "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,50 et 2,30.")
+    return {"pari": None, "raison": reason, "meilleure_option": best}
+
+
+def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_version: str) -> dict:
+    for mid, bm in bmatchs.items():
+        if bm.get("jour") != reg.get("jour"):
+            continue
+        rid = f"{reg['jour']}|basket-{mid}|M"
+        ko, prev = _aware(str(bm.get("coup_envoi") or "").replace("Z", "+00:00")), reg["fiches"].get(rid)
+        late = bool(ko and now >= ko)
+        if (not late and not (prev or {}).get("fige")) or (late and prev is None):
+            reg["fiches"][rid] = {
+                "id": rid, "jour": reg["jour"], "sport": "basket", "agent": "le M (à blanc)",
+                "decision": now.isoformat(), "match_id": f"basket-{mid}",
+                "match": f"{bm.get('domicile')} - {bm.get('exterieur')}", "competition": bm.get("competition"),
+                "coup_envoi": bm.get("coup_envoi"), "recalcule": False, "choix_m": True,
+                "version_regles": f"M>={M_MIN_MARKET}", "version_code": code_version,
+                "fige": late or bool((bm.get("passages") or {}).get("m45")),
+                **({"enregistre_apres_coup_envoi": True} if late else {}), **basket_m_choice(bm)}
+        f = reg["fiches"][rid]
+        if f.get("pari") and "resultat" not in f and bm.get("statut") == "termine" and bm.get("score"):
+            from sportai.services.basket import settle
+
+            hp, ap = (int(x) for x in str(bm["score"]).replace(" ", "").split("-"))
+            f["resultat"] = settle(f["marche"], f["selection"], f.get("ligne"), hp, ap)
+            f["gain_unite"] = _gain(f)
+    return reg
+
+
+def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] | None = None,
+                code_version: str = "inconnue") -> dict:
+    """The basketball games of the day in the same "avis" list (official position, the M's visa and the M's own
+    choice; no Enquêteur yet), keyed basket-<id>."""
+    bmatchs = {k: v for k, v in (bmatchs or {}).items() if v.get("jour") == reg.get("jour")}
+    basket_m_records(reg, bmatchs, now, code_version)
     av = reg.setdefault("avis", {})
-    for mid, p in (bpron.get("paris_retenus") or {}).items():
-        key, ko = f"basket-{mid}", _aware(str(p.get("coup_envoi") or "").replace("Z", "+00:00"))
-        a = av.get(key) or {"match": p.get("match"), "competition": p.get("competition"), "coup_envoi": p.get("coup_envoi"),
-                            "sport": "basket"}
-        if ko and now < ko:
+    picks = bpron.get("paris_retenus") or {}
+    for mid in sorted(set(picks) | set(bmatchs)):
+        p, bm = picks.get(mid) or {}, bmatchs.get(mid) or {}
+        key = f"basket-{mid}"
+        ko_s = p.get("coup_envoi") or bm.get("coup_envoi")
+        ko = _aware(str(ko_s or "").replace("Z", "+00:00"))
+        name = p.get("match") or (f"{bm.get('domicile')} - {bm.get('exterieur')}" if bm else mid)
+        a = av.get(key) or {"match": name, "competition": p.get("competition") or bm.get("competition"),
+                            "coup_envoi": ko_s, "sport": "basket"}
+        if (ko and now < ko) or "maj" not in a:
             a["officielle"], a["visa_m"], a["enqueteur"], a["maj"] = _side(p), visa(p), [], now.isoformat()
             a.pop("sans_position", None)
             if not p.get("pari"):
                 a["sans_position"] = p.get("raison") or "Aucune position retenue sur ce match."
+            if ko and now >= ko:
+                a["tardif"] = True
+        mf = reg["fiches"].get(f"{reg['jour']}|basket-{mid}|M")
+        if mf is not None:
+            a["choix_m"] = {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
+                            "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat")}
         if p.get("resultat") in SETTLED and a.get("officielle"):
             a["officielle"]["resultat"] = p["resultat"]
-            a.setdefault("bilan", _who_was_right(a))
+        if (bm.get("statut") == "termine" or p.get("resultat") in SETTLED) and "bilan" not in a \
+                and ((a.get("officielle") or {}).get("resultat") or (a.get("choix_m") or {}).get("resultat")):
+            a["bilan"] = _who_was_right(a)
         av[key] = a
     return reg
