@@ -372,7 +372,9 @@ def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: s
         ko = _aware(m.get("coup_envoi"))
         if rid not in reg["fiches"] and ko and now < ko and (m.get("passages") or {}).get("m45"):
             c = m_choice(m)
-            reg.setdefault("cibles", {})[mid] = sorted(targets(m).values(), key=lambda t: -t["p_avant"])[:5]
+            name = f"{m.get('domicile')} - {m.get('exterieur')}"
+            reg.setdefault("cibles", {})[mid] = [{**t, "match": name} for t in
+                                                 sorted(targets(m).values(), key=lambda t: -t["p_avant"])[:5]]
             reg["fiches"][rid] = {
                 "id": rid, "jour": reg["jour"], "sport": reg.get("sport", "foot"), "agent": "le M (à blanc)",
                 "decision": now.isoformat(), "match_id": mid, "match": f"{m.get('domicile')} - {m.get('exterieur')}",
