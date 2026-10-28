@@ -3,8 +3,8 @@
 One pass = the games of the basketball day (prematch.journee(..., "basket"): 04:00 Paris to 04:00 the next night)
 not started yet: the team-ratings model (sportai/engine/basketball/ratings.py, docs/20-nba-modele.md) is refitted on
 the cached results, each game priced on every market it can read from the odds feed, and one document is written per
-game in basket_matchs/<game id>. The bets of the day go to basket_pronostic/<jour>: one retained bet per game at 1.60
-or more (football's rules), fixed 45 min before tip-off, the Top confiance only among validated "Confiance élevée"
+game in basket_matchs/<game id>. The bets of the day go to basket_pronostic/<jour>: one retained single per game at 1.50 to
+2.30 (football's rules since 2026-10-28), fixed 45 min before tip-off, no Top confiance nor combo (was: only among validated "Confiance élevée"
 bets. Basketball never touches football's matchs / pronostic / stats.
 
 Validated: the NBA winner (overtime included), calibrated by the walk-forward backtest. Everything else (points
@@ -38,9 +38,13 @@ HISTORY_SEASONS = 3  # the current one and the two before (half-life 80 days: ol
 MIN_GAMES = {"NBA": 40, "WNBA": 20}  # a team with fewer games in a full season is an exhibition side
 VALIDATED = {"NBA": {"winner"}, "WNBA": set()}  # docs/20-nba-modele.md: the NBA winner only
 
-MIN_ODDS = 1.60  # owner 2026-10-27: never under 1.60, for every basketball bet
+MIN_ODDS = 1.50  # owner 2026-10-28 11:00: "la plage des cotes : 1.50 / 2.30 toujours en simple" (was 1.60)
 # Unvalidated markets: football's care (pronostic.TRIAL_*), the 5 best of a game by value.
-TRIAL_MIN_VALUE, TRIAL_MIN_PROBA, TRIAL_MAX_ODDS, TRIAL_PER_GAME = 0.03, 0.25, 4.0, 5
+TRIAL_MIN_VALUE, TRIAL_MIN_PROBA, TRIAL_MAX_ODDS, TRIAL_PER_GAME = 0.03, 0.25, 2.30, 5
+# The most reliable markets first (backtest): winner and handicap, then the 1st quarter, then the points totals
+# (unvalidated, the model under-predicts points this early season). A bet of a lower tier is a game's bet only when
+# it is pronostic.COUNT_MARGIN surer than the best bet of the tiers above, as football's count bets.
+TIERS = {"winner": 0, "handicap": 0, "q1": 1, "total": 2, "team_total_home": 2, "team_total_away": 2}
 MAX_DIVERGENCE = 0.10
 MAX_ROWS = 80
 
@@ -58,9 +62,9 @@ PERIODS = {"Q1": "1er quart-temps", "Q2": "2e quart-temps", "HT": "mi-temps", "Q
 INFO = {
     "NBA": ("Basket NBA : modèle de points par équipe (attaque, défense, avantage du terrain, fatigue), testé sur "
             "trois saisons. Vainqueur, prolongation comprise : validé. Total de points, handicaps et points d'une "
-            "équipe : « non validé », jamais la Top confiance. Cote minimale 1,60."),
+            "équipe : « non validé », en simple, cote de 1,50 à 2,30."),
     "WNBA": ("Basket WNBA : même modèle que la NBA, pas encore testé sur la WNBA. Tous les marchés sont « non validé » "
-             "et ne peuvent pas être la Top confiance. Cote minimale 1,60."),
+             "En simple, cote de 1,50 à 2,30."),
 }
 NO_MODEL = "Historique insuffisant pour une des deux équipes : match listé sans estimation."
 NO_ODDS = "Aucune cote disponible pour ce match pour l'instant."
@@ -277,7 +281,7 @@ def settle(market: str, selection: str, line: float | None, hp: int, ap: int) ->
 # The results page shows basketball on collections of its own (owner 2026-10-27, docs/21-basket-passes.md), never
 # mixed with football's matchs / pronostic / stats:
 #   basket_matchs/<game id>   one document per game (the feed's game id)
-#   basket_pronostic/<jour>   the bets of the basketball day: one retained bet per game, the Top confiance
+#   basket_pronostic/<jour>   the bets of the basketball day: one retained single per game (no Top confiance since 2026-10-28)
 
 def doc_key(game: dict) -> str:
     """A game's document id in basket_matchs: the feed's game id."""
@@ -289,7 +293,7 @@ def _utc(ko: datetime) -> str:
 
 
 def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
-    """The bets a game offers (median odds over the books): the validated ones at 1.60 or more, and the 5 best
+    """The bets a game offers (median odds over the books): the validated ones at 1.50 to 2.30, and the 5 best
     unvalidated ones by value that pass football's care for unvalidated markets."""
     keep, trials = [], []
     for r in rows:
@@ -463,7 +467,7 @@ def update_scores(api, comps: list[str], current: dict[str, dict], now: datetime
 
 # ---------------------------------------------------------------- basket_pronostic/<jour>
 
-NO_PICK = ("Aucune cote à 1,60 ou plus où le modèle et le marché s'accordent assez : l'agent ne force pas de pari.")
+NO_PICK = ("Aucune cote de 1,50 à 2,30 où le modèle et le marché s'accordent assez : l'agent ne force pas de pari.")
 NOTE = "Basket en test : seul le vainqueur NBA est validé ; hors bilan officiel."
 PICK_KEYS = ("pari", "marche", "match", "match_id", "competition", "coup_envoi", "cote", "proba", "proba_marche",
              "confiance", "niveau", "valide")
@@ -488,12 +492,12 @@ def settle_pick(pick: dict, m: dict | None) -> dict:
 
 def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[dict]], previous: dict | None,
                     now: datetime, passage: str) -> dict:
-    """basket_pronostic/<day>: one retained bet per game (football's rules: 1.60 or more, model and market agreeing,
-    the most likely), fixed 45 min before tip-off and then reused as it was; the Top confiance (selections) is the
+    """basket_pronostic/<day>: one retained bet per game (football's rules: 1.50 to 2.30, model and market agreeing,
+    the most likely of the most reliable market tier), fixed 45 min before tip-off and then reused as it was; the Top confiance (selections) is the
     most likely validated "Confiance élevée" bet. matchs: the basket_matchs documents (page + this pass);
     offers: the bets of the games analysed by this pass."""
-    from sportai.services.pronostic import (FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS, _correct, blended,
-                                            pick_ok)
+    from sportai.services.pronostic import (COUNT_MARGIN, FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
+                                            SELECTIONS_PER_DAY, _correct, blended, pick_ok)
 
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -515,7 +519,11 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
         if mid in offers and not _started(m, ko, now):
             ok = [b for b in offers[mid] if _correct({**b, "_divergence_max": MAX_DIVERGENCE}) and pick_ok(b)]
             if ok:
-                b = max(ok, key=lambda b: (blended(b), b["cote"]))
+                b = None
+                for t in sorted({TIERS.get(x["basket"]["marche"], 2) for x in ok}):
+                    top = max((x for x in ok if TIERS.get(x["basket"]["marche"], 2) == t), key=lambda x: (blended(x), x["cote"]))
+                    if b is None or blended(top) >= blended(b) + COUNT_MARGIN:
+                        b = top
                 c = round(blended(b), 4)
                 picks[mid] = {"pari": b["pari"], "marche": b["marche"], **base, "cote": b["cote"],
                               "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
@@ -532,11 +540,11 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
     # the Top confiance: kept once fixed, otherwise the most likely validated "Confiance élevée" bet not yet fixed
     kept = [s for s in previous.get("selections") or [] if (picks.get(s.get("match_id")) or {}).get("fige")
             and picks[s["match_id"]].get("pari") == s.get("pari")]
-    sel = [picks[s["match_id"]] for s in kept[:1]]
-    if not sel:
+    sel = [picks[s["match_id"]] for s in kept[:SELECTIONS_PER_DAY]]
+    if not sel and SELECTIONS_PER_DAY:
         free = [p for p in picks.values() if p.get("pari") and not p.get("fige") and p.get("valide")
                 and p["cote"] >= SELECTION_MIN_ODDS and p["confiance"] >= PICK_HIGH]
-        sel = sorted(free, key=lambda p: (p["confiance"], p["cote"]), reverse=True)[:1]
+        sel = sorted(free, key=lambda p: (p["confiance"], p["cote"]), reverse=True)[:SELECTIONS_PER_DAY]
     selections = [{**{k: p.get(k) for k in PICK_KEYS}, **({"resultat": p["resultat"]} if "resultat" in p else {})}
                   for p in sel]
     return {"jour": day, "sport": SPORT, "maj": now.isoformat(), "passage": passage, "paris_retenus": picks,

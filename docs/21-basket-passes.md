@@ -33,7 +33,7 @@ pari basket). Il lit `--page/basket_matchs` et `--page/basket_pronostic` (même 
   contexte {phrases}, passages {analyse, h3, m45, direct}. Pas de `q1` (non chiffré). En direct et au final :
   score_quarts et direct en plus ; un match reporté ou annulé garde son statut avec `reporte: true`.
 - `out/basket_pronostic/<jour>.json` : jour, sport, maj, passage, paris_retenus {<id>: pari retenu ou
-  {pari: null, raison}}, selections (la Top confiance), combines (vide pour l'instant), note.
+  {pari: null, raison}}, selections et combines (vides depuis le 28/10), note.
 Un passage basket seul écrit aussi `etat.json` et `manifest.json` (`matchs: []`, `basket_matchs`,
 `basket_pronostic`) ; un passage mixte ajoute ces deux listes au manifeste du foot.
 
@@ -42,10 +42,12 @@ Un passage basket seul écrit aussi `etat.json` et `manifest.json` (`matchs: []`
   passage sur la saison en cours et les deux précédentes (cache partagé `data/api-basketball/games_<nba|wnba>_<saison>.json.gz`,
   saison en cours rechargée toutes les 6 h).
 - Validé : vainqueur NBA (prolongation comprise). « Non validé » : total de points, handicaps, points d'une équipe,
-  et tous les marchés WNBA (pas de backtest WNBA). Un pari non validé ne peut jamais être la Top confiance.
-- Une seule cote retenue par match (règles du foot : cote médiane ≥ 1,60, modèle et marché d'accord, la plus
-  probable), figée au passage H−45 (ou au coup d'envoi) puis reprise telle quelle de `basket_pronostic` de la page.
-  Top confiance (`selections`) : le meilleur pari validé « Confiance élevée » (≥ 0,60), sinon rien. `valide` n'est
+  et tous les marchés WNBA (pas de backtest WNBA).
+- Une seule cote retenue par match, en simple (règles du foot depuis le 28/10 : cote médiane de 1,50 à 2,30, modèle
+  et marché d'accord), figée au passage H−45 (ou au coup d'envoi) puis reprise telle quelle de `basket_pronostic`.
+  Marchés les plus fiables d'abord (`TIERS`) : vainqueur et handicap, puis 1er quart-temps, puis totaux de points ;
+  un marché moins fiable n'est retenu que s'il est au moins 10 points plus sûr (`COUNT_MARGIN`). Plus de Top
+  confiance ni de combiné (`SELECTIONS_PER_DAY = 0` côté foot, code gardé). `valide` n'est
   vrai que pour le vainqueur NBA. Hors bilan officiel.
 - Règlement : `scores --final` et `live` mettent à jour statut et score de `basket_matchs` et écrivent `resultat`
   (gagne / perdu / rembourse) sur chaque pari retenu de `basket_pronostic`.
