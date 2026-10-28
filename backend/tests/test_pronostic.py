@@ -89,7 +89,7 @@ def test_bankroll_and_bilan():
     assert [h["gain"] for h in history] == [2.1, -1.0] and bank == 101.1
     bilan = build_bilan(page, {"2026-10-11": day}, settings, NOW)
     assert bilan["bankroll"]["actuelle"] == 101.1 and bilan["par_type"]["safe"]["taux"] == 1.0
-    assert bilan["par_type"]["score"]["valides"] == 1 and bilan["global"]["valides"] >= 2
+    assert bilan["par_type"]["score"]["valides"] == 1 and bilan["global"] == {k: v for k, v in bilan["positions"].items() if k != "par_niveau"}
     assert likely_score({"expected_goals": [1.4, 0.9]})["score"] == "1 - 0"
     assert likely_score({"likely_score": [1, 1, 0.13]})["proba"] == 0.13
     # A run stored with the old modal 1-1 while its own probabilities favour the home side: the outcome decides.
@@ -332,7 +332,11 @@ def test_high_rotation_risk_keeps_win_bets_out_of_the_tickets_and_ideas():
         assert "écartés" not in doc["message"]
 
 
-def test_one_bet_per_match_and_top_pick_from_2026_10_28():
+def test_one_bet_per_match_and_top_pick_from_2026_10_28(monkeypatch):
+    # the top pick and the combos, switched off by the owner on 2026-10-28, stay tested with the rules they had
+    monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)
+    monkeypatch.setattr(pronostic, "COMBOS", True)
+    monkeypatch.setattr(pronostic, "PICK_ODDS", (1.50, None))
     from sportai.services.bilan import bankroll_settings, build_bilan
 
     now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
@@ -400,7 +404,11 @@ def test_top_pick_only_among_high_confidence_bets():
     assert doc["selections"] == []
 
 
-def test_top_pick_selected_combo_needs_two_high_confidence_bets():
+def test_top_pick_selected_combo_needs_two_high_confidence_bets(monkeypatch):
+    # the top pick and the combos, switched off by the owner on 2026-10-28, stay tested with the rules they had
+    monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)
+    monkeypatch.setattr(pronostic, "COMBOS", True)
+    monkeypatch.setattr(pronostic, "PICK_ODDS", (1.50, None))
     now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
 
     def l(match, pari, cote, proba, pm):
@@ -427,10 +435,40 @@ def test_no_both_teams_no_and_no_under_half_a_goal():
     assert not pick_ok({**base, "pari": "Moins de 0,5 buts"})
 
 
-def test_match_bets_from_1_50_but_top_pick_from_1_60():
+def test_match_bets_from_1_50_but_top_pick_from_1_60(monkeypatch):
+    monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)
     now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
     lg = {**leg("k-l", "Moins de 3,5 buts", 1.55, 0.72, 0.68, 4), "match_id": "2026-10-28-k-l",
           "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": 0.72}
     doc = build_pronostic([lg], {}, None, now, "matin")
     assert doc["paris_retenus"]["2026-10-28-k-l"]["pari"] == "Moins de 3,5 buts"  # owner 2026-10-28: from 1.50
     assert doc["selections"] == []  # the Top confiance stays at 1.60 or more
+
+
+def test_singles_from_1_50_to_2_30_without_top_pick_nor_combos():
+    now = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
+
+    def l(match, pari, cote, proba, pm):
+        return {**leg(match, pari, cote, proba, pm, 4), "match_id": f"2026-10-28-{match}",
+                "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": proba}
+
+    doc = build_pronostic([l("a-b", "Victoire a", 1.70, 0.70, 0.64), l("c-d", "Victoire c", 1.65, 0.68, 0.63),
+                           l("e-f", "Victoire e", 2.45, 0.50, 0.46)], {}, None, now, "matin")
+    picks = doc["paris_retenus"]
+    assert picks["2026-10-28-a-b"]["pari"] and picks["2026-10-28-c-d"]["pari"]
+    assert picks["2026-10-28-e-f"]["pari"] is None  # above 2.30 (owner 2026-10-28)
+    assert doc["selections"] == [] and doc["combines"] == []
+
+
+def test_positions_ratio_takes_every_odds_once_within_1_50_and_2_30():
+    from sportai.services.bilan import bankroll_settings, build_bilan
+
+    def p(mid, pari, cote, res):
+        return {"match_id": mid, "match": mid, "pari": pari, "cote": cote, "resultat": res}
+
+    days = {"2026-10-20": {"positions": [p("a", "Victoire a", 1.50, "gagne"), p("a", "Victoire a", 1.50, "gagne"),
+                                         p("b", "Plus de 2,5 buts", 1.70, "perdu"), p("c", "Victoire c", 3.10, "gagne"),
+                                         p("d", "Victoire d", 1.40, "gagne")]},
+            "2026-10-28": {"paris_retenus": {"e": p("e", "Victoire e", 2.30, "gagne"), "f": {"pari": None}}}}
+    b = build_bilan({}, days, bankroll_settings(None), datetime(2026, 10, 29, tzinfo=timezone.utc))
+    assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
