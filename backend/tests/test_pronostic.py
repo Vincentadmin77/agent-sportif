@@ -472,3 +472,25 @@ def test_positions_ratio_takes_every_odds_once_within_1_50_and_2_30():
             "2026-10-28": {"paris_retenus": {"e": p("e", "Victoire e", 2.30, "gagne"), "f": {"pari": None}}}}
     b = build_bilan({}, days, bankroll_settings(None), datetime(2026, 10, 29, tzinfo=timezone.utc))
     assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
+
+
+def test_estimated_scores_count_as_positions_once_within_1_50_and_2_30():
+    from sportai.services.bilan import bankroll_settings, build_bilan
+
+    def m(home, away, h, a, res, cotes):
+        return {"statut": "termine", "jour": "2026-10-20", "domicile": home, "exterieur": away,
+                "score_estime": {"domicile": h, "exterieur": a, "score": f"{h} - {a}", "resultat": res},
+                "cotes_1x2": dict(zip(("domicile", "nul", "exterieur"), cotes)),
+                "proba_1x2": {"domicile": 0.5, "nul": 0.25, "exterieur": 0.25}}
+
+    matchs = {"a": m("A", "B", 2, 1, "reussi", (1.80, 3.5, 4.5)),   # counted, won
+              "b": m("C", "D", 1, 1, "rate", (2.5, 2.20, 3.0)),     # draw at 2.20, lost
+              "c": m("E", "F", 2, 0, "reussi", (1.30, 5.0, 9.0)),   # under 1.50: out
+              "d": m("G", "H", 0, 1, "reussi", (2.0, 3.4, 3.6)),    # away at 3.60: out
+              "e": m("I", "J", 1, 0, "reussi", (1.90, 3.4, 4.0))}   # already a position on that outcome
+    days = {"2026-10-20": {"positions": [{"match_id": "e", "match": "I - J", "pari": "Victoire I", "cote": 1.90,
+                                          "resultat": "gagne"}]}}
+    b = build_bilan(matchs, days, bankroll_settings(None), datetime(2026, 10, 29, tzinfo=timezone.utc))
+    assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
+    pos = [i for i in b["valides"] + b["non_valides"] if i["categorie"] == "position"]
+    assert sorted(i["libelle"] for i in pos if i.get("origine") == "score estimé") == ["Match nul (C - D)", "Victoire A (A - B)"]

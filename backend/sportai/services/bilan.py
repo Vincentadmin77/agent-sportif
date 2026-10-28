@@ -154,17 +154,63 @@ def day_positions(doc: dict) -> list[dict]:
     return out
 
 
+def _outcome(pari: str | None, m: dict) -> str | None:
+    """1/N/2 side of a result bet ("Victoire <team>", "Match nul") on match m, else None."""
+    t = str(pari or "").strip().lower()
+    if t in ("match nul", "nul"):
+        return "nul"
+    for side in ("domicile", "exterieur"):
+        if m.get(side) and t == f"victoire {m[side]}".lower():
+            return side
+    return None
+
+
+def score_positions(matchs: dict[str, dict], pronostics: dict[str, dict]) -> dict[str, list[dict]]:
+    """Owner 2026-10-28 11:25: the estimated scores go into the positions, from the start. A finished match's
+    estimated outcome (1, N or 2) counts as a position when its odds are within POSITION_ODDS, unless the day already
+    holds a position on that match and outcome. Per day."""
+    out: dict[str, list[dict]] = {}
+    for key in sorted(matchs):
+        m = matchs[key]
+        est, cotes = m.get("score_estime") or {}, m.get("cotes_1x2") or {}
+        if m.get("statut") != "termine" or est.get("resultat") not in ("reussi", "rate"):
+            continue
+        h, a = est.get("domicile"), est.get("exterieur")
+        if not isinstance(h, int) or not isinstance(a, int):
+            continue
+        side = "domicile" if h > a else "exterieur" if a > h else "nul"
+        cote = cotes.get(side)
+        if not isinstance(cote, (int, float)) or not POSITION_ODDS[0] <= cote <= POSITION_ODDS[1]:
+            continue
+        day = m.get("jour")
+        if any(p.get("match_id") == key and _outcome(p.get("pari"), m) == side
+               for p in day_positions(pronostics.get(day) or {})):
+            continue
+        inv = {k: 1 / v for k, v in cotes.items() if k in ("domicile", "nul", "exterieur") and isinstance(v, (int, float)) and v > 0}
+        market = inv[side] / sum(inv.values()) if len(inv) == 3 else None
+        model = (m.get("proba_1x2") or {}).get(side)
+        conf = round((model + market) / 2, 4) if isinstance(model, (int, float)) and market else model
+        out.setdefault(day, []).append({
+            "match_id": key, "match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
+            "coup_envoi": m.get("coup_envoi"), "marche": "Résultat du match", "origine": "score estimé",
+            "pari": "Match nul" if side == "nul" else f"Victoire {m[side]}", "cote": cote, "proba": model,
+            "confiance": conf, "niveau": None if conf is None else "Confiance élevée" if conf >= 0.60 else "Confiance moyenne",
+            "resultat": "gagne" if est["resultat"] == "reussi" else "perdu"})
+    return out
+
+
 def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: dict, now: datetime) -> dict:
     items = []
-    for day in sorted(pronostics):
-        doc = pronostics[day]
-        for p in day_positions(doc):
+    from_scores = score_positions(matchs, pronostics)
+    for day in sorted(set(pronostics) | set(from_scores)):
+        doc = pronostics.get(day) or {}
+        for p in day_positions(doc) + from_scores.get(day, []):
             if p.get("resultat") in ("gagne", "perdu"):
                 items.append({"jour": day, "type": "Positions", "categorie": "position",
                               "libelle": f"{p['pari']} ({p.get('match')})", "cote": p["cote"],
                               "proba": p.get("confiance", p.get("proba")), "niveau": p.get("niveau"),
                               "competition": p.get("competition"), "match_id": p.get("match_id"),
-                              "valide": p["resultat"] == "gagne"})
+                              "origine": p.get("origine"), "valide": p["resultat"] == "gagne"})
         for key in TICKET_ORDER:
             t = (doc.get("tickets") or {}).get(key) or {}
             if t.get("jambes") and t.get("resultat") in ("gagne", "perdu") and not under_floor(t["jambes"]):
