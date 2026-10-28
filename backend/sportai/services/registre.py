@@ -80,7 +80,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
         if not p.get("pari") or not p.get("fige"):
             continue
         rid = record_id(day, p.get("match_id"), p["pari"])
-        same_match = [f for f in reg["fiches"].values() if f["match_id"] == p.get("match_id")]
+        same_match = [f for f in reg["fiches"].values()
+                      if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc")]
         if rid not in reg["fiches"] and same_match:  # the match already has a frozen position: log, never replace
             first = same_match[0]
             log = {"heure": now.isoformat(), "champ": "pari", "avant": first["pari"], "apres": p["pari"]}
@@ -109,6 +110,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
         if p.get("resultat") in SETTLED:
             f["resultat"] = p["resultat"]
     for f in reg["fiches"].values():
+        if f.get("live_a_blanc"):
+            continue
         m = matchs.get(f["match_id"]) or {}
         ko = _aware(f.get("coup_envoi"))
         if "cote_cloture" not in f and ko and now >= ko and m:
@@ -118,9 +121,9 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
             elif cote:
                 f["cote_cloture"], f["p_marche_cloture"] = cote, pm
                 f["clv"] = round(f["cote_prise"] / cote - 1, 4) if f.get("cote_prise") else None
-        if f.get("resultat") in SETTLED:
+        if f.get("resultat") in SETTLED and not f.get("live_a_blanc"):
             f["gain_unite"] = _gain(f)
-    return reg
+    return live_records(reg, matchs, code_version)
 
 
 def import_rebuilt(pron: dict, sport: str = "foot") -> dict:
@@ -195,8 +198,9 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     """Real records and rebuilt ones measured apart, overall and per confidence level, market and competition."""
     fiches = [f for reg in registres for f in (reg.get("fiches") or {}).values()]
     out = {}
-    for label, rows in (("reel", [f for f in fiches if not f.get("recalcule")]),
-                        ("recalcule", [f for f in fiches if f.get("recalcule")])):
+    for label, rows in (("reel", [f for f in fiches if not f.get("recalcule") and not f.get("live_a_blanc")]),
+                        ("recalcule", [f for f in fiches if f.get("recalcule")]),
+                        ("direct_a_blanc", [f for f in fiches if f.get("live_a_blanc")])):
         part = {"global": measures(rows)}
         for key in ("niveau", "marche", "competition", "sport"):
             groups = defaultdict(list)
@@ -206,3 +210,113 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
                          if len([r for r in v if r.get("resultat") in ("gagne", "perdu")]) >= min_group}
         out[label] = part
     return out
+
+
+# --- Live, à blanc (owner 2026-10-28 13:53: "nous devons savoir à quelle cote cette position devient valable ... il
+# faut pouvoir prendre la position en live, ou pas ; si l'attaquant a une note de 5,5 ... on laisse").
+# Before the match: every bet the model and the market both see very likely (blend >= TARGET_CHANCE) but priced under
+# the 1.50 floor gets the odds from which it would be worth taking (cote_valable). Live: each cycle, a priced live row
+# of such a target is noted once when its odds are within the range, its live chance x odds clears the margin, the
+# live checks passed (statut "opportunite": not against the run of the match) and, for a scorer, he is in his match.
+# Noted only (doc "live_a_blanc", then the registry), never shown nor counted as a position. Thresholds untested.
+TARGET_CHANCE = 0.70
+SCORER_TARGET_CHANCE = 0.40
+MARGIN = 0.03
+LIVE_ODDS = (1.50, 2.30)
+LIVE_MAX_MINUTE = 80
+MIN_RATING = 6.5
+
+
+def _blend(r: dict) -> float | None:
+    p, pm = r.get("proba"), r.get("proba_marche")
+    if not isinstance(p, (int, float)):
+        return None
+    return (p + pm) / 2 if isinstance(pm, (int, float)) else p
+
+
+def targets(doc: dict) -> dict[str, dict]:
+    """The match's very likely bets too short to take before kick-off, with the odds from which each is worth it."""
+    out = {}
+    rows = ((doc.get("tous_marches") or {}).get("analyses") or []) + ((doc.get("buts") or {}).get("marches") or [])
+    for r in rows:
+        b, cote = _blend(r), r.get("cote")
+        if r.get("pari") and b and b >= TARGET_CHANCE and isinstance(cote, (int, float)) and cote < LIVE_ODDS[0]:
+            out.setdefault(r["pari"], {"pari": r["pari"], "p_avant": round(b, 4), "cote_avant": cote,
+                                       "cote_valable": round((1 + MARGIN) / b, 2)})
+    for r in (doc.get("buteurs") or {}).get("cotes") or []:
+        b, cote = _blend(r), r.get("cote")
+        if r.get("joueur") and b and b >= SCORER_TARGET_CHANCE and isinstance(cote, (int, float)):
+            from sportai.services.dashboard import scorer_label
+
+            label = scorer_label(r["joueur"])
+            out.setdefault(label, {"pari": label, "p_avant": round(b, 4), "cote_avant": cote,
+                                   "cote_valable": round(max(LIVE_ODDS[0], (1 + MARGIN) / b), 2)})
+    return out
+
+
+def _in_his_match(row: dict) -> bool:
+    f = (row.get("buteur") or {}).get("forme")
+    if not f:
+        return False  # no live rating nor shots: cannot tell he is in his match, left
+    return f["note"] >= MIN_RATING if f.get("note") is not None else f.get("tirs", 0) >= 1
+
+
+def capture_live(doc: dict, rows: list[dict], minute: float, now: datetime) -> list[dict]:
+    """The doc's "live_a_blanc" list after one live cycle: each target noted once, the first time it is worth it."""
+    noted = list(doc.get("live_a_blanc") or [])
+    if minute > LIVE_MAX_MINUTE:
+        return noted
+    seen, tg = {n["pari"] for n in noted}, targets(doc)
+    for r in rows:
+        t = tg.get(r.get("pari"))
+        cote, p = r.get("cote"), r.get("proba")
+        if t is None or r["pari"] in seen or r.get("statut") != "opportunite" or not isinstance(cote, (int, float)):
+            continue
+        if not LIVE_ODDS[0] <= cote <= LIVE_ODDS[1] or p * cote < 1 + MARGIN or cote < t["cote_valable"]:
+            continue
+        if r.get("buteur") is not None and not _in_his_match(r):
+            continue
+        n = {**t, "heure": now.isoformat(), "minute": int(minute), "score": doc.get("score"), "cote": cote,
+             "p_direct": p, "p_marche_direct": r.get("proba_marche")}
+        if r.get("buteur"):
+            n["buteur"] = {k: r["buteur"].get(k) for k in ("id", "nom", "nom_api", "cote_equipe", "apres_minute", "forme")}
+        noted.append(n)
+        seen.add(r["pari"])
+    return noted
+
+
+def _settle_live(n: dict, m: dict) -> str | None:
+    if m.get("statut") != "termine":
+        return None
+    if n.get("buteur"):
+        from sportai.services.buteurs import settle_scorer
+
+        return settle_scorer({"buteur": n["buteur"]}, m)
+    from sportai.engine.football.markets import settle_score
+    from sportai.services.revue import _keys, _score
+
+    sc, key = _score(m), _keys(m.get("domicile") or "", m.get("exterieur") or "").get(n["pari"])
+    res = settle_score(key, *sc) if sc and key else None
+    return res if res in SETTLED else None
+
+
+def live_records(reg: dict, matchs: dict[str, dict], code_version: str) -> dict:
+    """The day's live à blanc notes into the registry (flag live_a_blanc), settled once the match is over."""
+    for mid, m in matchs.items():
+        if m.get("jour") != reg.get("jour"):
+            continue
+        for n in m.get("live_a_blanc") or []:
+            rid = f"{reg['jour']}|{mid}|direct|{n['pari']}"
+            f = reg["fiches"].setdefault(rid, {
+                "id": rid, "jour": reg["jour"], "sport": reg.get("sport", "foot"), "agent": "mathématicien (direct à blanc)",
+                "decision": n["heure"], "minute": n["minute"], "score_au_moment": n.get("score"), "match_id": mid,
+                "match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
+                "coup_envoi": m.get("coup_envoi"), "pari": n["pari"], "cote_prise": n["cote"],
+                "p_modele": n["p_direct"], "p_marche": n.get("p_marche_direct"), "p_avant": n["p_avant"],
+                "cote_avant": n["cote_avant"], "cote_valable": n["cote_valable"], "version_regles": rules_version(),
+                "version_code": code_version, "recalcule": False, "live_a_blanc": True})
+            if "resultat" not in f:
+                res = _settle_live(n, m)
+                if res:
+                    f["resultat"], f["gain_unite"] = res, _gain({**f, "resultat": res})
+    return reg

@@ -76,3 +76,42 @@ def test_measures():
     assert m["brier"]["p_marche"] == 0.25 and m["clv_positive"] == 0.5
     lo, hi = R.wilson(23, 30)
     assert 0.58 < lo < 0.60 and 0.87 < hi < 0.89
+
+
+def live_match(score="0 - 0", statut="en_direct"):
+    return {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "competition": "Serie A", "coup_envoi": KO,
+            "statut": statut, "score": score,
+            "tous_marches": {"analyses": [{"pari": "Plus de 1,5 buts", "cote": 1.25, "proba": 0.80, "proba_marche": 0.76},
+                                          {"pari": "Victoire A", "cote": 1.90, "proba": 0.5, "proba_marche": 0.5}]},
+            "buteurs": {"cotes": [{"joueur": "Joe Nine", "joueur_id": 9, "cote": 1.9, "proba": 0.45, "proba_marche": 0.5}]}}
+
+
+def test_targets_give_the_odds_from_which_a_short_bet_is_worth_it():
+    t = R.targets(live_match())
+    assert t["Plus de 1,5 buts"]["cote_valable"] == round(1.03 / 0.78, 2) and "Victoire A" not in t
+    assert t["Joe Nine buteur"]["cote_valable"] == round(1.03 / 0.475, 2)
+
+
+def test_live_note_only_when_worth_it_and_in_his_match():
+    m = live_match()
+    rows = [{"pari": "Plus de 1,5 buts", "cote": 2.40, "proba": 0.50, "statut": "opportunite"},  # above 2.30
+            {"pari": "Joe Nine buteur", "cote": 2.20, "proba": 0.50, "statut": "opportunite",
+             "buteur": {"id": 9, "nom": "Joe Nine", "forme": {"note": 5.5, "tirs": 0}}}]  # red rating: left
+    assert R.capture_live(m, rows, 46, at(20)) == []
+    rows[0]["cote"] = 2.25
+    rows[1]["buteur"]["forme"] = {"note": 7.1, "tirs": 2}
+    m["live_a_blanc"] = R.capture_live(m, rows, 46, at(20))
+    assert [n["pari"] for n in m["live_a_blanc"]] == ["Plus de 1,5 buts", "Joe Nine buteur"]
+    assert R.capture_live(m, [{**rows[0], "cote": 2.28}], 50, at(20)) == m["live_a_blanc"]  # noted once
+    assert R.capture_live({**live_match()}, rows, 85, at(20)) == []  # too late
+
+
+def test_live_notes_go_to_the_registry_apart_and_settle():
+    m = {**live_match(score="1 - 1", statut="termine"), "feuille_de_match": {"buts": []}}
+    m["live_a_blanc"] = [{"pari": "Plus de 1,5 buts", "p_avant": 0.78, "cote_avant": 1.25, "cote_valable": 1.32,
+                          "heure": at(20).isoformat(), "minute": 46, "score": "0 - 0", "cote": 2.25, "p_direct": 0.5}]
+    reg = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(23), "abc")
+    (f,) = reg["fiches"].values()
+    assert f["live_a_blanc"] and f["resultat"] == "gagne" and f["gain_unite"] == 1.25
+    rep = R.report([reg], min_group=1)
+    assert rep["reel"]["global"]["positions"] == 0 and rep["direct_a_blanc"]["global"]["validees"] == 1

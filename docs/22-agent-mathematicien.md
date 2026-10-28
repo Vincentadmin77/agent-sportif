@@ -40,3 +40,13 @@ données : les seuils sont fixés d'avance. 6 championnats (sans Brésil ni coup
 
 Par saison (≥ 60 %) : 64,5 / 68,5 / 58,4 / 63,5 / 74,4 % (78 positions). Réussite régulière et un peu au-dessus de
 l'annoncé, mais pas d'avantage financier prouvé sur le prix moyen.
+
+## Cote valable et direct à blanc (Vincent 28/10 13:53, interne seulement : choix « Interne pour l'instant » 13:56)
+Avant le match, chaque position très probable (mélange modèle + marché ≥ 70 %, buteur ≥ 40 %) mais sous la cote 1,50
+reçoit sa **cote valable** = 1,03 / chance (`registre.targets`). En direct, à chaque cycle (`live_page.live_doc` →
+`registre.capture_live`), une ligne de `direct.cotes_direct` d'une de ces cibles est notée une seule fois dans
+`live_a_blanc` du document du match si : statut « opportunite » (contrôles du sens du match passés), cote 1,50-2,30 et
+≥ cote valable d'avant-match, chance du direct × cote ≥ 1,03, minute ≤ 80, et pour un buteur une note live ≥ 6,5 (à
+défaut au moins un tir ; sans forme connue : laissé). Le registre les reprend (`live_a_blanc: true`, réglées au
+final) et le rapport les mesure à part (`direct_a_blanc`). Jamais affiché, jamais compté comme position. Seuils non
+testés : on juge après 100 cas.

@@ -17,6 +17,7 @@ from sportai.connectors.base import LiveSnapshot
 from sportai.connectors.teams import same_team
 from sportai.engine.football.live import LiveState, final_score_matrix, remaining_rates
 from sportai.engine.football.scorers import live_scorer_proba
+from sportai.services.registre import capture_live
 from sportai.services.buteurs import MARCHE as SCORER_MARKET, find_scorer_row, live_odds_by_player, match_sheet, player_state
 from sportai.services.dashboard import bet_label, goal_label, scorer_label, settle, settle_score
 
@@ -298,6 +299,8 @@ def live_doc(doc: dict, fx: dict, snap: LiveSnapshot, stats: dict[str, list], pr
             # suggestions shown to the public (owner 2026-10-17: "0-0 entre Inter et Bologne à 8 min, n'importe quoi")
             direct["cotes_direct"], direct["cotes_note"] = rows, ODDS_NOTE
             direct["cotes_direct_public"] = False
+            # owner 2026-10-28: at which live odds a very likely bet becomes worth it, noted à blanc (never shown)
+            doc["live_a_blanc"] = capture_live(doc, rows, snap.minute, now)
     else:
         direct["sans_modele"] = "Pas d'analyse d'avant-match pour ce match : score et statistiques seulement."
     doc["direct"] = direct
