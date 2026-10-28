@@ -133,10 +133,38 @@ def _rate(items: list[dict]) -> dict:
     return {"valides": ok, "non_valides": len(items) - ok, "taux": round(ok / len(items), 4) if items else None}
 
 
+# Owner 2026-10-28 11:00: singles only, odds 1.50 to 2.30; every odds ever proposed in that range, even inside a
+# combined ticket, is taken out on its own and counted once: one "Validé / Non validé" ratio and a total.
+POSITION_ODDS = (1.50, 2.30)
+
+
+def day_positions(doc: dict) -> list[dict]:
+    """A day's positions: the extracted list ("positions", history rebuilt on 2026-10-28) or the bets retained per
+    match, within POSITION_ODDS, each bet once."""
+    src = doc.get("positions") if isinstance(doc.get("positions"), list) else \
+        [p for p in (doc.get("paris_retenus") or {}).values() if p.get("pari")]
+    out, seen = [], set()
+    for p in src:
+        key = (p.get("match_id") or p.get("match"), p.get("pari"))
+        cote = p.get("cote")
+        if key in seen or not isinstance(cote, (int, float)) or not POSITION_ODDS[0] <= cote <= POSITION_ODDS[1]:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
 def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: dict, now: datetime) -> dict:
     items = []
     for day in sorted(pronostics):
         doc = pronostics[day]
+        for p in day_positions(doc):
+            if p.get("resultat") in ("gagne", "perdu"):
+                items.append({"jour": day, "type": "Positions", "categorie": "position",
+                              "libelle": f"{p['pari']} ({p.get('match')})", "cote": p["cote"],
+                              "proba": p.get("confiance", p.get("proba")), "niveau": p.get("niveau"),
+                              "competition": p.get("competition"), "match_id": p.get("match_id"),
+                              "valide": p["resultat"] == "gagne"})
         for key in TICKET_ORDER:
             t = (doc.get("tickets") or {}).get(key) or {}
             if t.get("jambes") and t.get("resultat") in ("gagne", "perdu") and not under_floor(t["jambes"]):
@@ -194,11 +222,16 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     kinds = {}
     for key, label in (("safe", "Top idée safe"), ("semi_safe", "Top idée semi safe"), ("fun", "Top idée fun"),
                        ("top3", "Top 3 des cotes"), ("selection", "Sélections"), ("score", "Scores estimés"),
-                       ("selection_jour", "Top confiance du jour"), ("pari_retenu", "Probabilités retenues"), ("combine", "Combinés de 2")):
+                       ("selection_jour", "Top confiance du jour"), ("pari_retenu", "Probabilités retenues"), ("combine", "Combinés de 2"),
+                       ("position", "Positions")):
         kinds[key] = {"titre": label, **_rate([i for i in items if i["categorie"] == key])}
     return {
         # the day's top pick is a match bet too: counted once in the overall rate
-        "maj": now.isoformat(), "global": _rate([i for i in items if i["categorie"] not in ("selection_jour", "combine")]),
+        # since 2026-10-28 the overall rate is the positions' one (owner: "validé et non validé et un ratio total")
+        "maj": now.isoformat(), "global": _rate([i for i in items if i["categorie"] == "position"]),
+        "positions": {**_rate([i for i in items if i["categorie"] == "position"]),
+                      "par_niveau": {n: _rate([i for i in items if i["categorie"] == "position" and i.get("niveau") == n])
+                                     for n in ("Confiance élevée", "Confiance moyenne")}},
         "par_type": kinds,
         "paris_retenus_par_niveau": {n: _rate([i for i in items if i["categorie"] == "pari_retenu"
                                                and i.get("niveau") == n])
