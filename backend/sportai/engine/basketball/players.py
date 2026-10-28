@@ -25,12 +25,12 @@ from dataclasses import dataclass, field
 
 STATS = ("pts", "fg3", "reb", "ast")
 COMBOS = {"pts": ("pts",), "fg3": ("fg3",), "reb": ("reb",), "ast": ("ast",),
-          "pts_ast": ("pts", "ast"), "pra": ("pts", "reb", "ast")}
+          "pts_ast": ("pts", "ast"), "pra": ("pts", "reb", "ast"), "reb_ast": ("reb", "ast")}
 MIN_HALF_LIFE = 5.0
 RATE_HALF_LIFE = 12.0
 PRIOR_MINUTES = 60.0
 # Negative-binomial size k per market (higher = closer to Poisson); set by the validation season.
-DISPERSION = {"pts": 12.0, "fg3": 20.0, "reb": 20.0, "ast": 12.0, "pts_ast": 12.0, "pra": 16.0}
+DISPERSION = {"pts": 12.0, "fg3": 20.0, "reb": 20.0, "ast": 12.0, "pts_ast": 12.0, "pra": 16.0, "reb_ast": 20.0}
 
 
 @dataclass

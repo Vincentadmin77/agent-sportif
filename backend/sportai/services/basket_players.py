@@ -36,8 +36,8 @@ MILESTONES = "player points milestones"  # "Name - 15" = 15 points or more, quot
 MILESTONE_MARGIN = 1.07  # bookmakers' usual margin, to read a fair chance from a one-sided quote
 MARKET_NAMES = {"pts": "Points du joueur", "fg3": "Paniers à 3 points du joueur", "reb": "Rebonds du joueur",
                 "pts_ast": "Points + passes du joueur",
-                "pra": "Points + rebonds + passes du joueur"}
-UNITS = {"pts": "points", "fg3": "paniers à 3 points", "reb": "rebonds", "pts_ast": "points + passes", "pra": "points + rebonds + passes"}
+                "pra": "Points + rebonds + passes du joueur", "reb_ast": "Rebonds + passes du joueur"}
+UNITS = {"pts": "points", "fg3": "paniers à 3 points", "reb": "rebonds", "pts_ast": "points + passes", "pra": "points + rebonds + passes", "reb_ast": "rebonds + passes"}
 OTHER = {"over": "under", "under": "over"}
 
 
