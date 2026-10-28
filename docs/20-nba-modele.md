@@ -42,3 +42,23 @@ des 10 derniers matchs, `docs/backtest-nba-joueurs.json` :
 Petit avantage partout, mais biais connu : seuls les joueurs ayant joué 10 minutes ou plus sont comptés.
 Aucune ligne historique de bookmaker : tout reste « non validé ». Pas de liste des blessés dans la source.
 Libellés de cotes API-Basketball à confirmer : « Player Triples » = 3 points, « Player Runs » ≈ rebonds (?).
+
+## Stars (28/10/2026)
+
+Demande du propriétaire : travailler les stars. Trois changements, choisis sur 2023-24 seulement et testés sur
+2024-25 à 2026-27, sur les joueurs à 18 points attendus ou plus (8 555 matchs-joueur, ligne = moyenne des 10 derniers) :
+- un marqueur (15 points ou plus sur la durée) est ramené vers son propre niveau long terme, plus vers la moyenne de la ligue ;
+- adversaire : chaque stat multipliée par (ce que l'adversaire concède / moyenne) ^ 0,5 (`TeamDefense`) ;
+- dispersion plus serrée pour les stars (`STAR_DISPERSION`).
+
+| Stars | Brier avant | après |
+|---|---|---|
+| Points | 0,2420 | 0,2393 |
+| Points + rebonds + passes | 0,2445 | 0,2406 |
+| Points + passes | 0,2442 | 0,2404 |
+| Rebonds | 0,2381 | 0,2371 |
+| 3 points | 0,2303 | 0,2293 |
+
+Tous joueurs : inchangé ou mieux (points 0,2420 → 0,2417). Essai rejeté : bonus quand un coéquipier régulier a manqué le
+match précédent (absence lue sur la feuille de match) : nettement pire (Brier points 0,241 → 0,246 avec 0,5), car une
+absence d'un soir n'annonce pas l'absence suivante. Sans liste des blessés, pas de bonus « coéquipier absent ».

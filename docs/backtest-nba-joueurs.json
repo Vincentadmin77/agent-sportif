@@ -1,75 +1,84 @@
 {
- "genere": "2026-10-27T21:28:56+00:00",
+ "genere": "2026-10-28T12:35:37+00:00",
  "dispersion": {
   "pts": 12.0,
   "fg3": 20.0,
   "reb": 20.0,
   "ast": 12.0,
   "pts_ast": 12.0,
-  "pra": 16.0
+  "pra": 16.0,
+  "reb_ast": 20.0
  },
  "test_2024_2027": {
   "pts": {
-   "n": 51467,
-   "brier_modele": 0.242,
+   "n": 51543,
+   "brier_modele": 0.2417,
    "brier_50": 0.25,
    "brier_taux_over": 0.25,
    "ecart_moyen_modele": 4.85,
    "ecart_moyen_moyenne10": 4.98
   },
   "fg3": {
-   "n": 51467,
-   "brier_modele": 0.2177,
+   "n": 51543,
+   "brier_modele": 0.2176,
    "brier_50": 0.25,
    "brier_taux_over": 0.2401,
    "ecart_moyen_modele": 0.97,
    "ecart_moyen_moyenne10": 0.97
   },
   "reb": {
-   "n": 51467,
-   "brier_modele": 0.2416,
+   "n": 51543,
+   "brier_modele": 0.2414,
    "brier_50": 0.25,
    "brier_taux_over": 0.2499,
    "ecart_moyen_modele": 1.99,
    "ecart_moyen_moyenne10": 2.03
   },
   "ast": {
-   "n": 51467,
-   "brier_modele": 0.2381,
+   "n": 51543,
+   "brier_modele": 0.238,
    "brier_50": 0.25,
    "brier_taux_over": 0.2491,
    "ecart_moyen_modele": 1.43,
    "ecart_moyen_moyenne10": 1.46
   },
   "pts_ast": {
-   "n": 51467,
-   "brier_modele": 0.2417,
+   "n": 51543,
+   "brier_modele": 0.2412,
    "brier_50": 0.25,
    "brier_taux_over": 0.2498,
-   "ecart_moyen_modele": 5.34,
+   "ecart_moyen_modele": 5.33,
    "ecart_moyen_moyenne10": 5.48
   },
   "pra": {
-   "n": 51467,
-   "brier_modele": 0.2414,
+   "n": 51543,
+   "brier_modele": 0.2409,
    "brier_50": 0.25,
    "brier_taux_over": 0.2495,
-   "ecart_moyen_modele": 6.32,
+   "ecart_moyen_modele": 6.31,
    "ecart_moyen_moyenne10": 6.5
+  },
+  "reb_ast": {
+   "n": 51543,
+   "brier_modele": 0.242,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.25,
+   "ecart_moyen_modele": 2.73,
+   "ecart_moyen_moyenne10": 2.8
   }
  },
  "par_saison": {
   "2023-2024:ast": {
    "n": 22462,
-   "brier_modele": 0.2411,
+   "brier_modele": 0.2406,
    "brier_50": 0.25,
    "brier_taux_over": 0.2491,
-   "ecart_moyen_modele": 1.45,
+   "ecart_moyen_modele": 1.44,
    "ecart_moyen_moyenne10": 1.47
   },
   "2023-2024:fg3": {
    "n": 22462,
-   "brier_modele": 0.2162,
+   "brier_modele": 0.216,
    "brier_50": 0.25,
    "brier_taux_over": 0.2391,
    "ecart_moyen_modele": 0.95,
@@ -77,39 +86,47 @@
   },
   "2023-2024:pra": {
    "n": 22462,
-   "brier_modele": 0.2446,
+   "brier_modele": 0.2432,
    "brier_50": 0.25,
    "brier_taux_over": 0.2492,
-   "ecart_moyen_modele": 6.29,
+   "ecart_moyen_modele": 6.27,
    "ecart_moyen_moyenne10": 6.42
   },
   "2023-2024:pts": {
    "n": 22462,
-   "brier_modele": 0.2434,
+   "brier_modele": 0.2421,
    "brier_50": 0.25,
    "brier_taux_over": 0.2499,
-   "ecart_moyen_modele": 4.83,
+   "ecart_moyen_modele": 4.81,
    "ecart_moyen_moyenne10": 4.93
   },
   "2023-2024:pts_ast": {
    "n": 22462,
-   "brier_modele": 0.2438,
+   "brier_modele": 0.2422,
    "brier_50": 0.25,
    "brier_taux_over": 0.2496,
-   "ecart_moyen_modele": 5.3,
+   "ecart_moyen_modele": 5.28,
    "ecart_moyen_moyenne10": 5.4
   },
   "2023-2024:reb": {
    "n": 22462,
-   "brier_modele": 0.2446,
+   "brier_modele": 0.2443,
    "brier_50": 0.25,
    "brier_taux_over": 0.25,
    "ecart_moyen_modele": 1.97,
    "ecart_moyen_moyenne10": 2.0
   },
+  "2023-2024:reb_ast": {
+   "n": 22462,
+   "brier_modele": 0.2445,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.2498,
+   "ecart_moyen_modele": 2.71,
+   "ecart_moyen_moyenne10": 2.76
+  },
   "2024-2025:ast": {
    "n": 24822,
-   "brier_modele": 0.2379,
+   "brier_modele": 0.2377,
    "brier_50": 0.25,
    "brier_taux_over": 0.2493,
    "ecart_moyen_modele": 1.44,
@@ -117,7 +134,7 @@
   },
   "2024-2025:fg3": {
    "n": 24822,
-   "brier_modele": 0.2182,
+   "brier_modele": 0.2181,
    "brier_50": 0.25,
    "brier_taux_over": 0.2405,
    "ecart_moyen_modele": 0.98,
@@ -125,15 +142,15 @@
   },
   "2024-2025:pra": {
    "n": 24822,
-   "brier_modele": 0.2417,
+   "brier_modele": 0.2412,
    "brier_50": 0.25,
    "brier_taux_over": 0.2495,
-   "ecart_moyen_modele": 6.37,
+   "ecart_moyen_modele": 6.36,
    "ecart_moyen_moyenne10": 6.54
   },
   "2024-2025:pts": {
    "n": 24822,
-   "brier_modele": 0.2424,
+   "brier_modele": 0.242,
    "brier_50": 0.25,
    "brier_taux_over": 0.25,
    "ecart_moyen_modele": 4.9,
@@ -141,7 +158,7 @@
   },
   "2024-2025:pts_ast": {
    "n": 24822,
-   "brier_modele": 0.2418,
+   "brier_modele": 0.2413,
    "brier_50": 0.25,
    "brier_taux_over": 0.2498,
    "ecart_moyen_modele": 5.38,
@@ -149,15 +166,23 @@
   },
   "2024-2025:reb": {
    "n": 24822,
-   "brier_modele": 0.2417,
+   "brier_modele": 0.2416,
    "brier_50": 0.25,
    "brier_taux_over": 0.25,
-   "ecart_moyen_modele": 2.01,
+   "ecart_moyen_modele": 2.0,
    "ecart_moyen_moyenne10": 2.05
+  },
+  "2024-2025:reb_ast": {
+   "n": 24822,
+   "brier_modele": 0.2424,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.25,
+   "ecart_moyen_modele": 2.75,
+   "ecart_moyen_moyenne10": 2.83
   },
   "2025-2026:ast": {
    "n": 24321,
-   "brier_modele": 0.239,
+   "brier_modele": 0.2389,
    "brier_50": 0.25,
    "brier_taux_over": 0.2491,
    "ecart_moyen_modele": 1.43,
@@ -165,7 +190,7 @@
   },
   "2025-2026:fg3": {
    "n": 24321,
-   "brier_modele": 0.2178,
+   "brier_modele": 0.2175,
    "brier_50": 0.25,
    "brier_taux_over": 0.2405,
    "ecart_moyen_modele": 0.96,
@@ -173,7 +198,7 @@
   },
   "2025-2026:pra": {
    "n": 24321,
-   "brier_modele": 0.2425,
+   "brier_modele": 0.2419,
    "brier_50": 0.25,
    "brier_taux_over": 0.2493,
    "ecart_moyen_modele": 6.25,
@@ -181,7 +206,7 @@
   },
   "2025-2026:pts": {
    "n": 24321,
-   "brier_modele": 0.2427,
+   "brier_modele": 0.2424,
    "brier_50": 0.25,
    "brier_taux_over": 0.25,
    "ecart_moyen_modele": 4.8,
@@ -189,7 +214,7 @@
   },
   "2025-2026:pts_ast": {
    "n": 24321,
-   "brier_modele": 0.243,
+   "brier_modele": 0.2425,
    "brier_50": 0.25,
    "brier_taux_over": 0.2497,
    "ecart_moyen_modele": 5.29,
@@ -197,59 +222,75 @@
   },
   "2025-2026:reb": {
    "n": 24321,
-   "brier_modele": 0.2414,
+   "brier_modele": 0.2412,
    "brier_50": 0.25,
    "brier_taux_over": 0.2499,
    "ecart_moyen_modele": 1.97,
    "ecart_moyen_moyenne10": 2.02
   },
+  "2025-2026:reb_ast": {
+   "n": 24321,
+   "brier_modele": 0.2419,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.2499,
+   "ecart_moyen_modele": 2.7,
+   "ecart_moyen_moyenne10": 2.77
+  },
   "2026-2027:ast": {
-   "n": 2324,
+   "n": 2400,
    "brier_modele": 0.2312,
    "brier_50": 0.25,
-   "brier_taux_over": 0.2456,
+   "brier_taux_over": 0.2459,
    "ecart_moyen_modele": 1.4,
    "ecart_moyen_moyenne10": 1.45
   },
   "2026-2027:fg3": {
-   "n": 2324,
-   "brier_modele": 0.2113,
+   "n": 2400,
+   "brier_modele": 0.2118,
    "brier_50": 0.25,
-   "brier_taux_over": 0.2308,
-   "ecart_moyen_modele": 0.9,
-   "ecart_moyen_moyenne10": 0.91
+   "brier_taux_over": 0.2306,
+   "ecart_moyen_modele": 0.91,
+   "ecart_moyen_moyenne10": 0.92
   },
   "2026-2027:pra": {
-   "n": 2324,
-   "brier_modele": 0.2263,
+   "n": 2400,
+   "brier_modele": 0.2283,
    "brier_50": 0.25,
-   "brier_taux_over": 0.248,
-   "ecart_moyen_modele": 6.44,
-   "ecart_moyen_moyenne10": 6.77
+   "brier_taux_over": 0.2481,
+   "ecart_moyen_modele": 6.46,
+   "ecart_moyen_moyenne10": 6.75
   },
   "2026-2027:pts": {
-   "n": 2324,
-   "brier_modele": 0.23,
-   "brier_50": 0.25,
-   "brier_taux_over": 0.2474,
-   "ecart_moyen_modele": 4.75,
-   "ecart_moyen_moyenne10": 5.01
-  },
-  "2026-2027:pts_ast": {
-   "n": 2324,
-   "brier_modele": 0.2264,
+   "n": 2400,
+   "brier_modele": 0.2314,
    "brier_50": 0.25,
    "brier_taux_over": 0.2475,
-   "ecart_moyen_modele": 5.3,
+   "ecart_moyen_modele": 4.79,
+   "ecart_moyen_moyenne10": 5.02
+  },
+  "2026-2027:pts_ast": {
+   "n": 2400,
+   "brier_modele": 0.228,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.2477,
+   "ecart_moyen_modele": 5.34,
    "ecart_moyen_moyenne10": 5.6
   },
   "2026-2027:reb": {
-   "n": 2324,
+   "n": 2400,
    "brier_modele": 0.2416,
    "brier_50": 0.25,
-   "brier_taux_over": 0.249,
-   "ecart_moyen_modele": 1.98,
-   "ecart_moyen_moyenne10": 2.03
+   "brier_taux_over": 0.2491,
+   "ecart_moyen_modele": 1.97,
+   "ecart_moyen_moyenne10": 2.02
+  },
+  "2026-2027:reb_ast": {
+   "n": 2400,
+   "brier_modele": 0.2391,
+   "brier_50": 0.25,
+   "brier_taux_over": 0.2494,
+   "ecart_moyen_modele": 2.78,
+   "ecart_moyen_moyenne10": 2.86
   }
  },
  "calibration_test": {
@@ -257,219 +298,219 @@
    {
     "de": 0,
     "a": 0.3,
-    "n": 3253,
-    "prevu": 0.26,
-    "reel": 0.345
+    "n": 3100,
+    "prevu": 0.258,
+    "reel": 0.351
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 11689,
+    "n": 10685,
     "prevu": 0.357,
-    "reel": 0.41
+    "reel": 0.403
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 16555,
+    "n": 16336,
     "prevu": 0.45,
-    "reel": 0.479
+    "reel": 0.474
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 11936,
-    "prevu": 0.545,
-    "reel": 0.563
+    "n": 12778,
+    "prevu": 0.546,
+    "reel": 0.554
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 5642,
+    "n": 6156,
     "prevu": 0.642,
-    "reel": 0.642
+    "reel": 0.641
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 2392,
-    "prevu": 0.759,
-    "reel": 0.729
+    "n": 2488,
+    "prevu": 0.758,
+    "reel": 0.728
    }
   ],
   "fg3": [
    {
     "de": 0,
     "a": 0.3,
-    "n": 13627,
-    "prevu": 0.219,
+    "n": 13684,
+    "prevu": 0.215,
     "reel": 0.205
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 13802,
+    "n": 13520,
     "prevu": 0.351,
-    "reel": 0.376
+    "reel": 0.377
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 12832,
+    "n": 12891,
     "prevu": 0.448,
-    "reel": 0.469
+    "reel": 0.467
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 7679,
+    "n": 7839,
     "prevu": 0.543,
-    "reel": 0.554
+    "reel": 0.552
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 3032,
+    "n": 3103,
     "prevu": 0.638,
-    "reel": 0.657
+    "reel": 0.655
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 495,
-    "prevu": 0.73,
-    "reel": 0.733
+    "n": 506,
+    "prevu": 0.729,
+    "reel": 0.741
    }
   ],
   "reb": [
    {
     "de": 0,
     "a": 0.3,
-    "n": 3337,
-    "prevu": 0.26,
-    "reel": 0.354
+    "n": 3347,
+    "prevu": 0.259,
+    "reel": 0.35
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 12330,
+    "n": 12554,
     "prevu": 0.357,
-    "reel": 0.397
+    "reel": 0.396
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 17917,
+    "n": 18001,
     "prevu": 0.45,
-    "reel": 0.472
+    "reel": 0.475
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 12350,
-    "prevu": 0.544,
-    "reel": 0.566
+    "n": 12335,
+    "prevu": 0.543,
+    "reel": 0.568
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 4451,
-    "prevu": 0.64,
-    "reel": 0.659
+    "n": 4293,
+    "prevu": 0.639,
+    "reel": 0.666
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 1082,
-    "prevu": 0.741,
-    "reel": 0.774
+    "n": 1013,
+    "prevu": 0.74,
+    "reel": 0.777
    }
   ],
   "ast": [
    {
     "de": 0,
     "a": 0.3,
-    "n": 4891,
+    "n": 4796,
     "prevu": 0.26,
-    "reel": 0.306
+    "reel": 0.304
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 13827,
+    "n": 13452,
     "prevu": 0.355,
-    "reel": 0.382
+    "reel": 0.381
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 16569,
-    "prevu": 0.448,
-    "reel": 0.466
+    "n": 16724,
+    "prevu": 0.449,
+    "reel": 0.461
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 10384,
+    "n": 10696,
     "prevu": 0.544,
-    "reel": 0.557
+    "reel": 0.558
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 4592,
+    "n": 4658,
     "prevu": 0.642,
     "reel": 0.655
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 1204,
-    "prevu": 0.737,
-    "reel": 0.733
+    "n": 1217,
+    "prevu": 0.736,
+    "reel": 0.731
    }
   ],
   "pts_ast": [
    {
     "de": 0,
     "a": 0.3,
-    "n": 2737,
-    "prevu": 0.262,
-    "reel": 0.352
+    "n": 2624,
+    "prevu": 0.26,
+    "reel": 0.353
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 11422,
+    "n": 10356,
     "prevu": 0.358,
-    "reel": 0.406
+    "reel": 0.405
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 17270,
-    "prevu": 0.45,
-    "reel": 0.493
+    "n": 16972,
+    "prevu": 0.451,
+    "reel": 0.482
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 12287,
+    "n": 13307,
     "prevu": 0.545,
-    "reel": 0.566
+    "reel": 0.563
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 5536,
+    "n": 6000,
     "prevu": 0.642,
-    "reel": 0.65
+    "reel": 0.645
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 2215,
-    "prevu": 0.757,
+    "n": 2284,
+    "prevu": 0.756,
     "reel": 0.764
    }
   ],
@@ -477,44 +518,88 @@
    {
     "de": 0,
     "a": 0.3,
-    "n": 2711,
-    "prevu": 0.26,
-    "reel": 0.35
+    "n": 2651,
+    "prevu": 0.259,
+    "reel": 0.352
    },
    {
     "de": 0.3,
     "a": 0.4,
-    "n": 10973,
+    "n": 10051,
     "prevu": 0.358,
-    "reel": 0.418
+    "reel": 0.416
    },
    {
     "de": 0.4,
     "a": 0.5,
-    "n": 17060,
-    "prevu": 0.45,
-    "reel": 0.499
+    "n": 16658,
+    "prevu": 0.451,
+    "reel": 0.489
    },
    {
     "de": 0.5,
     "a": 0.6,
-    "n": 12748,
+    "n": 13598,
     "prevu": 0.545,
-    "reel": 0.567
+    "reel": 0.565
    },
    {
     "de": 0.6,
     "a": 0.7,
-    "n": 5809,
+    "n": 6331,
     "prevu": 0.642,
-    "reel": 0.668
+    "reel": 0.661
    },
    {
     "de": 0.7,
     "a": 1,
-    "n": 2166,
+    "n": 2254,
     "prevu": 0.758,
-    "reel": 0.785
+    "reel": 0.784
+   }
+  ],
+  "reb_ast": [
+   {
+    "de": 0,
+    "a": 0.3,
+    "n": 2674,
+    "prevu": 0.262,
+    "reel": 0.346
+   },
+   {
+    "de": 0.3,
+    "a": 0.4,
+    "n": 11299,
+    "prevu": 0.358,
+    "reel": 0.404
+   },
+   {
+    "de": 0.4,
+    "a": 0.5,
+    "n": 18133,
+    "prevu": 0.45,
+    "reel": 0.485
+   },
+   {
+    "de": 0.5,
+    "a": 0.6,
+    "n": 13385,
+    "prevu": 0.545,
+    "reel": 0.572
+   },
+   {
+    "de": 0.6,
+    "a": 0.7,
+    "n": 5001,
+    "prevu": 0.639,
+    "reel": 0.658
+   },
+   {
+    "de": 0.7,
+    "a": 1,
+    "n": 1051,
+    "prevu": 0.743,
+    "reel": 0.778
    }
   ]
  }
