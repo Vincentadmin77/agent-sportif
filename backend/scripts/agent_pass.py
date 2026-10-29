@@ -52,7 +52,7 @@ from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
-FOOT_COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "ENC", "UCL", "UEL"]
+FOOT_COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "ENC", "PT1", "UCL", "UEL"]
 # Basketball (owner 2026-10-27): NBA and WNBA from API-Basketball, same rules as football (docs/21-basket-passes.md).
 BASKET_COMPETITIONS = ["NBA", "WNBA"]
 COMPETITIONS = FOOT_COMPETITIONS + BASKET_COMPETITIONS

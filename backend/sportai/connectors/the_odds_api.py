@@ -33,6 +33,7 @@ SPORT_KEYS = {
     "BR1": "soccer_brazil_campeonato",
     "TR1": "soccer_turkey_super_league",
     "ENC": "soccer_england_efl_cup",
+    "PT1": "soccer_portugal_primeira_liga",  # analysed since 2026-10-29 (owner)
 }
 
 
