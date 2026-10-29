@@ -288,6 +288,8 @@ def _brackets(foreign: list[dict], page: dict[str, dict], previous: dict, now: d
     owner's 2026-10-29 decision the roles swap: the official position is on any bookmaker, the bracketed one at a
     French site's price."""
     old = previous.get("positions_entre_parentheses") or {}
+    if not french_only():  # a bracketed position taken under the French rule is now the official one: dropped
+        old = {k: v for k, v in old.items() if v.get("cotes_francaises") or started(v)}
     # at a French price (since 2026-10-29), a choice on every match as the 2026-10-28 French rule made
     picks, _ = build_picks(foreign, page, {"paris_retenus": old}, now, day, started, lambda l: False,
                            force=not french_only())
