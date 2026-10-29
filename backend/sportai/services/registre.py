@@ -208,8 +208,7 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
                                           or f.get("remplacee"))]
     for label, rows in (("reel", [f for f in official if not f.get("non_retenu")]),
                         ("non_retenu", [f for f in official if f.get("non_retenu")]),
-                        ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")
-                                          and not f.get("enregistre_apres_coup_envoi")]),
+                        ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")]),  # late ones too (owner 29/10)
                         ("le_m_nba_55", [{**f["choix_55"], "sport": "basket", "competition": f.get("competition")}
                                          for f in fiches if f.get("choix_55")
                                          and not f.get("enregistre_apres_coup_envoi")]),

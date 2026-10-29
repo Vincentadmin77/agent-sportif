@@ -203,14 +203,14 @@ def test_the_m_chooses_on_every_nba_game_then_settles_it():
     assert reg["avis"]["basket-7"]["choix_m"]["resultat"] == "gagne" and "Choix du M validé" in reg["avis"]["basket-7"]["bilan"]
 
 
-def test_a_match_added_after_kick_off_still_gets_the_opinions_out_of_the_ratios():
+def test_a_match_added_after_kick_off_still_gets_the_opinions_and_counts_for_the_m():
     m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "en_cours",
          "tous_marches": {"analyses": [{"pari": "Victoire A", "cote": 1.55, "proba": 0.6, "proba_marche": 0.62}]}}
     day = pron(cote=1.84)
     reg = R.update({}, day, {"m1": m}, at(20), "abc")
     a, f = reg["avis"]["m1"], reg["fiches"]["2026-10-29|m1|M"]
     assert a["tardif"] and a["visa_m"]["feu"] and a["choix_m"]["pari"] == "Victoire A"
-    assert f["enregistre_apres_coup_envoi"] and R.report([reg])["le_m_a_blanc"]["global"]["positions"] == 0
+    assert f["enregistre_apres_coup_envoi"] and R.report([reg])["le_m_a_blanc"]["global"]["positions"] == 1
 
 
 def test_the_nba_55_choice_is_settled_and_counted_apart():
