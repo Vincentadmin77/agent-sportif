@@ -771,9 +771,9 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None)
     return reg
 
 
-def rebuilt_selection(pron: dict, bpron: dict | None = None) -> list[dict]:
+def rebuilt_selection(pron: dict, bpron: dict | None = None, reg: dict | None = None) -> list[dict]:
     """The selection a past day would have had (chosen afterwards from its stored positions): kept apart, recalcule."""
-    cands = [c for c in selection_candidates({}, pron, bpron)
+    cands = [c for c in selection_candidates(reg or {}, pron, bpron)
              if c["confiance"] >= SELECTION_MIN and isinstance(c.get("p_marche"), (int, float))
              and c["p_marche"] >= SELECTION_MIN]
     for p in pron.get("positions") or []:  # rebuilt days store a list

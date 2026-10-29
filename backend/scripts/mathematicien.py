@@ -73,7 +73,7 @@ def main() -> None:
         bprons = _load(a.page, "basket_pronostic")
         days = [a.jour] if a.jour else [d for d in prons if d < now.date().isoformat()]
         _write(a.out, {d: {**(regs.get(d) or {"jour": d, "fiches": {}}),
-                           "selection_m": R.rebuilt_selection(prons[d], bprons.get(d)),
+                           "selection_m": R.rebuilt_selection(prons[d], bprons.get(d), regs.get(d)),
                            "selection_m_recalculee": True} for d in days})
     elif a.cmd == "importer":
         _write(a.out, {d: R.import_rebuilt(p) for d, p in prons.items()
