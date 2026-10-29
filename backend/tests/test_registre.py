@@ -256,3 +256,22 @@ def test_a_pick_the_model_does_not_retain_stays_out_of_its_ratio():
     reg = R.update({}, day, MATCH, at(18), "abc")
     rep = R.report([reg], min_group=1)
     assert rep["reel"]["global"]["positions"] == 0 and rep["non_retenu"]["global"]["validees"] == 1
+
+
+def test_the_selection_of_the_m_takes_the_most_confident_of_every_sport_and_keeps_them_from_kick_off():
+    day = pron(cote=1.55)
+    day["paris_retenus"]["m1"].update(confiance=0.66, proba_marche=0.64)
+    day["positions_entre_parentheses"] = {"m2": {"match": "C - D", "pari": "Moins de 3,5 buts", "cote": 1.6,
+                                                 "confiance": 0.70, "proba": 0.72, "proba_marche": 0.68,
+                                                 "coup_envoi": KO}}
+    b = {"paris_retenus": {"7": {"match": "E - F", "pari": "Victoire E", "cote": 1.55, "proba": 0.62,
+                                 "proba_marche": 0.61, "coup_envoi": "2026-10-29T23:00:00Z"},
+                           "8": {"match": "G - H", "pari": "Victoire G", "cote": 1.9, "proba": 0.55,
+                                 "proba_marche": 0.52, "coup_envoi": "2026-10-29T23:00:00Z"}}}
+    reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(17), b)
+    assert [c["pari"] for c in reg["selection_m"]] == ["Moins de 3,5 buts", "Plus de 2,5 buts", "Victoire E"]
+    day["paris_retenus"]["m1"]["resultat"] = "gagne"
+    day["paris_retenus"]["m1"]["confiance"] = 0.50  # after kick-off the pick stays as it was
+    reg = R.selection_m(reg, day, at(22), b)
+    assert reg["selection_m"][0]["pari"] in ("Moins de 3,5 buts", "Plus de 2,5 buts")
+    assert {c["pari"]: c.get("resultat") for c in reg["selection_m"]}["Plus de 2,5 buts"] == "gagne"

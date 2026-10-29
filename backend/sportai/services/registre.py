@@ -693,3 +693,98 @@ def realign(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, code_
         if (a["officielle"] or {}).get("resultat") in SETTLED or (a.get("choix_m") or {}).get("resultat"):
             a["bilan"] = _who_was_right(a)
     return out
+
+
+# --- "La sélection du M" (owner 2026-10-29 15:38: "les confiances les plus élevées parmi toutes les propositions et
+# positions du jour, y compris celles du M, tous sports confondus ... le graal"). Every candidate of the day (official
+# positions, those kept in parentheses, the M's own choices, foot and basket), the ones the model and the market both
+# see at SELECTION_MIN or more, the SELECTION_MAX most confident; chosen until each match starts, then kept as it was.
+SELECTION_MIN = 0.60
+SELECTION_MAX = 3
+
+
+def _conf(mod, mkt) -> float | None:
+    if isinstance(mod, (int, float)) and isinstance(mkt, (int, float)):
+        return round((mod + mkt) / 2, 4)
+    return None
+
+
+def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None) -> list[dict]:
+    out: dict[tuple, dict] = {}
+
+    def add(sport, mid, p, source, cote_key="cote", mod_key="proba", mkt_key="proba_marche"):
+        if not p or not p.get("pari"):
+            return
+        c = p.get("confiance") if source != "le_m" else None
+        c = c if isinstance(c, (int, float)) else _conf(p.get(mod_key), p.get(mkt_key))
+        key = (sport, str(mid), p["pari"])
+        if c is None or key in out:
+            return
+        out[key] = {"sport": sport, "match_id": str(mid), "match": p.get("match"), "pari": p["pari"],
+                    "cote": p.get(cote_key), "confiance": c, "p_modele": p.get(mod_key), "p_marche": p.get(mkt_key),
+                    "source": source, "coup_envoi": p.get("coup_envoi"), "resultat": p.get("resultat"),
+                    "competition": p.get("competition")}
+
+    for mid, p in (pron.get("paris_retenus") or {}).items():
+        add("foot", mid, p, "officielle")
+    for mid, p in (pron.get("positions_entre_parentheses") or {}).items():
+        add("foot", mid, p, "entre_parentheses")
+    for mid, p in ((bpron or {}).get("paris_retenus") or {}).items():
+        add("basket", mid, p, "officielle")
+    for f in (reg.get("fiches") or {}).values():
+        if f.get("choix_m") and f.get("pari"):
+            sport = f.get("sport", "foot")
+            mid = str(f["match_id"]).removeprefix("basket-")
+            add(sport, mid, {**f, "cote": f.get("cote_prise")}, "le_m", mod_key="p_modele", mkt_key="p_marche")
+    return list(out.values())
+
+
+def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None) -> dict:
+    """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
+    cands = selection_candidates(reg, pron, bpron)
+    res = {(c["sport"], c["match_id"], c["pari"]): c.get("resultat") for c in cands}
+    prev = list(reg.get("selection_m") or [])
+
+    def started(c):
+        ko = _aware(str(c.get("coup_envoi") or "").replace("Z", "+00:00"))
+        return bool(ko and now >= ko)
+
+    kept = [c for c in prev if started(c)]
+    for c in kept:  # results of the frozen picks
+        r = res.get((c["sport"], c["match_id"], c["pari"]))
+        if r in SETTLED:
+            c["resultat"] = r
+    taken = {(c["sport"], c["match_id"]) for c in kept}
+    fresh = sorted((c for c in cands if not started(c) and (c["sport"], c["match_id"]) not in taken
+                    and c["confiance"] >= SELECTION_MIN and isinstance(c.get("p_marche"), (int, float))
+                    and c["p_marche"] >= SELECTION_MIN), key=lambda c: -c["confiance"])
+    picks, seen = list(kept), set(taken)
+    for c in fresh:
+        if len(picks) >= SELECTION_MAX:
+            break
+        if (c["sport"], c["match_id"]) not in seen:
+            picks.append({**c, "choisie": now.isoformat()})
+            seen.add((c["sport"], c["match_id"]))
+    reg["selection_m"] = picks
+    reg["selection_m_regle"] = (f"Confiance et bookmakers à {_pc(SELECTION_MIN)} ou plus, les {SELECTION_MAX} plus hautes "
+                                "confiances du jour, tous sports.")
+    return reg
+
+
+def rebuilt_selection(pron: dict, bpron: dict | None = None) -> list[dict]:
+    """The selection a past day would have had (chosen afterwards from its stored positions): kept apart, recalcule."""
+    cands = [c for c in selection_candidates({}, pron, bpron)
+             if c["confiance"] >= SELECTION_MIN and isinstance(c.get("p_marche"), (int, float))
+             and c["p_marche"] >= SELECTION_MIN]
+    for p in pron.get("positions") or []:  # rebuilt days store a list
+        c = _conf(p.get("proba"), p.get("proba_marche"))
+        if p.get("pari") and c and c >= SELECTION_MIN and (p.get("proba_marche") or 0) >= SELECTION_MIN:
+            cands.append({"sport": "foot", "match_id": str(p.get("match_id")), "match": p.get("match"), "pari": p["pari"],
+                          "cote": p.get("cote"), "confiance": p.get("confiance") or c, "p_modele": p.get("proba"),
+                          "p_marche": p.get("proba_marche"), "source": "officielle", "resultat": p.get("resultat")})
+    out, seen = [], set()
+    for c in sorted(cands, key=lambda c: -c["confiance"]):
+        if len(out) < SELECTION_MAX and (c["sport"], c["match_id"]) not in seen:
+            out.append({**c, "recalcule": True})
+            seen.add((c["sport"], c["match_id"]))
+    return out
