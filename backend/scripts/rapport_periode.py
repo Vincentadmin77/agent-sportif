@@ -37,7 +37,7 @@ def period(kind: str, ref: date) -> tuple[date, date, str, str]:
     return start, end, f"debut-{end.isoformat()}", f"Depuis le début (jusqu'au {end.day} {MOIS[end.month - 1]})"
 
 
-def market(label: str, sport: str = "foot") -> str:
+def market(label: str, sport: str = "foot", marche: str | None = None) -> str:
     """Market family, with each sport's own axes (owner 2026-10-29 20:36: basket in points, tennis in sets and games)."""
     t = label.lower()
     if sport == "basket":
@@ -53,6 +53,8 @@ def market(label: str, sport: str = "foot") -> str:
             return "Moins de … points"
         return "Autres"
     if sport == "tennis":
+        if marche in ("Vainqueur", "Sets", "Handicap jeux", "Total de jeux", "Aces"):
+            return marche
         if "ace" in t:
             return "Aces"
         if "handicap" in t and "jeu" in t:
@@ -95,7 +97,7 @@ def block(items: list[dict], start: date, end: date, before: list[dict], sport: 
     cote = round(sum(odds) / len(odds), 2) if odds else None
     groups = {}
     for i in inside:
-        g = groups.setdefault(market(i.get("libelle", ""), sport), [0, 0])
+        g = groups.setdefault(market(i.get("libelle", ""), sport, i.get("marche")), [0, 0])
         g[0] += i["valide"]
         g[1] += 1
     levels = {}
@@ -117,6 +119,27 @@ def foot_items(dump: str) -> list[dict]:
     return [{"jour": i["jour"], "valide": bool(i["valide"]), "cote": i.get("cote"), "niveau": i.get("niveau"),
              "libelle": i.get("libelle", ""), "competition": i.get("competition")}
             for i in (b.get("valides") or []) + (b.get("non_valides") or []) if i.get("categorie") == "position"]
+
+
+def tennis_items(dump: str) -> list[dict]:
+    """Tennis positions from the page collection "tennis" (one doc per day, raw tennis file: matchs[].choix with
+    position, marche, cote, niveau, statut "retenu" or "Le modèle ne le retient pas", resultat). Only retained ones count."""
+    out = []
+    for f in sorted(glob.glob(os.path.join(dump, "tennis", "*.json"))):
+        d = json.load(open(f))
+        day = d.get("date") or os.path.basename(f)[:10]
+        for m in d.get("matchs") or []:
+            ch = m.get("choix")
+            for c in (ch if isinstance(ch, list) else [ch] if isinstance(ch, dict) else []):
+                if c.get("statut") != "retenu" or c.get("resultat") not in ("gagne", "perdu"):
+                    continue
+                cote = c.get("cote")
+                if not isinstance(cote, (int, float)) or not POSITION_ODDS[0] <= cote <= POSITION_ODDS[1]:
+                    continue
+                out.append({"jour": day, "valide": c["resultat"] == "gagne", "cote": cote, "niveau": c.get("niveau"),
+                            "libelle": f"{c.get('position')} ({m.get('joueur_1')} - {m.get('joueur_2')})",
+                            "marche": c.get("marche"), "competition": m.get("circuit")})
+    return out
 
 
 def sport_items(dump: str, coll: str) -> list[dict]:
@@ -164,7 +187,7 @@ def strengths(items: list[dict], start: date, end: date, seuil: float | None, sp
     inside = [i for i in items if start.isoformat() <= i["jour"] <= end.isoformat()]
     groups: dict[tuple[str, str], list[dict]] = {}
     for i in inside:
-        for axis, key in (("Marché", market(i.get("libelle", ""), sport)), ("Confiance", i.get("niveau")),
+        for axis, key in (("Marché", market(i.get("libelle", ""), sport, i.get("marche"))), ("Confiance", i.get("niveau")),
                           ("Championnat", i.get("competition")), ("Cotes", odds_band(i.get("cote")))):
             if key and key != "Autres":
                 groups.setdefault((axis, key), []).append(i)
@@ -220,7 +243,7 @@ def sentences(f: dict, b: dict, chg: list, t: dict | None = None) -> list[str]:
 def main() -> None:
     dump, kind, ref = sys.argv[1], sys.argv[2], date.fromisoformat(sys.argv[3])
     start, end, rid, title = period(kind, ref)
-    foot, basket, tennis = foot_items(dump), sport_items(dump, "basket_pronostic"), sport_items(dump, "tennis_pronostic")
+    foot, basket, tennis = foot_items(dump), sport_items(dump, "basket_pronostic"), tennis_items(dump)
     path = os.path.join(dump, "rapports", "changements.json")
     changes = json.load(open(path)).get("liste", []) if os.path.exists(path) else []
     chg = [c for c in changes if start.isoformat() <= c[0] <= end.isoformat()]
