@@ -224,3 +224,15 @@ def test_the_nba_55_choice_is_settled_and_counted_apart():
     assert reg["avis"]["basket-7"]["choix_m"]["choix_55"]["resultat"] == "gagne"
     rep = R.report([reg], min_group=1)
     assert rep["le_m_nba_55"]["global"]["validees"] == 1 and rep["le_m_a_blanc"]["global"]["positions"] == 0
+
+
+def test_a_stale_register_takes_the_position_that_froze_before_tip_off():
+    early = {"paris_retenus": {"7": {"match": "C - D", "competition": "NBA", "coup_envoi": "2026-10-29T23:00:00Z",
+                                     "pari": "D +1,5 points (handicap)", "cote": 1.67, "proba": 0.51,
+                                     "proba_marche": 0.61}}}
+    reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, early, at(18))
+    frozen = {"paris_retenus": {"7": {**early["paris_retenus"]["7"], "pari": "Victoire C", "cote": 1.82,
+                                      "proba_marche": 0.50, "fige": True, "resultat": "perdu"}}}
+    reg = R.basket_avis(reg, frozen, datetime(2026, 10, 30, 3, tzinfo=timezone.utc))
+    a = reg["avis"]["basket-7"]
+    assert a["officielle"]["pari"] == "Victoire C" and a["officielle"]["resultat"] == "perdu" and a["corrige"]

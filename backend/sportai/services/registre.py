@@ -504,6 +504,8 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
                      maj=now.isoformat(), tardif=True)
             if sport == "foot" and not (off or {}).get("pari"):
                 a["sans_position"] = (off or {}).get("raison") or "Aucune position retenue sur ce match."
+        elif ko and now >= ko:
+            _resync_frozen(a, off)
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
         if mf is not None:
             a["choix_m"] = _m_side(mf)
@@ -526,6 +528,16 @@ def _m_side(mf: dict) -> dict:
             "feu": (lit or {}).get("feu", "rouge" if not mf.get("pari") else None),
             **({"choix_55": {k: mf["choix_55"].get(k) for k in ("pari", "cote_prise", "p_marche", "resultat")}}
                if mf.get("choix_55") else {})}
+
+
+def _resync_frozen(a: dict, off: dict | None) -> None:
+    """After kick-off the opinion is kept as it was, except when the official position that froze 45 min before
+    differs from the stored one (a stale copy of the register was used): then the frozen one wins."""
+    off = off or {}
+    if off.get("fige") and off.get("pari") and (a.get("officielle") or {}).get("pari") != off["pari"]:
+        a["officielle"], a["visa_m"] = _side(off), visa(off)
+        a["corrige"] = "position officielle remise sur celle figée avant le match"
+        a.pop("bilan", None)
 
 
 def _who_was_right(a: dict) -> str:
@@ -631,6 +643,8 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
                 a["sans_position"] = p.get("raison") or "Aucune position retenue sur ce match."
             if ko and now >= ko:
                 a["tardif"] = True
+        else:
+            _resync_frozen(a, p)
         mf = reg["fiches"].get(f"{reg['jour']}|basket-{mid}|M")
         if mf is not None:
             a["choix_m"] = _m_side(mf)
