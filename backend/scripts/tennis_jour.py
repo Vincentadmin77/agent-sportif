@@ -151,8 +151,11 @@ def main() -> None:
             start = datetime.strptime(when, "%Y-%m-%d %H:%M")
             frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M")
             old = (before.get(m.key) or {}).get("choix")
+            started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
             if old and old.get("fige"):
                 choix = old
+            elif started:
+                pass  # no choice made once the match has begun (the odds would be live ones)
             elif c:
                 choix = {"position": label(c["key"], m), "marche": bt.LABEL[c["key"][0]], "cle": list(c["key"]),
                          "cote": c["best"], "cote_mediane": c["median"], "proba_modele": round(c["p"], 3),
