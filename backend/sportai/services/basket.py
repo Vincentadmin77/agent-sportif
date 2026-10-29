@@ -652,7 +652,7 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
     offers: the bets of the games analysed by this pass."""
     from sportai.services.pronostic import (COUNT_MARGIN, FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
                                             SELECTIONS_PER_DAY, _correct, blended, pick_ok,
-                                            FORCE_CHOICE, PICK_ODDS, PICK_MIN_CHANCE)
+                                            FORCE_CHOICE, NOT_RETAINED, PICK_ODDS, PICK_MIN_CHANCE)
 
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -690,7 +690,7 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
                               "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
                               "niveau": "Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne",
                               "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"],
-                              **({"choix_impose": True} if forced else {})}
+                              **(NOT_RETAINED if forced else {})}
                 if forced and c < PICK_MIN_CHANCE:
                     picks[mid]["niveau"] = "Confiance faible"
             else:

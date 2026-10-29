@@ -525,5 +525,14 @@ def test_top_pick_path_every_match_gets_a_choice_from_2026_10_28_evening():
             l("i-j", "Les deux équipes marquent : non", 1.70, 0.60, 0.58, "Les deux équipes marquent"),
             l("k-l", "Victoire k", 2.60, 0.40, 0.38, "Résultat du match")]  # nothing within 1.50-2.30
     picks = build_pronostic(legs, {}, None, now, "matin")["paris_retenus"]
-    assert picks["2026-10-28-i-j"]["pari"] == "Victoire i" and picks["2026-10-28-i-j"]["choix_impose"]
+    assert picks["2026-10-28-i-j"]["pari"] == "Victoire i" and picks["2026-10-28-i-j"]["non_retenu"]
     assert picks["2026-10-28-k-l"]["pari"] is None
+
+
+def test_a_position_the_model_does_not_retain_never_counts_in_the_ratio():
+    # owner 2026-10-29: shown with "Le modèle ne le retient pas", outside the ratio
+    from sportai.services.bilan import day_positions
+    doc = {"paris_retenus": {"a": {"match_id": "a", "pari": "Victoire a", "cote": 1.8},
+                             "b": {"match_id": "b", "pari": "Victoire b", "cote": 1.8, "non_retenu": True},
+                             "c": {"match_id": "c", "pari": "Victoire c", "cote": 1.8, "choix_impose": True}}}
+    assert [p["match_id"] for p in day_positions(doc)] == ["a"]

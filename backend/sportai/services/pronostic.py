@@ -265,6 +265,12 @@ def _best(ok: list[dict]) -> dict | None:
 # A match where no bet passes pick_ok still gets one: the surest bet at PICK_ODDS on the French price, the three
 # priority axes first, never a removed market (both teams score: no, under 0.5, a team's under), marked choix_impose.
 FORCE_CHOICE = True
+NOT_RETAINED = {"non_retenu": True, "mention": "Le modèle ne le retient pas"}
+
+
+def retained(p: dict) -> bool:
+    """A position that counts in the ratio: not one the model does not retain (or the former "choix imposé")."""
+    return not p.get("non_retenu") and not p.get("choix_impose")
 PRIORITY_KEYS = ("1x2", "double_chance", "dnb", "totals", "btts")
 
 
@@ -329,7 +335,9 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         forced = _forced([l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]) if FORCE_CHOICE and force else None
         if forced:
             c = blended(forced)
-            picks[mid] = {**_pick(forced), "fige": frozen(forced), "choix_impose": True,
+            # owner 2026-10-29: still a choice on every match, shown to the client with "Le modèle ne le retient pas",
+            # never counted in the ratio (was "choix imposé" on 2026-10-28)
+            picks[mid] = {**_pick(forced), "fige": frozen(forced), **NOT_RETAINED,
                           **({"niveau": "Confiance faible"} if c < PICK_MIN_CHANCE else {})}
             continue
         m = page.get(mid) or {}
