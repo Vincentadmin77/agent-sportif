@@ -110,7 +110,12 @@ def set_scores(pm: float, best_of: int) -> dict[str, float]:
 
 # ---------------------------------------------------------------- games
 
-HOLD_BASE = {"ATP": 0.80, "WTA": 0.64}  # average share of service games held on the main tours
+# Fitted on the 2024-07 -> 2026-10 backtest (Brier of the bookmakers' total-games lines): with the real hold rates
+# (~0.80 / 0.64) and the Elo set chance, matches came out ~1.5 games too long, because real matches are more
+# one-sided than independent sets suggest. For the games only, the set chance is sharpened (logit * SET_SHARPEN)
+# and the hold level lowered; the winner keeps the plain Elo chance.
+HOLD_BASE = {"ATP": 0.72, "WTA": 0.58}
+SET_SHARPEN = {"ATP": 1.5, "WTA": 2.0}
 
 
 @lru_cache(maxsize=4096)
@@ -138,9 +143,10 @@ def _set_games(ha: float, hb: float) -> tuple[tuple[tuple[int, int], float], ...
     return tuple(sorted(dist.items()))
 
 
-def holds_from_set(p_set: float, tour: str) -> tuple[float, float]:
-    """Hold chances (A, B) around the tour's average whose set-win chance for A is p_set (bisection on the gap)."""
-    base = HOLD_BASE.get(tour, 0.75)
+def holds_from_set(p_set: float, tour: str, base: float | None = None) -> tuple[float, float]:
+    """Hold chances (A, B) around `base` (default: the tour's average) whose set-win chance for A is p_set
+    (bisection on the gap). The serve model (serve.py) gives the base of a given pair of players."""
+    base = base or HOLD_BASE.get(tour, 0.75)
     lo, hi = -0.3, 0.3
     for _ in range(40):
         d = (lo + hi) / 2
@@ -154,10 +160,12 @@ def holds_from_set(p_set: float, tour: str) -> tuple[float, float]:
     return min(0.99, base + d), max(0.01, base - d)
 
 
-def games_distribution(pm: float, best_of: int, tour: str) -> dict[tuple[int, int], float]:
+def games_distribution(pm: float, best_of: int, tour: str, base: float | None = None) -> dict[tuple[int, int], float]:
     """Total games of A and of B over the match (sets played until one reaches best_of // 2 + 1)."""
-    p_set = set_from_match(pm, best_of)
-    ha, hb = holds_from_set(p_set, tour)
+    p_set = min(max(set_from_match(pm, best_of), 1e-4), 1 - 1e-4)
+    k = SET_SHARPEN.get(tour, 1.0)
+    p_set = 1 / (1 + (p_set / (1 - p_set)) ** -k)
+    ha, hb = holds_from_set(p_set, tour, round(base, 3) if base else None)
     sd = _set_games(round(ha, 3), round(hb, 3))
     need = best_of // 2 + 1
     states = {(0, 0, 0, 0): 1.0}  # sets A, sets B, games A, games B

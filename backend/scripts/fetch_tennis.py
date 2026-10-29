@@ -26,7 +26,7 @@ URL = "https://api.api-tennis.com/tennis/"
 TOURS = {"ATP": 265, "WTA": 266}
 # Challenger singles: results only, to rate the players who move between the two levels (no odds needed).
 CHALLENGERS = {"CHM": 281, "CHW": 272}
-KEEP_MARKETS = ("Home/Away", "Number of sets", "Set Betting", "1x2 Aces", "Over/Under", "Handicap", "Total")
+KEEP_MARKETS = ("Home/Away", "Number of sets", "Set Betting", "1x2 Aces", "Over/Under", "Asian Handicap", "Total")
 
 
 def call(method: str, **params) -> dict:
@@ -48,13 +48,15 @@ def save(path: Path, data) -> None:
         json.dump(data, f)
 
 
-def week(tour: str, monday: date, refresh: bool, key: int, with_odds: bool = True) -> None:
+def week(tour: str, monday: date, refresh: bool, key: int, with_odds: bool = True, odds_only: bool = False) -> None:
     sunday = monday + timedelta(days=6)
     fx_path = CACHE / f"fixtures_{tour}_{monday}.json.gz"
     od_path = CACHE / f"odds_{tour}_{monday}.json.gz"
     if fx_path.exists() and (od_path.exists() or not with_odds) and not refresh:
         return
     span = {"date_start": str(monday), "date_stop": str(sunday), "event_type_key": key}
+    if odds_only:
+        return _odds(od_path, span)
     fixtures = call("get_fixtures", **span).get("result") or []
     for m in fixtures:
         m.pop("pointbypoint", None)
@@ -63,19 +65,24 @@ def week(tour: str, monday: date, refresh: bool, key: int, with_odds: bool = Tru
     save(fx_path, fixtures)
     if not with_odds:
         return
+    _odds(od_path, span)
+
+
+def _odds(path: Path, span: dict) -> None:
     odds = call("get_odds", **span).get("result") or {}
     if isinstance(odds, dict):
         odds = {k: {m: v for m, v in mk.items() if m.startswith(KEEP_MARKETS)} for k, mk in odds.items()}
-    save(od_path, odds)
+    save(path, odds)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2023-01-02")
     ap.add_argument("--challengers", action="store_true", help="Challenger results instead of the main tours")
+    ap.add_argument("--odds-only", action="store_true", help="download the odds again (after a change of KEEP_MARKETS)")
     args = ap.parse_args()
     CACHE.mkdir(parents=True, exist_ok=True)
-    if not args.challengers:
+    if not args.challengers and not args.odds_only:
         save(CACHE / "tournaments.json.gz", call("get_tournaments").get("result") or [])
     tours = CHALLENGERS if args.challengers else TOURS
     start = date.fromisoformat(args.since)
@@ -85,7 +92,8 @@ def main() -> None:
     d = start
     while d <= this_monday:
         for tour, key in tours.items():
-            week(tour, d, d >= this_monday - timedelta(days=7), key, with_odds=not args.challengers)
+            week(tour, d, args.odds_only or d >= this_monday - timedelta(days=7), key, with_odds=not args.challengers,
+                 odds_only=args.odds_only)
         print(d, flush=True)
         d += timedelta(days=7)
 

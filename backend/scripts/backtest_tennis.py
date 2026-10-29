@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sportai.engine.tennis import elo  # noqa: E402
 from sportai.engine.tennis.aces import AcesModel, p_more_aces  # noqa: E402
+from sportai.engine.tennis.serve import ServeModel  # noqa: E402
 
 CACHE = Path("/mnt/project-files/agent-sportif/data/api-tennis")
 TEST_FROM = "2024-07-01"
@@ -59,6 +60,7 @@ class Match:
     a_won: bool | None
     sets: list = field(default_factory=list)  # [(games a, games b)]
     aces: tuple | None = None
+    serve: tuple | None = None  # ((points won, played) on serve of A, same for B)
     odds: dict = field(default_factory=dict)
     main: bool = True  # False for Challenger matches (used only to rate the players)
 
@@ -83,11 +85,18 @@ def parse(m: dict, tour: str, surf: dict, odds: dict) -> Match:
     sets = []
     for s in sorted(m.get("scores") or [], key=lambda s: int(s.get("score_set") or 0)):
         try:
-            sets.append((int(str(s["score_first"]).split(".")[0]), int(str(s["score_second"]).split(".")[0])))
+            x, y = int(str(s["score_first"]).split(".")[0]), int(str(s["score_second"]).split(".")[0])
+            if x + y:  # unplayed sets come as 0-0
+                sets.append((x, y))
         except (ValueError, KeyError):
             pass
-    aces = {}
+    aces, spw = {}, {}
     for st in m.get("statistics") or []:
+        if st.get("stat_name") == "Service Points Won" and st.get("stat_period") == "match":
+            try:
+                spw[st["player_key"]] = (int(st["stat_won"]), int(st["stat_total"]))
+            except (ValueError, TypeError):
+                pass
         if st.get("stat_name") == "Aces" and st.get("stat_period") == "match":
             try:
                 aces[st["player_key"]] = int(st["stat_value"])
@@ -101,7 +110,8 @@ def parse(m: dict, tour: str, surf: dict, odds: dict) -> Match:
         surface=elo.surface_of(surf.get(m.get("tournament_key"))),
         best_of=best_of(tour, m.get("tournament_name") or "", m.get("event_qualification")),
         status=m.get("event_status") or "", a_won=None if w not in ("First Player", "Second Player") else w == "First Player",
-        sets=sets, aces=(aces[pa], aces[pb]) if pa in aces and pb in aces else None, odds=odds.get(str(m["event_key"]), {}),
+        sets=sets, aces=(aces[pa], aces[pb]) if pa in aces and pb in aces else None,
+        serve=(spw[pa], spw[pb]) if pa in spw and pb in spw else None, odds=odds.get(str(m["event_key"]), {}),
     )
 
 
@@ -167,8 +177,9 @@ def markets(odds: dict) -> dict:
     ah = odds.get("Asian Handicap (Games)") or {}
     for side in ("Home", "Away"):
         for line, books in (ah.get(f"Asian Handicap (Games) {side}") or {}).items():
+            # Both sides are quoted with the HOME line ("Away -7.5" = away player +7.5 games): stored per player.
             if _half(line) and _books(books):
-                out[("handicap_jeux", side, float(line))] = _books(books)
+                out[("handicap_jeux", side, float(line) if side == "Home" else -float(line))] = _books(books)
     return out
 
 
@@ -196,9 +207,9 @@ def fair(key: tuple, mk: dict) -> float | None:
 # ---------------------------------------------------------------- model prices
 
 class Pricer:
-    def __init__(self, pm: float, m: Match, ea: float | None, eb: float | None):
+    def __init__(self, pm: float, m: Match, ea: float | None, eb: float | None, base: float | None = None):
         self.pm, self.m = pm, m
-        self.dist = elo.games_distribution(pm, m.best_of, m.tour)
+        self.dist = elo.games_distribution(pm, m.best_of, m.tour, base)
         self.sets = elo.set_scores(pm, m.best_of)
         self.aces = p_more_aces(ea, eb) if ea is not None else None
 
@@ -273,9 +284,20 @@ def level(conf: float) -> str:
 
 # ---------------------------------------------------------------- run
 
+# The serve/return level (serve.py) made the total-games Brier worse in the backtest: off by default.
+USE_SERVE = False
+
+
+def base_hold(sm: ServeModel, m: Match) -> float | None:
+    if not USE_SERVE or sm.spw[m.a].total <= 0 or sm.spw[m.b].total <= 0:
+        return None
+    return sm.base_hold(m.a, m.b, m.surface)
+
+
 def run(matches: list[Match]) -> dict:
     ratings = {t: elo.SurfaceElo() for t in ("ATP", "WTA")}
     acesm = {t: AcesModel() for t in ("ATP", "WTA")}
+    servem = {t: ServeModel() for t in ("ATP", "WTA")}
     ll = defaultdict(list)
     brier = defaultdict(lambda: defaultdict(list))
     picks = []
@@ -286,10 +308,11 @@ def run(matches: list[Match]) -> dict:
             pm = r.p_win(m.a, m.b, m.surface)
             mk = markets(m.odds)
             ea = eb = None
-            pr0 = Pricer(pm, m, None, None)
+            base = base_hold(servem[m.tour], m)
+            pr = Pricer(pm, m, None, None, base)
             if acesm[m.tour].serve[m.a].den > 0 and acesm[m.tour].serve[m.b].den > 0:
-                ea, eb = acesm[m.tour].expected(m.a, m.b, m.tour, m.surface, pr0.expected_games())
-            pr = Pricer(pm, m, ea, eb)
+                ea, eb = acesm[m.tour].expected(m.a, m.b, m.tour, m.surface, pr.expected_games())
+                pr = Pricer(pm, m, ea, eb, base)
             fw = fair(("vainqueur", "Home"), mk)
             y = 1.0 if m.a_won else 0.0
             if fw is not None:
@@ -315,6 +338,8 @@ def run(matches: list[Match]) -> dict:
             r.update(m.a if m.a_won else m.b, m.b if m.a_won else m.a, m.surface)
             if m.aces:
                 acesm[m.tour].update(m.a, m.b, m.tour, m.surface, m.aces[0], m.aces[1], sum(m.games))
+            if m.serve:
+                servem[m.tour].update(m.a, m.b, m.surface, *m.serve)
     return {"ll": ll, "brier": brier, "picks": picks}
 
 
@@ -349,8 +374,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     ap.add_argument("--test-from", default=TEST_FROM)
+    ap.add_argument("--serve", action="store_true", help="games model with the serve/return levels (serve.py)")
     a = ap.parse_args()
     globals()["TEST_FROM"] = a.test_from
+    globals()["USE_SERVE"] = a.serve
     matches = load()
     res = run(matches)
     s = {"test_depuis": a.test_from, "matchs_charges": len(matches), **summary(res)}

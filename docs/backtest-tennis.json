@@ -1,0 +1,413 @@
+{
+ "test_depuis": "2024-07-01",
+ "matchs_charges": 85224,
+ "vainqueur_logloss": {
+  "ATP": {
+   "matchs": 7787,
+   "bookmakers": 0.5952,
+   "melange": 0.6028,
+   "modele": 0.6209
+  },
+  "WTA": {
+   "matchs": 6776,
+   "bookmakers": 0.5913,
+   "melange": 0.5994,
+   "modele": 0.6181
+  }
+ },
+ "brier": {
+  "ATP": {
+   "aces": {
+    "n": 4935,
+    "modele": 0.1555,
+    "bookmakers": 0.1534,
+    "melange": 0.1524
+   },
+   "handicap_jeux": {
+    "n": 38234,
+    "modele": 0.1929,
+    "bookmakers": 0.1809,
+    "melange": 0.1833
+   },
+   "jeux": {
+    "n": 62872,
+    "modele": 0.1906,
+    "bookmakers": 0.1863,
+    "melange": 0.187
+   },
+   "score_sets": {
+    "n": 32612,
+    "modele": 0.1673,
+    "bookmakers": 0.1606,
+    "melange": 0.1627
+   }
+  },
+  "WTA": {
+   "aces": {
+    "n": 4536,
+    "modele": 0.1673,
+    "bookmakers": 0.173,
+    "melange": 0.168
+   },
+   "handicap_jeux": {
+    "n": 34874,
+    "modele": 0.2105,
+    "bookmakers": 0.1923,
+    "melange": 0.1962
+   },
+   "jeux": {
+    "n": 56216,
+    "modele": 0.1886,
+    "bookmakers": 0.1817,
+    "melange": 0.1831
+   },
+   "score_sets": {
+    "n": 26940,
+    "modele": 0.1726,
+    "bookmakers": 0.1644,
+    "melange": 0.1671
+   }
+  }
+ },
+ "selection": {
+  "ATP": {
+   "toutes": {
+    "positions": 7040,
+    "gagnees": 4080,
+    "ratio": 0.58,
+    "cote_moyenne": 1.73,
+    "point_mort": 0.585
+   },
+   "retenues": {
+    "positions": 2171,
+    "gagnees": 1259,
+    "ratio": 0.58,
+    "cote_moyenne": 1.69,
+    "point_mort": 0.597
+   },
+   "non_retenues": {
+    "positions": 4869,
+    "gagnees": 2821,
+    "ratio": 0.579,
+    "cote_moyenne": 1.75,
+    "point_mort": 0.58
+   },
+   "retenues_par_confiance": {
+    "élevée": {
+     "positions": 1440,
+     "gagnees": 862,
+     "ratio": 0.599,
+     "cote_moyenne": 1.59,
+     "point_mort": 0.631
+    },
+    "moyenne": {
+     "positions": 667,
+     "gagnees": 372,
+     "ratio": 0.558,
+     "cote_moyenne": 1.88,
+     "point_mort": 0.534
+    }
+   },
+   "retenues_par_marche": {
+    "Vainqueur": {
+     "positions": 1070,
+     "gagnees": 602,
+     "ratio": 0.563,
+     "cote_moyenne": 1.76,
+     "point_mort": 0.573
+    },
+    "Score en sets": {
+     "positions": 97,
+     "gagnees": 40,
+     "ratio": 0.412,
+     "cote_moyenne": 2.0,
+     "point_mort": 0.506
+    },
+    "Total de jeux": {
+     "positions": 585,
+     "gagnees": 347,
+     "ratio": 0.593,
+     "cote_moyenne": 1.57,
+     "point_mort": 0.637
+    },
+    "Handicap jeux": {
+     "positions": 339,
+     "gagnees": 221,
+     "ratio": 0.652,
+     "cote_moyenne": 1.58,
+     "point_mort": 0.633
+    },
+    "Plus d'aces": {
+     "positions": 80,
+     "gagnees": 49,
+     "ratio": 0.613,
+     "cote_moyenne": 1.8,
+     "point_mort": 0.564
+    }
+   },
+   "toutes_par_marche": {
+    "Vainqueur": {
+     "positions": 3025,
+     "gagnees": 1793,
+     "ratio": 0.593,
+     "cote_moyenne": 1.72,
+     "point_mort": 0.589
+    },
+    "Score en sets": {
+     "positions": 1919,
+     "gagnees": 1011,
+     "ratio": 0.527,
+     "cote_moyenne": 1.9,
+     "point_mort": 0.532
+    },
+    "Total de jeux": {
+     "positions": 970,
+     "gagnees": 604,
+     "ratio": 0.623,
+     "cote_moyenne": 1.56,
+     "point_mort": 0.642
+    },
+    "Handicap jeux": {
+     "positions": 862,
+     "gagnees": 525,
+     "ratio": 0.609,
+     "cote_moyenne": 1.59,
+     "point_mort": 0.63
+    },
+    "Plus d'aces": {
+     "positions": 264,
+     "gagnees": 147,
+     "ratio": 0.557,
+     "cote_moyenne": 1.74,
+     "point_mort": 0.581
+    }
+   }
+  },
+  "WTA": {
+   "toutes": {
+    "positions": 6256,
+    "gagnees": 3572,
+    "ratio": 0.571,
+    "cote_moyenne": 1.73,
+    "point_mort": 0.587
+   },
+   "retenues": {
+    "positions": 1900,
+    "gagnees": 1114,
+    "ratio": 0.586,
+    "cote_moyenne": 1.7,
+    "point_mort": 0.597
+   },
+   "non_retenues": {
+    "positions": 4356,
+    "gagnees": 2458,
+    "ratio": 0.564,
+    "cote_moyenne": 1.74,
+    "point_mort": 0.582
+   },
+   "retenues_par_confiance": {
+    "élevée": {
+     "positions": 1250,
+     "gagnees": 781,
+     "ratio": 0.625,
+     "cote_moyenne": 1.58,
+     "point_mort": 0.633
+    },
+    "moyenne": {
+     "positions": 598,
+     "gagnees": 309,
+     "ratio": 0.517,
+     "cote_moyenne": 1.89,
+     "point_mort": 0.531
+    }
+   },
+   "retenues_par_marche": {
+    "Vainqueur": {
+     "positions": 999,
+     "gagnees": 570,
+     "ratio": 0.571,
+     "cote_moyenne": 1.77,
+     "point_mort": 0.572
+    },
+    "Score en sets": {
+     "positions": 110,
+     "gagnees": 60,
+     "ratio": 0.545,
+     "cote_moyenne": 1.91,
+     "point_mort": 0.529
+    },
+    "Total de jeux": {
+     "positions": 515,
+     "gagnees": 303,
+     "ratio": 0.588,
+     "cote_moyenne": 1.56,
+     "point_mort": 0.643
+    },
+    "Handicap jeux": {
+     "positions": 219,
+     "gagnees": 146,
+     "ratio": 0.667,
+     "cote_moyenne": 1.57,
+     "point_mort": 0.64
+    },
+    "Plus d'aces": {
+     "positions": 57,
+     "gagnees": 35,
+     "ratio": 0.614,
+     "cote_moyenne": 1.81,
+     "point_mort": 0.564
+    }
+   },
+   "toutes_par_marche": {
+    "Vainqueur": {
+     "positions": 2559,
+     "gagnees": 1476,
+     "ratio": 0.577,
+     "cote_moyenne": 1.73,
+     "point_mort": 0.585
+    },
+    "Score en sets": {
+     "positions": 1786,
+     "gagnees": 949,
+     "ratio": 0.531,
+     "cote_moyenne": 1.86,
+     "point_mort": 0.545
+    },
+    "Total de jeux": {
+     "positions": 792,
+     "gagnees": 475,
+     "ratio": 0.6,
+     "cote_moyenne": 1.56,
+     "point_mort": 0.641
+    },
+    "Handicap jeux": {
+     "positions": 883,
+     "gagnees": 550,
+     "ratio": 0.623,
+     "cote_moyenne": 1.59,
+     "point_mort": 0.631
+    },
+    "Plus d'aces": {
+     "positions": 236,
+     "gagnees": 122,
+     "ratio": 0.517,
+     "cote_moyenne": 1.77,
+     "point_mort": 0.576
+    }
+   }
+  },
+  "tous": {
+   "toutes": {
+    "positions": 13296,
+    "gagnees": 7652,
+    "ratio": 0.576,
+    "cote_moyenne": 1.73,
+    "point_mort": 0.586
+   },
+   "retenues": {
+    "positions": 4071,
+    "gagnees": 2373,
+    "ratio": 0.583,
+    "cote_moyenne": 1.7,
+    "point_mort": 0.597
+   },
+   "non_retenues": {
+    "positions": 9225,
+    "gagnees": 5279,
+    "ratio": 0.572,
+    "cote_moyenne": 1.74,
+    "point_mort": 0.581
+   },
+   "retenues_par_confiance": {
+    "élevée": {
+     "positions": 2690,
+     "gagnees": 1643,
+     "ratio": 0.611,
+     "cote_moyenne": 1.59,
+     "point_mort": 0.632
+    },
+    "moyenne": {
+     "positions": 1265,
+     "gagnees": 681,
+     "ratio": 0.538,
+     "cote_moyenne": 1.89,
+     "point_mort": 0.532
+    }
+   },
+   "retenues_par_marche": {
+    "Vainqueur": {
+     "positions": 2069,
+     "gagnees": 1172,
+     "ratio": 0.566,
+     "cote_moyenne": 1.76,
+     "point_mort": 0.573
+    },
+    "Score en sets": {
+     "positions": 207,
+     "gagnees": 100,
+     "ratio": 0.483,
+     "cote_moyenne": 1.95,
+     "point_mort": 0.518
+    },
+    "Total de jeux": {
+     "positions": 1100,
+     "gagnees": 650,
+     "ratio": 0.591,
+     "cote_moyenne": 1.57,
+     "point_mort": 0.64
+    },
+    "Handicap jeux": {
+     "positions": 558,
+     "gagnees": 367,
+     "ratio": 0.658,
+     "cote_moyenne": 1.58,
+     "point_mort": 0.636
+    },
+    "Plus d'aces": {
+     "positions": 137,
+     "gagnees": 84,
+     "ratio": 0.613,
+     "cote_moyenne": 1.8,
+     "point_mort": 0.564
+    }
+   },
+   "toutes_par_marche": {
+    "Vainqueur": {
+     "positions": 5584,
+     "gagnees": 3269,
+     "ratio": 0.585,
+     "cote_moyenne": 1.72,
+     "point_mort": 0.587
+    },
+    "Score en sets": {
+     "positions": 3705,
+     "gagnees": 1960,
+     "ratio": 0.529,
+     "cote_moyenne": 1.88,
+     "point_mort": 0.538
+    },
+    "Total de jeux": {
+     "positions": 1762,
+     "gagnees": 1079,
+     "ratio": 0.612,
+     "cote_moyenne": 1.56,
+     "point_mort": 0.642
+    },
+    "Handicap jeux": {
+     "positions": 1745,
+     "gagnees": 1075,
+     "ratio": 0.616,
+     "cote_moyenne": 1.59,
+     "point_mort": 0.631
+    },
+    "Plus d'aces": {
+     "positions": 500,
+     "gagnees": 269,
+     "ratio": 0.538,
+     "cote_moyenne": 1.75,
+     "point_mort": 0.579
+    }
+   }
+  }
+ }
+}
