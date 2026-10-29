@@ -83,7 +83,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
             continue
         rid = record_id(day, p.get("match_id"), p["pari"])
         same_match = [f for f in reg["fiches"].values()
-                      if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc") and not f.get("choix_m")]
+                      if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc") and not f.get("choix_m")
+                      and not f.get("remplacee")]
         if rid not in reg["fiches"] and same_match:  # the match already has a frozen position: log, never replace
             first = same_match[0]
             log = {"heure": now.isoformat(), "champ": "pari", "avant": first["pari"], "apres": p["pari"]}
@@ -103,6 +104,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
             if ko and now >= ko:  # first seen after kick-off: not a decision taken in time, kept apart
                 reg["fiches"][rid]["enregistre_apres_coup_envoi"] = True
         f = reg["fiches"][rid]
+        if p.get("non_retenu"):  # a choice on every match, but one the model does not retain: out of its ratio
+            f["non_retenu"] = True
         for src, dst in WATCHED.items():
             if src != "pari" and p.get(src) is not None and p.get(src) != f.get(dst):
                 log = {"heure": now.isoformat(), "champ": dst, "avant": f.get(dst), "apres": p.get(src)}
@@ -201,7 +204,10 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     """Real records and rebuilt ones measured apart, overall and per confidence level, market and competition."""
     fiches = [f for reg in registres for f in (reg.get("fiches") or {}).values()]
     out = {}
-    for label, rows in (("reel", [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m"))]),
+    official = [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m")
+                                          or f.get("remplacee"))]
+    for label, rows in (("reel", [f for f in official if not f.get("non_retenu")]),
+                        ("non_retenu", [f for f in official if f.get("non_retenu")]),
                         ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")
                                           and not f.get("enregistre_apres_coup_envoi")]),
                         ("le_m_nba_55", [{**f["choix_55"], "sport": "basket", "competition": f.get("competition")}
@@ -478,7 +484,8 @@ def enqueteur(m: dict) -> list[str]:
     return out
 
 
-def _side(p: dict | None, keys: tuple = ("pari", "cote", "proba", "proba_marche", "niveau", "resultat")) -> dict | None:
+def _side(p: dict | None, keys: tuple = ("pari", "cote", "proba", "proba_marche", "niveau", "resultat", "non_retenu")
+          ) -> dict | None:
     return {k: p.get(k) for k in keys} if p and p.get("pari") else None
 
 
@@ -641,3 +648,35 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
             a["bilan"] = _who_was_right(a)
         av[key] = a
     return reg
+
+
+def realign(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, code_version: str, motif: str,
+            bpron: dict | None = None) -> dict:
+    """A day whose official list the owner had rewritten afterwards (2026-10-29: back to the best odds of every
+    bookmaker): the replaced records stay, flagged remplacee, out of the ratios; the new picks are recorded flagged
+    reecrit (and late, since recorded after kick-off); the opinions show the new official picks. Never silent."""
+    picks = pron.get("paris_retenus") or {}
+    fiches = {k: dict(v) for k, v in (reg.get("fiches") or {}).items()}
+    for f in fiches.values():
+        if f.get("live_a_blanc") or f.get("choix_m") or f.get("recalcule") or f.get("remplacee"):
+            continue
+        if (picks.get(f["match_id"]) or {}).get("pari") != f.get("pari"):
+            f.update(remplacee=True, remplacee_le=now.isoformat(), motif_remplacement=motif)
+    before = set(fiches)
+    out = update({**reg, "fiches": fiches}, {**pron, "recalcule": False}, matchs, now, code_version)
+    for rid in set(out["fiches"]) - before:
+        if not out["fiches"][rid].get("choix_m") and not out["fiches"][rid].get("live_a_blanc"):
+            out["fiches"][rid]["reecrit"] = motif
+    av = out.setdefault("avis", {})
+    sides = [(mid, p) for mid, p in picks.items()] + [(f"basket-{mid}", p) for mid, p in
+                                                     ((bpron or {}).get("paris_retenus") or {}).items()]
+    for key, p in sides:
+        a = av.get(key)
+        if not a:
+            continue
+        a["officielle"], a["visa_m"], a["reecrit"] = _side(p), visa(p), motif
+        a.pop("bilan", None)
+        a.pop("sans_position", None)
+        if (a["officielle"] or {}).get("resultat") in SETTLED or (a.get("choix_m") or {}).get("resultat"):
+            a["bilan"] = _who_was_right(a)
+    return out

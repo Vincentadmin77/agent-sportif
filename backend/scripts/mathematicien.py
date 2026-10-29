@@ -49,10 +49,11 @@ def _write(out: str, docs: dict[str, dict]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("registre", "importer", "rapport"))
+    ap.add_argument("cmd", choices=("registre", "importer", "rapport", "realigner"))
     ap.add_argument("--page", required=True)
     ap.add_argument("--out")
     ap.add_argument("--jour")
+    ap.add_argument("--motif", help="realigner: why the owner had the day's official list rewritten")
     a = ap.parse_args()
     now = datetime.now(timezone.utc)
     prons, regs = _load(a.page, "pronostic"), _load(a.page, "registre")
@@ -63,6 +64,10 @@ def main() -> None:
         _write(a.out, {d: R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, version),
                                         bprons.get(d) or {}, now, bmatchs, version)
                        for d in days if d in prons and not prons[d].get("recalcule")})
+    elif a.cmd == "realigner":  # a day rewritten on the owner's request: replaced records kept, flagged
+        matchs, bprons = _load(a.page, "matchs"), _load(a.page, "basket_pronostic")
+        _write(a.out, {a.jour: R.realign(regs.get(a.jour) or {}, prons[a.jour], matchs, now, _code_version(), a.motif,
+                                         bprons.get(a.jour))})
     elif a.cmd == "importer":
         _write(a.out, {d: R.import_rebuilt(p) for d, p in prons.items()
                        if p.get("recalcule") and not (regs.get(d) or {}).get("fiches")})

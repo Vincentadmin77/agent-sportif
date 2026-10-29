@@ -224,3 +224,23 @@ def test_the_nba_55_choice_is_settled_and_counted_apart():
     assert reg["avis"]["basket-7"]["choix_m"]["choix_55"]["resultat"] == "gagne"
     rep = R.report([reg], min_group=1)
     assert rep["le_m_nba_55"]["global"]["validees"] == 1 and rep["le_m_a_blanc"]["global"]["positions"] == 0
+
+
+def test_a_day_rewritten_on_request_keeps_the_replaced_records_apart():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "termine", "score": "0 - 0"}
+    reg = R.update({}, pron(), {"m1": {**m, "statut": "a_venir"}}, at(18), "abc")
+    new = pron(pari="Moins de 2,5 buts", resultat="gagne", recalcule="Recalculé")
+    out = R.realign(reg, new, {"m1": m}, at(23), "abc", "décision du propriétaire")
+    old, fresh = out["fiches"]["2026-10-29|m1|Plus de 2,5 buts"], out["fiches"]["2026-10-29|m1|Moins de 2,5 buts"]
+    assert old["remplacee"] and fresh["reecrit"] and fresh["enregistre_apres_coup_envoi"]
+    assert out["avis"]["m1"]["officielle"]["pari"] == "Moins de 2,5 buts" and out["avis"]["m1"]["reecrit"]
+    rep = R.report([out], min_group=1)
+    assert rep["reel"]["global"]["positions"] == 1 and rep["reel"]["global"]["validees"] == 1
+
+
+def test_a_pick_the_model_does_not_retain_stays_out_of_its_ratio():
+    day = pron(resultat="gagne")
+    day["paris_retenus"]["m1"]["non_retenu"] = True
+    reg = R.update({}, day, MATCH, at(18), "abc")
+    rep = R.report([reg], min_group=1)
+    assert rep["reel"]["global"]["positions"] == 0 and rep["non_retenu"]["global"]["validees"] == 1
