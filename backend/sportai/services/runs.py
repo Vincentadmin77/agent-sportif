@@ -22,7 +22,8 @@ from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
 from sportai.connectors.the_odds_api import (FRENCH_EXTRA_MARKETS, FRENCH_EXTRA_WITHIN, TheOddsApiProvider,
-                                             fixtures_from_events, french_only, is_french)
+                                             fixtures_from_events, french_only, french_tracking,
+                                             is_french)
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import COTE_MIN, SelectionConfig
 from sportai.engine.football import dixon_coles as dc
@@ -217,7 +218,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     _mark(db, odds_p.name, quota=odds_p.last_quota)
                     if fixtures is None:
                         fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
-                    if french_only() and FRENCH_EXTRA_MARKETS:  # the French rule's extra markets, last pass only
+                    if french_tracking() and FRENCH_EXTRA_MARKETS:  # the French rule's extra markets, last pass only
                         quotes += [q for q in _french_extra(odds_p, competition, fixtures, now) if is_french(q.bookmaker)]
                     if goal_markets:
                         quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
@@ -237,7 +238,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                         odds_source = "+".join(x for x in (odds_source, fixtures_p.name) if x)
             # French rule (owner 2026-10-28): positions only on French bookmakers' odds, which API-Football does not
             # carry. Their 1X2 and totals come from The Odds API, region fr (2 credits a league per pass).
-            if french_only() and window and quotes and TheOddsApiProvider.name not in (odds_source or ""):
+            # Since 2026-10-29 the same French odds keep the positions at a French price apart (french_tracking).
+            if french_tracking() and window and quotes and TheOddsApiProvider.name not in (odds_source or ""):
                 try:
                     odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions="fr", markets="h2h,totals")
                     quotes += [q for q in odds_p.odds(competition) if is_french(q.bookmaker)]
@@ -245,7 +247,7 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                         quotes += [q for q in _french_extra(odds_p, competition, window, now) if is_french(q.bookmaker)]
                     _mark(db, odds_p.name, quota=odds_p.last_quota)
                     odds_source = "+".join(x for x in (odds_source, odds_p.name) if x)
-                except ProviderUnavailable as e:  # no French odds: nothing will be proposed on this league
+                except ProviderUnavailable as e:  # no French odds: no position at a French price on this league
                     _mark(db, TheOddsApiProvider.name, str(e))
             run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:

@@ -31,7 +31,7 @@ from itertools import combinations
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from sportai.connectors.the_odds_api import french_only
+from sportai.connectors.the_odds_api import bookmaker_country, french_only, french_tracking
 from sportai.db.models import AnalysisRun, CandidateRow
 from sportai.engine.football.halves import MARKET_NAME as HALF_MARKET, settle as settle_half
 from sportai.services.comptages import settle_count
@@ -277,16 +277,22 @@ def _forced(legs: list[dict]) -> dict | None:
                 and not (l.get("mi_temps") and blended(l) < HALF_MIN_CHANCE))
     ok = [l for l in legs if allowed(l)]
     first = [l for l in ok if l.get("marche") in PRIORITY_MARKETS and not l.get("mi_temps")]
-    # owner 2026-10-28 17:57 Paris: "on reste vraiment sur ces axes-là" on the French odds; the rest goes in brackets
-    return max(first, key=lambda l: (blended(l), l["cote"]), default=None)
+    # owner 2026-10-28 17:57 Paris: "on reste vraiment sur ces axes-là" on the French odds; the rest goes in brackets.
+    # Back on every bookmaker (2026-10-29): the other markets again when the three axes offer nothing.
+    return max(first if french_only() else first or ok, key=lambda l: (blended(l), l["cote"]), default=None)
 
 
 def _brackets(foreign: list[dict], page: dict[str, dict], previous: dict, now: datetime, day, started) -> dict:
     """Owner 2026-10-28: beside each French position, the position the same analysis takes on any bookmaker and any
-    market, "entre parenthèses": settled like the others, outside the official ratio. Fixed with the match."""
+    market, "entre parenthèses": settled like the others, outside the official ratio. Fixed with the match. Since the
+    owner's 2026-10-29 decision the roles swap: the official position is on any bookmaker, the bracketed one at a
+    French site's price."""
     old = previous.get("positions_entre_parentheses") or {}
-    picks, _ = build_picks(foreign, page, {"paris_retenus": old}, now, day, started, lambda l: False, force=False)
-    out = {k: {**v, "entre_parentheses": True} for k, v in picks.items() if v.get("pari")}
+    # at a French price (since 2026-10-29), a choice on every match as the 2026-10-28 French rule made
+    picks, _ = build_picks(foreign, page, {"paris_retenus": old}, now, day, started, lambda l: False,
+                           force=not french_only())
+    out = {k: {**v, "entre_parentheses": True, **({} if french_only() else {"cotes_francaises": True})}
+           for k, v in picks.items() if v.get("pari")}
     for k, v in old.items():  # an earlier bracketed position of a match no longer analysed stays and settles
         out.setdefault(k, _settle_leg(v, page))
     return out
@@ -609,6 +615,13 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
             trials = [x for l in trials if (x := french_price(l, fr))]
             spares = [x for l in spares if (x := french_price(l, fr))]
             goal_trials = [x for l in goal_trials if (x := french_price(l, fr))]
+        elif french_tracking() and (fr := f.get("cotes_fr")):
+            # owner 2026-10-29: the official position back on every bookmaker's best odds; the same analysis at a
+            # French site's price kept "entre parenthèses", settled and compared outside the official ratio
+            mine = [l for l in legs if l["match_id"] == doc_id(ko, home, away)]
+            foreign += [{**x, "_etranger": True} for l in mine + sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
+                        + sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH] + spares
+                        if (x := french_price(dict(l), fr))]
         # the best few unvalidated bets of the match, by value; the goal bets in their own places (owner 2026-10-24)
         legs += sorted(trials, key=lambda l: -l["valeur"])[:TRIAL_PER_MATCH]
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
@@ -616,6 +629,8 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
     legs += foreign
     for l in legs:
         l.pop("_cle", None)
+        # owner 2026-10-29: beside the odds, a dot coloured by the site's country (blue: France), never its name
+        l["pays_bookmaker"] = bookmaker_country(l.get("bookmaker"))
     return legs
 
 
@@ -778,7 +793,7 @@ def build_pronostic(legs: list[dict], page: dict[str, dict], previous: dict | No
         status = (page.get(leg["match_id"]) or {}).get("statut", "a_venir")
         return status != "a_venir" or datetime.fromisoformat(leg["coup_envoi"]) <= now
 
-    spares = [l for l in legs if l.get("_secours")]  # forced choices only (legs_from_db)
+    spares = [l for l in legs if l.get("_secours") and not l.get("_etranger")]  # forced choices only (legs_from_db)
     foreign = [l for l in legs if l.get("_etranger")]  # bracketed positions only (legs_from_db)
     legs = [l for l in legs if not l.get("_secours") and not l.get("_etranger")]
     open_legs = [l for l in legs if not started(l) and _correct(l)]

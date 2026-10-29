@@ -51,7 +51,39 @@ FRENCH_EXTRA_WITHIN = timedelta(minutes=75)
 
 
 def french_only() -> bool:
-    return os.getenv("FRENCH_ODDS_ONLY", "1") != "0"
+    """Positions on French sites' odds only. Off since the owner's 2026-10-29 decision: French players also play on
+    foreign sites, so the official position takes the best odds of every bookmaker again (FRENCH_ODDS_ONLY=1 restores
+    the 2026-10-28 rule)."""
+    return os.getenv("FRENCH_ODDS_ONLY", "0") != "0"
+
+
+def french_tracking() -> bool:
+    """French sites' odds still read (The Odds API, region fr) to keep the same positions at a French price apart,
+    for comparison (owner 2026-10-29). FRENCH_TRACKING=0 stops it and saves the credits."""
+    return french_only() or os.getenv("FRENCH_TRACKING", "1") != "0"
+
+
+# owner 2026-10-29: no bookmaker name nor letter on the site, a coloured dot beside the odds for the country of the
+# site's licence (blue: approved in France). Approximate: the main licence of each brand, "autre" when unsure.
+BOOKMAKER_COUNTRY = {
+    **{b: "royaume_uni" for b in ("betfair", "william hill", "betfair sb", "bet365", "ladbrokes", "betfred", "betvictor", "betway",
+                                  "888sport", "sportingbet", "coral", "skybet", "paddypower", "boylesports")},
+    **{b: "malte" for b in ("10bet", "unibet", "betsson", "nordicbet", "comeon", "netbet", "expekt", "interwetten",
+                            "betano", "casumo", "leovegas", "mrgreen", "coolbet", "marathonbet")},
+    **{b: "curacao" for b in ("pinnacle", "1xbet", "dafabet", "188bet", "sbo", "bovada", "5dimes", "intertops",
+                              "betcris", "betonline", "betonlineag", "betanysports", "gtbets")},
+}
+
+
+def bookmaker_country(bookmaker: str | None) -> str | None:
+    """france, royaume_uni, malte, curacao or autre: what the site's coloured dot shows instead of the bookmaker."""
+    key = str(bookmaker or "").strip().lower()
+    if not key:
+        return None
+    if is_french(key):
+        return "france"
+    key = key.removesuffix("_uk").removesuffix("_eu").replace("_", " ")
+    return BOOKMAKER_COUNTRY.get(key) or BOOKMAKER_COUNTRY.get(key.replace(" ", "")) or "autre"
 
 
 def is_french(bookmaker: str | None) -> bool:

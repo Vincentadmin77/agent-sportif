@@ -19,7 +19,7 @@ import numpy as np
 
 from sportai.connectors.base import Fixture, HistoricalResult, OddsQuote
 from sportai.connectors.teams import normalise
-from sportai.connectors.the_odds_api import french_only, is_french
+from sportai.connectors.the_odds_api import french_tracking, is_french
 from sportai.engine.football import dixon_coles as dc
 from sportai.engine.football.markets import OPEN_MARKETS, MarketKey, likely_score, market_group, outcome, outcomes
 from sportai.engine.value import Outcome, devig_shin
@@ -174,7 +174,7 @@ def run_prematch(
         if not fq:
             fa.skipped_reason = "no odds observed"
         consensus = _market_consensus(fq)
-        if french_only():
+        if french_tracking():
             fa.french_odds = {k.label(): [q.odds, q.bookmaker] for k, q in _best_prices(fq, now, french=True).items()}
         for key, best in _best_prices(fq, now).items():
             m, ms = (central_r, samples_r) if key.market in RESULT_MARKETS else (central, samples)
