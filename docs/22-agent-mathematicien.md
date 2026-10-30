@@ -14,7 +14,7 @@ Une fiche vue pour la première fois après le coup d'envoi porte `enregistre_ap
 est importé à part (`recalcule: true`, sans heure de décision) et mesuré séparément.
 
 ```bash
-python scripts/mathematicien.py registre --page PAGE --out OUT   # après chaque passage H−45 et au final
+python scripts/mathematicien.py registre --page PAGE --out OUT   # après chaque passage H−45 et au final  # lit aussi PAGE/tennis/ (le M au tennis, 30/10)
 python scripts/mathematicien.py importer --page PAGE --out OUT   # une fois : jours recalculés
 python scripts/mathematicien.py rapport  --page PAGE             # rapport du lundi
 ```
