@@ -61,6 +61,7 @@ TENNIS_MARKET_WEIGHT = 0.9  # logit blend; the market alone has the best log-los
 TENNIS_MIN_VALUE = 0.03
 TENNIS_LAYOFF_DAYS = 60
 
+NOT_KEPT = "Le spécialiste ne le retient pas"
 NAMES = {"foot": "V1", "basket": "V2", "tennis": "V3"}  # owner 2026-10-30 14:16: V1 foot, V2 basket, V3 tennis
 
 
@@ -152,8 +153,8 @@ def foot_choice(m: dict, luck: tuple | None = None) -> dict:
         why = f"le modèle ({_pc(b['p_modele'])}) y croit moins que le marché ({_pc(b['p_marche'])}) : pas de valeur"
     else:
         why = f"chance retenue {_pc(b['chance'])}, il faut {_pc(FOOT_MIN_CHANCE)} et une cote qui paie plus que la chance"
-    return {"pari": None, "raison": f"Je passe : la meilleure option, {b['pari']} à {_n(b['cote_prise'])} : {why}.",
-            "meilleure_option": {k: b[k] for k in ("pari", "cote_prise", "p_marche", "p_modele")}}
+    return {**{k: b[k] for k in ("pari", "marche", "cote_prise", "p_marche", "p_modele", "chance")}, "retenu": False,
+            "raison": f"{NOT_KEPT} : {why}."}
 
 
 def foot_settle(choice: dict, m: dict) -> None:
@@ -197,7 +198,12 @@ def basket_choice(bm: dict, day: str | None = None, adj: dict | None = None) -> 
     if adj:
         doubt = (adj.get("domicile") or {}).get("incertains", []) + (adj.get("exterieur") or {}).get("incertains", [])
         if doubt:
-            return {"pari": None, "raison": f"Je passe : joueur clé incertain ({', '.join(doubt)}), j'attends de savoir s'il joue."}
+            out = basket_choice(bm, day, {**adj, "domicile": {**adj["domicile"], "incertains": []},
+                                          "exterieur": {**adj["exterieur"], "incertains": []}})
+            if not out.get("pari"):
+                return out
+            return {**out, "retenu": False,
+                    "raison": f"{NOT_KEPT} : joueur clé incertain ({', '.join(doubt)}), j'attends de savoir s'il joue."}
         if isinstance(proj_m, (int, float)):
             proj_m += adj.get("marge", 0.0)
         if isinstance(proj_t, (int, float)):
@@ -231,6 +237,7 @@ def basket_choice(bm: dict, day: str | None = None, adj: dict | None = None) -> 
                     "raison": f"Ma projection s'écarte de {_pts(gap)} du chiffre des bookmakers sur {what}."}
     if mt is None and mh is None:
         return {"pari": None, "raison": "Je passe : pas de ligne de total ni de handicap."}
+    fallback = _basket_fallback(lines, mt, mh, proj_t, proj_m, home, away)
     gaps = []
     if mt is not None and isinstance(proj_t, (int, float)):
         gaps.append(f"total {_pts(abs(proj_t - mt))}")
@@ -238,8 +245,34 @@ def basket_choice(bm: dict, day: str | None = None, adj: dict | None = None) -> 
         gaps.append(f"écart {_pts(abs(proj_m + mh))}")
     need = (f"entre {_pts(BASKET_TOTAL_GAP * f)} et {_pts(BASKET_TOTAL_GAP * f * BASKET_MAX_FACTOR)} sur le total, "
             f"entre {_pts(BASKET_SPREAD_GAP * f)} et {_pts(BASKET_SPREAD_GAP * f * BASKET_MAX_FACTOR)} sur l'écart")
-    return {"pari": None, "raison": f"Je passe : écart entre ma projection et les bookmakers : {', '.join(gaps) or 'aucun'} ; il faut {need}"
-                                    f"{' (début de saison)' if early else ''}. Au-delà, c'est souvent un absent que je ne vois pas."}
+    why = (f"écart entre ma projection et les bookmakers : {', '.join(gaps) or 'aucun'} ; il faut {need}"
+           f"{' (début de saison)' if early else ''}. Au-delà, c'est souvent un absent que je ne vois pas.")
+    if fallback:
+        return {**fallback, "retenu": False, "raison": f"{NOT_KEPT} : {why}"}
+    return {"pari": None, "raison": f"Je passe : {why}"}
+
+
+def _basket_fallback(lines, mt, mh, proj_t, proj_m, home, away) -> dict | None:
+    """The side V2 leans to when his gap rules do not keep the game: the larger gap (in standard deviations) on the
+    main total or handicap, else the projected winner, at odds 1.50-2.30."""
+    from sportai.services.basket import label
+
+    cands = []
+    if mt is not None and isinstance(proj_t, (int, float)):
+        gap = proj_t - mt
+        cands.append(("total", "over" if gap > 0 else "under", mt, abs(gap), abs(gap) / 18.0))
+    if mh is not None and isinstance(proj_m, (int, float)):
+        gap = proj_m + mh
+        cands.append(("handicap", "home" if gap > 0 else "away", mh, abs(gap), abs(gap) / 12.0))
+    if isinstance(proj_m, (int, float)):
+        cands.append(("winner", "home" if proj_m > 0 else "away", None, abs(proj_m), -1))
+    for market, sel, line, gap, _ in sorted(cands, key=lambda c: -c[4]):
+        r = _best_at(lines, market, sel, line)
+        if r and ODDS[0] <= r["cote"] <= ODDS[1]:
+            return {"pari": label(market, sel, line, home, away), "marche": market, "selection": sel, "ligne": line,
+                    "cote_prise": r["cote"], "p_marche": r.get("proba_marche"), "p_modele": r.get("proba"),
+                    "ecart_points": round(gap, 1)}
+    return None
 
 
 def basket_settle(choice: dict, bm: dict) -> None:
@@ -287,6 +320,20 @@ def tennis_choice(cands: list[dict], layoff_days: float | None, mk: dict | None 
     return max(out, key=lambda c: c["conf"]) if out else None
 
 
+def tennis_fallback(cands: list[dict], mk: dict | None = None) -> dict | None:
+    """V3's leaning when no option passes its value rule: the most likely option on the five axes (same blend)."""
+    h, a = (mk or {}).get(("vainqueur", "Home")), (mk or {}).get(("vainqueur", "Away"))
+    fh = power_fair(statistics.median(h), statistics.median(a)) if h and a else None
+    out = []
+    for c in cands:
+        if c["key"][0] not in TENNIS_MARKETS:
+            continue
+        f = c["fair"] if c["key"][0] != "vainqueur" or fh is None else (fh if c["key"][1] == "Home" else 1 - fh)
+        chance = 1 / (1 + math.exp(-(TENNIS_MARKET_WEIGHT * _logit(f) + (1 - TENNIS_MARKET_WEIGHT) * _logit(c["p"]))))
+        out.append({**c, "fair": f, "conf": chance})
+    return max(out, key=lambda c: c["conf"]) if out else None
+
+
 def tennis_pass_reason(cands: list[dict], layoff_days: float | None) -> str:
     if layoff_days is not None and layoff_days > TENNIS_LAYOFF_DAYS:
         return f"Je passe : un des joueurs revient après {int(layoff_days)} jours sans match, son Elo n'est plus fiable."
@@ -300,13 +347,18 @@ def tennis_pass_reason(cands: list[dict], layoff_days: float | None) -> str:
 def ratio(choices: list[dict]) -> dict:
     """Positions settled won / lost (refunds left out) with the average odds and the break-even."""
     done = [c for c in choices if c.get("pari") and c.get("resultat") in ("gagne", "perdu")
-            and not c.get("enregistre_apres_coup_envoi")]
+            and not c.get("enregistre_apres_coup_envoi") and c.get("retenu", True)]
     n, w = len(done), sum(c["resultat"] == "gagne" for c in done)
     if not n:
         return {"positions": 0, "gagnees": 0}
     avg = sum(c["cote_prise"] for c in done) / n
     return {"positions": n, "gagnees": w, "ratio": round(w / n, 3), "cote_moyenne": round(avg, 2),
             "point_mort": round(sum(1 / c["cote_prise"] for c in done) / n, 3)}
+
+
+def ratio_tous(choices: list[dict]) -> dict:
+    """Every choice, kept or not (for comparing with the model and the M), late ones still left out."""
+    return ratio([{**c, "retenu": True} for c in choices])
 
 
 def record(prev: dict | None, new: dict, ko: datetime | None, now: datetime, frozen: bool) -> dict:

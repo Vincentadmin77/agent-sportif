@@ -16,7 +16,7 @@ def test_foot_takes_value_when_model_agrees_with_market():
 
 def test_foot_passes_without_value():
     c = S.foot_choice(_foot([{"pari": "Plus de 2,5 buts", "cote": 1.60, "proba": 0.55, "proba_marche": 0.60}]))
-    assert c["pari"] is None and "moins que le marché" in c["raison"]
+    assert c.get("retenu") is False and "moins que le marché" in c["raison"]
 
 
 def _lines(main, other_odds=1.90):
@@ -35,7 +35,7 @@ def test_basket_bets_the_main_total_when_projection_is_far_but_not_too_far():
     c = S.basket_choice(bm, "2026-12-15")
     assert c["selection"] == "under" and c["ligne"] == 226.5
     bm["points"]["total_prevu"] = 210.0  # 16.5 points away: probably an absence the ratings miss
-    assert S.basket_choice(bm, "2026-12-15")["pari"] is None
+    assert S.basket_choice(bm, "2026-12-15").get("retenu") is False
 
 
 def test_tennis_blends_mostly_market_and_needs_value():
@@ -59,7 +59,7 @@ def test_foot_never_backs_the_lucky_team():
     m = _foot([{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.59}])
     assert S.foot_choice(m, (0.5, 0.0))["pari"] == "Victoire Lille"
     c = S.foot_choice(m, (3.0, 0.0))
-    assert c["pari"] is None and "chance" in c["raison"]
+    assert c.get("retenu") is False and "chance" in c["raison"]
 
 
 def test_basket_passes_on_doubtful_key_player_and_uses_absences():
@@ -85,3 +85,9 @@ def test_basket_winner_axis_when_handicap_price_out_of_range():
         r["cote"] = 1.40
     lines[0]["cote"], lines[1]["cote"] = 1.45, 1.45
     assert S.basket_choice(bm, "2026-12-15")["marche"] == "winner"
+
+
+def test_choices_not_kept_stay_out_of_the_ratio():
+    rows = [{"pari": "a", "resultat": "gagne", "cote_prise": 1.8},
+            {"pari": "b", "resultat": "perdu", "cote_prise": 1.8, "retenu": False}]
+    assert S.ratio(rows)["positions"] == 1 and S.ratio_tous(rows)["positions"] == 2

@@ -42,6 +42,13 @@ Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis
 
 Choix recalculé à chaque passage avant le match, figé au passage H−45 (foot, basket) ou 45 min avant (tennis).
 Un match vu pour la première fois après le début reste hors ratio (`enregistre_apres_coup_envoi`).
+
+Depuis le 30/10 16:00 (Vincent : « qu'ils puissent tous se positionner, dès maintenant ») : chaque spécialiste donne un
+choix sur chaque match, comme le modèle. Quand ses règles ne le retiennent pas, le choix porte `retenu: false` et la
+raison « Le spécialiste ne le retient pas : … » ; il reste hors ratio. Choix de repli : V1 l'option la plus probable
+(65/35) entre 1,50 et 2,30 ; V2 le plus grand écart projection / ligne principale (total ou handicap), sinon le
+vainqueur projeté ; V3 l'option la plus probable (mélange 90/10) sur les 5 axes. `ratio` = retenus seulement,
+`ratio_tous` = tous les choix (pour les comparatifs avec le modèle et le M).
 Journée : 08:00-02:00 foot et tennis, basket jusqu'à 04:00 (un passage avant 04:00 compte pour la veille).
 
 ## Équipes chanceuses (Benham, Tippett), testé le 30/10

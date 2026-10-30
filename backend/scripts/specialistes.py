@@ -135,18 +135,25 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
                 pr = bt.Pricer(pm, m, None, None)
                 if acesm[tour].serve[m.a].den > 0 and acesm[tour].serve[m.b].den > 0:
                     pr = bt.Pricer(pm, m, *acesm[tour].expected(m.a, m.b, tour, m.surface, pr.expected_games()))
-                cands = bt.candidates(pr, bt.markets(m.odds)) if known else []
+                cands = bt.candidates(pr, bt.markets(m.odds))
                 lay = [(d - date.fromisoformat(last[p])).days for p in (m.a, m.b) if p in last]
                 lay = max(lay) if lay else None
-                s = S.tennis_choice(cands, lay, bt.markets(m.odds))
-                if not known:
-                    new = {"pari": None, "raison": "Je passe : un des joueurs a trop peu de matchs pour un Elo fiable."}
-                elif s:
+                s = S.tennis_choice(cands, lay, bt.markets(m.odds)) if known else None
+                kept = s is not None
+                s = s or S.tennis_fallback(cands, bt.markets(m.odds))
+                if s:
                     new = {"pari": label(s["key"], m), "marche": bt.LABEL[s["key"][0]], "cle": list(s["key"]),
                            "cote_prise": s["best"], "p_marche": round(s["fair"], 3), "p_modele": round(s["p"], 3),
-                           "chance": round(s["conf"], 3),
-                           "raison": f"Le marché voit {round(s['fair'] * 100)} %, l'Elo sur {m.surface} {round(s['p'] * 100)} % : "
-                                     f"chance retenue {round(s['conf'] * 100)} %, la cote de {s['best']:.2f} rapporte au moins 3 % de plus."}
+                           "chance": round(s["conf"], 3)}
+                    if kept:
+                        new["raison"] = (f"Le marché voit {round(s['fair'] * 100)} %, l'Elo sur {m.surface} {round(s['p'] * 100)} % : "
+                                         f"chance retenue {round(s['conf'] * 100)} %, la cote de {s['best']:.2f} rapporte au moins 3 % de plus.")
+                    else:
+                        why = ("un des joueurs a trop peu de matchs pour un Elo fiable" if not known
+                               else S.tennis_pass_reason(cands, lay).removeprefix("Je passe : ").rstrip("."))
+                        new.update(retenu=False, raison=f"{S.NOT_KEPT} : {why}.")
+                elif not known:
+                    new = {"pari": None, "raison": "Je passe : un des joueurs a trop peu de matchs pour un Elo fiable."}
                 else:
                     new = {"pari": None, "raison": S.tennis_pass_reason(cands, lay)}
                 c = S.record(old, new, ko, now, now >= ko - FREEZE)
@@ -160,11 +167,12 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
 
 
 def bilan(days: dict[str, dict]) -> dict:
-    out = {}
+    out, tous = {}, {}
     for sport in ("foot", "basket", "tennis"):
         rows = [c for d in days.values() for c in (d.get(sport) or {}).values()]
         out[sport] = S.ratio(rows)
-    return {"ratio": out, "jours": sorted(days), "note": "À blanc : jamais publié, hors ratio officiel et hors ratio du M."}
+        tous[sport] = S.ratio_tous(rows)
+    return {"ratio": out, "ratio_tous": tous, "jours": sorted(days), "note": "À blanc : jamais publié, hors ratio officiel et hors ratio du M."}
 
 
 def main() -> None:
@@ -190,15 +198,16 @@ def main() -> None:
         except Exception as e:  # noqa: BLE001 - the other two sports are still written
             doc["erreur_tennis"] = str(e)[:300]
     doc["ratio"] = {s: S.ratio(list(doc[s].values())) for s in ("foot", "basket", "tennis")}
+    doc["ratio_tous"] = {s: S.ratio_tous(list(doc[s].values())) for s in ("foot", "basket", "tennis")}
     past[day] = doc
     o = Path(a.out) / "specialistes"
     o.mkdir(parents=True, exist_ok=True)
     (o / f"{day}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     (o / "bilan.json").write_text(json.dumps(bilan(past), ensure_ascii=False, indent=1))
     for s in ("foot", "basket", "tennis"):
-        picks = [f"{c['match']}: {c['pari']} @ {c['cote_prise']}{' (figé)' if c.get('fige') else ''}"
+        picks = [f"{c['match']}: {c['pari']} @ {c['cote_prise']}{' (figé)' if c.get('fige') else ''}{' [non retenu]' if c.get('retenu') is False else ''}"
                  for c in doc[s].values() if c.get("pari")]
-        print(f"{s}: {len(doc[s])} matchs, {len(picks)} positions, ratio {doc['ratio'][s]}")
+        print(f"{s}: {len(doc[s])} matchs, {len(picks)} positions, ratio {doc['ratio'][s]}, tous {doc['ratio_tous'][s]}")
         for p in picks:
             print("  ", p)
 
