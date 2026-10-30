@@ -38,11 +38,13 @@ def test_basket_bets_the_main_total_when_projection_is_far_but_not_too_far():
     assert S.basket_choice(bm, "2026-12-15")["pari"] is None
 
 
-def test_tennis_needs_agreement_and_no_long_layoff():
-    c = {"key": ("vainqueur", "Home"), "p": 0.64, "fair": 0.60, "best": 1.62, "conf": 0.62}
-    assert S.tennis_choice([c], 10) is c
-    assert S.tennis_choice([c], 90) is None
-    assert S.tennis_choice([{**c, "p": 0.75}], 10) is None
+def test_tennis_blends_mostly_market_and_needs_value():
+    mk = {("vainqueur", "Home"): [1.60, 1.62], ("vainqueur", "Away"): [2.30, 2.35]}
+    c = {"key": ("vainqueur", "Home"), "p": 0.75, "fair": 0.59, "best": 1.75, "conf": 0.67}
+    got = S.tennis_choice([c], 10, mk)
+    assert got and 0.59 < got["conf"] < 0.62  # Elo only nudges the market
+    assert S.tennis_choice([{**c, "best": 1.62}], 10, mk) is None  # no 3 % value at 1.62
+    assert S.tennis_choice([c], 90, mk) is None  # back after 90 days
 
 
 def test_record_freezes_and_keeps_late_matches_out_of_ratio():

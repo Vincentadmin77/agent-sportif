@@ -48,7 +48,7 @@ def run(matches: list[bt.Match]) -> dict:
                 w = bt.won(c["key"], m)
                 if w is not None:
                     cur.append({**c, "won": w, "tour": m.tour})
-            s = S.tennis_choice(cands, layoff(last, m))
+            s = S.tennis_choice(cands, layoff(last, m), bt.markets(m.odds))
             if s:
                 w = bt.won(s["key"], m)
                 if w is not None:
@@ -73,8 +73,8 @@ def main() -> None:
     a = ap.parse_args()
     matches = sorted(bt.load(), key=lambda m: (m.day, m.time))
     res = {"periode": f"{bt.TEST_FROM} -> aujourd'hui", "regles": {
-        "marches": list(S.TENNIS_MARKETS), "ecart_max_elo_marche": S.TENNIS_MAX_GAP,
-        "chance_min": S.TENNIS_MIN_CHANCE, "retour_apres_jours": S.TENNIS_LAYOFF_DAYS}, **run(matches)}
+        "marches": list(S.TENNIS_MARKETS), "poids_marche": S.TENNIS_MARKET_WEIGHT,
+        "valeur_min": S.TENNIS_MIN_VALUE, "retour_apres_jours": S.TENNIS_LAYOFF_DAYS}, **run(matches)}
     text = json.dumps(res, ensure_ascii=False, indent=1)
     Path(a.out).write_text(text) if a.out else print(text)
 

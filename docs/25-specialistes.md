@@ -3,7 +3,7 @@
 Demandé par Vincent le 30/10 (« un agent par sport, qui s'inspire des meilleurs dans son domaine »). Chaque
 spécialiste garde les axes de son sport, donne UN choix par match ou passe, et a son propre ratio. À blanc : jamais
 publié, hors ratio officiel, hors ratio du M. Les réglages du M et les positions officielles ne bougent pas avant le
-rapport du M du lundi 2/11. Noms affichés : à choisir par Vincent (pas de vrais noms de personnes sur le site).
+rapport du M du lundi 2/11. Noms (Vincent 30/10 14:16) : **V1** foot, **V2** basket, **V3** tennis (jamais de vrais noms de personnes sur le site).
 
 Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/specialistes.py` (passage),
 `backend/scripts/backtest_specialistes.py` (test tennis sur l'historique), tests `tests/test_specialistes.py`.
@@ -13,7 +13,7 @@ Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/sp
 |---|---|---|---|
 | Foot | Benham / Bloom (le marché comme base, xG), Sumpter, Tippett | résultat (1/2, DC, DNB), plus/moins 1,5-3,5, les deux marquent | chance = 65 % marché + 35 % modèle ≥ 55 % ; cote 1,50-2,30 qui paie plus que la chance ; modèle entre 0 et +6 pts au-dessus du marché (plus haut : il a raté une info) ; la plus probable |
 | Basket | Voulgaris (projection de score, écart en points) | total de points, handicap (pas de vainqueur) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale |
-| Tennis | Sackmann (Elo par surface) | vainqueur seulement | Elo et marché à 5 pts au plus, chance 50/50 ≥ 55 %, valeur à la meilleure cote, aucun joueur revenu après plus de 60 jours sans match |
+| Tennis | Sackmann (Elo par surface), Benter (mélange logit), Shin/Buchdahl (marge retirée) | vainqueur seulement | chance = mélange logit 90 % marché (marge retirée méthode puissance) + 10 % Elo ; valeur ≥ 3 % à la meilleure cote ; aucun joueur revenu après plus de 60 jours sans match |
 
 Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis : version choisie parmi 3 essais (voir plus bas).
 
@@ -23,7 +23,12 @@ Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis
 - Tennis, juillet 2024 → octobre 2026 avec les cotes (`backtest_specialistes.py`). Choix tennis actuel : 2 374/4 075
   (58,3 %), point mort 59,7 %. Spécialiste, 3 marchés, écart 8 pts : 59,8 % pour 61,3 % ; vainqueur seul, 8 pts :
   59,1 % pour 59,8 % ; **vainqueur seul, 5 pts (retenu) : 521/863 (60,4 %), cote moyenne 1,68, point mort 60,0 %**.
-  Seule version au-dessus du point mort, de peu, choisie parmi 3 essais : à confirmer en vrai.
+  Version remplacée le 30/10 après les dossiers de recherche :
+- Tennis, règles des dossiers testées sur 2024-25 puis vérifiées sur 2026 (`/tmp` grille, 14 372 matchs) : le marché seul
+  a la meilleure log-loss (0,597 ; Elo 0,627 ; WElo 0,625 ; pénalité de retour −100/−150 Elo : pire). Seule règle
+  positive sur les deux périodes : mélange 90 % marché + 10 % Elo, valeur ≥ 3 % (2024-25 : 54,7 % pour 53,6 % ;
+  2026 : 55,6 % pour 54,3 %). **Retenue pour V3 : 344/620 (55,5 %), cote moyenne 1,89, point mort 53,6 %** ;
+  ATP 59,3 % (point mort 53,7 %), WTA 51,0 % (53,6 %).
 - Basket : pas d'historique de cotes ; 4 positions rejouables sur la page (28/10), 0/4. À juger en vrai.
 
 ## Passage (toutes les heures)

@@ -120,15 +120,15 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
                 cands = bt.candidates(pr, bt.markets(m.odds)) if known else []
                 lay = [(d - date.fromisoformat(last[p])).days for p in (m.a, m.b) if p in last]
                 lay = max(lay) if lay else None
-                s = S.tennis_choice(cands, lay)
+                s = S.tennis_choice(cands, lay, bt.markets(m.odds))
                 if not known:
                     new = {"pari": None, "raison": "Je passe : un des joueurs a trop peu de matchs pour un Elo fiable."}
                 elif s:
                     new = {"pari": label(s["key"], m), "marche": bt.LABEL[s["key"][0]], "cle": list(s["key"]),
                            "cote_prise": s["best"], "p_marche": round(s["fair"], 3), "p_modele": round(s["p"], 3),
                            "chance": round(s["conf"], 3),
-                           "raison": f"L'Elo sur {m.surface} voit {round(s['p'] * 100)} %, le marché {round(s['fair'] * 100)} % : "
-                                     "d'accord, et la cote paie plus que la chance."}
+                           "raison": f"Le marché voit {round(s['fair'] * 100)} %, l'Elo sur {m.surface} {round(s['p'] * 100)} % : "
+                                     f"chance retenue {round(s['conf'] * 100)} %, la cote de {s['best']:.2f} rapporte au moins 3 % de plus."}
                 else:
                     new = {"pari": None, "raison": S.tennis_pass_reason(cands, lay)}
                 c = S.record(old, new, ko, now, now >= ko - FREEZE)

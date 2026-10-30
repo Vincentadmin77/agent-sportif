@@ -17,12 +17,15 @@ twice that far (the ratings do not see injuries yet: a huge gap is usually a mis
 only: no moneyline on a favourite. Early in the season the ratings are young, so the gap needed is larger.
 
 Tennis (inspired by Sackmann): surface Elo is the forecast (overall and surface ratings blended, K shrinking with
-experience). A position only on the winner (what Elo forecasts; games, sets and aces derived from it were weaker on
-the 2024-26 backtest), when Elo and the market agree closely (TENNIS_MAX_GAP), there is value at the best odds, and neither player is back from a long break (Elo is stale after TENNIS_LAYOFF_DAYS without a match).
+experience), but no published Elo beats the market: the chance is a logit blend, 90 % market (margin removed by the
+power method) and 10 % Elo (Benter's blend), on the winner only, with an expected value of at least 3 % at the best
+odds, and never when a player is back from a long break (Elo is stale after TENNIS_LAYOFF_DAYS without a match).
 """
 
 from __future__ import annotations
 
+import math
+import statistics
 from datetime import date, datetime
 
 ODDS = (1.50, 2.30)
@@ -46,11 +49,11 @@ BASKET_SEASON_START = {"NBA": date(2026, 10, 20), "WNBA": date(2026, 5, 15)}
 
 # --- tennis
 TENNIS_MARKETS = ("vainqueur",)  # Elo is a match-win model; the games markets derived from it did worse (30/10)
-TENNIS_MAX_GAP = 0.05
-TENNIS_MIN_CHANCE = 0.55
+TENNIS_MARKET_WEIGHT = 0.9  # logit blend; the market alone has the best log-loss, Elo only corrects it a little
+TENNIS_MIN_VALUE = 0.03
 TENNIS_LAYOFF_DAYS = 60
 
-NAMES = {"foot": "spécialiste foot", "basket": "spécialiste basket", "tennis": "spécialiste tennis"}
+NAMES = {"foot": "V1", "basket": "V2", "tennis": "V3"}  # owner 2026-10-30 14:16: V1 foot, V2 basket, V3 tennis
 
 
 def _pc(x: float) -> str:
@@ -194,26 +197,48 @@ def basket_settle(choice: dict, bm: dict) -> None:
 
 # ---------------------------------------------------------------- tennis (candidates from scripts/backtest_tennis.py)
 
-def tennis_choice(cands: list[dict], layoff_days: float | None) -> dict | None:
-    """The tennis specialist's pick among the priced options of a match (keys of backtest_tennis.candidates), or None.
-    Returns the candidate with its own fields "chance" and "ok"."""
+def power_fair(odds_a: float, odds_b: float) -> float:
+    """Chance of side A with the margin removed by the power method (k with (1/a)^k + (1/b)^k = 1): it corrects the
+    favourite-longshot bias better than the proportional method (Shin, Buchdahl)."""
+    qa, qb, lo, hi = 1 / odds_a, 1 / odds_b, 0.5, 3.0
+    for _ in range(60):
+        k = (lo + hi) / 2
+        lo, hi = (k, hi) if qa ** k + qb ** k > 1 else (lo, k)
+    return qa ** k / (qa ** k + qb ** k)
+
+
+def _logit(p: float) -> float:
+    p = min(max(p, 1e-4), 1 - 1e-4)
+    return math.log(p / (1 - p))
+
+
+def tennis_choice(cands: list[dict], layoff_days: float | None, mk: dict | None = None) -> dict | None:
+    """The tennis specialist's pick among the priced options of a match (keys of backtest_tennis.candidates), or None:
+    the winner, chance = logit blend TENNIS_MARKET_WEIGHT market (power method on the median odds) + the rest Elo,
+    expected value >= TENNIS_MIN_VALUE at the best odds. The candidate gets "fair" and "conf" replaced by these."""
     if layoff_days is not None and layoff_days > TENNIS_LAYOFF_DAYS:
         return None
-    ok = [c for c in cands if c["key"][0] in TENNIS_MARKETS and abs(c["p"] - c["fair"]) <= TENNIS_MAX_GAP
-          and c["p"] * c["best"] >= 1.0 and c["conf"] >= TENNIS_MIN_CHANCE]
-    return max(ok, key=lambda c: c["conf"]) if ok else None
+    h, a = (mk or {}).get(("vainqueur", "Home")), (mk or {}).get(("vainqueur", "Away"))
+    if not h or not a:
+        return None
+    fh = power_fair(statistics.median(h), statistics.median(a))
+    out = []
+    for c in cands:
+        if c["key"][0] not in TENNIS_MARKETS:
+            continue
+        f = fh if c["key"][1] == "Home" else 1 - fh
+        chance = 1 / (1 + math.exp(-(TENNIS_MARKET_WEIGHT * _logit(f) + (1 - TENNIS_MARKET_WEIGHT) * _logit(c["p"]))))
+        if chance * c["best"] - 1 >= TENNIS_MIN_VALUE:
+            out.append({**c, "fair": f, "conf": chance})
+    return max(out, key=lambda c: c["conf"]) if out else None
 
 
 def tennis_pass_reason(cands: list[dict], layoff_days: float | None) -> str:
     if layoff_days is not None and layoff_days > TENNIS_LAYOFF_DAYS:
         return f"Je passe : un des joueurs revient après {int(layoff_days)} jours sans match, son Elo n'est plus fiable."
-    own = [c for c in cands if c["key"][0] in TENNIS_MARKETS]
-    if not own:
+    if not [c for c in cands if c["key"][0] in TENNIS_MARKETS]:
         return "Je passe : aucune cote de vainqueur entre 1,50 et 2,30."
-    b = max(own, key=lambda c: c["conf"])
-    if abs(b["p"] - b["fair"]) > TENNIS_MAX_GAP:
-        return f"Je passe : l'Elo ({_pc(b['p'])}) et le marché ({_pc(b['fair'])}) ne sont pas d'accord sur la meilleure option."
-    return f"Je passe : la meilleure option n'a que {_pc(b['conf'])} de chance ou pas de valeur à la cote."
+    return "Je passe : l'Elo ne corrige pas assez le marché pour que la cote rapporte 3 % de plus que la chance."
 
 
 # ---------------------------------------------------------------- ratio
