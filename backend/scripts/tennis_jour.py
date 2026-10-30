@@ -109,6 +109,8 @@ def main() -> None:
     ap.add_argument("--date", default=str(date.today()))
     ap.add_argument("--out")
     ap.add_argument("--no-refresh", action="store_true")
+    ap.add_argument("--freeze-until", help="also freeze the matches starting up to this Paris time (HH:MM), so one run "
+                                           "can freeze a group of matches ahead of their 45-minute mark")
     a = ap.parse_args()
     day = date.fromisoformat(a.date)
     monday = day - timedelta(days=day.weekday())
@@ -149,7 +151,8 @@ def main() -> None:
             c = bt.choose(cands)
             choix = None
             start = datetime.strptime(when, "%Y-%m-%d %H:%M")
-            frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M")
+            frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M") or bool(
+                a.freeze_until and when[:10] == str(day) and when[11:] <= a.freeze_until)
             old = (before.get(m.key) or {}).get("choix")
             started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
             if old and old.get("fige"):
