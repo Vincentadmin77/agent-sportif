@@ -189,3 +189,58 @@ def p_total_games_over(pm: float, best_of: int, tour: str, line: float) -> float
 def p_games_handicap(pm: float, best_of: int, tour: str, handicap: float) -> float:
     """P(games of A + handicap > games of B)."""
     return sum(p for (a, b), p in games_distribution(pm, best_of, tour).items() if a + handicap > b)
+
+
+# ---------------------------------------------------------------- in-play
+
+def _set_from(ga: int, gb: int, a_serving: bool, ha: float, hb: float) -> dict[tuple[int, int], float]:
+    """Final score of the set in progress at ga-gb, A serving the next game if a_serving."""
+    dist: dict[tuple[int, int], float] = defaultdict(float)
+    states = {(ga, gb, a_serving): 1.0}
+    while states:
+        nxt: dict = defaultdict(float)
+        for (a, b, srv), pr in states.items():
+            if (a >= 6 or b >= 6) and abs(a - b) >= 2 or a == 7 or b == 7:
+                dist[(a, b)] += pr
+                continue
+            if a == 6 and b == 6:
+                ptb = min(0.95, max(0.05, 0.5 + (ha - hb)))
+                dist[(7, 6)] += pr * ptb
+                dist[(6, 7)] += pr * (1 - ptb)
+                continue
+            pa = ha if srv else 1 - hb
+            nxt[(a + 1, b, not srv)] += pr * pa
+            nxt[(a, b + 1, not srv)] += pr * (1 - pa)
+        states = nxt
+    return dict(dist)
+
+
+def live_distribution(pm: float, best_of: int, tour: str, done_sets: list[tuple[int, int]], cur: tuple[int, int],
+                      a_serving: bool, sharpen: bool = True) -> dict[tuple[int, int, int, int], float]:
+    """Distribution of the final (games A, games B, sets A, sets B) from the current score, with the pre-match
+    holds (same as games_distribution; sharpen=False keeps the plain Elo set chance, for the winner and the sets).
+    The point score inside the current game is ignored."""
+    p_set = min(max(set_from_match(pm, best_of), 1e-4), 1 - 1e-4)
+    k = SET_SHARPEN.get(tour, 1.0) if sharpen else 1.0
+    p_set = 1 / (1 + (p_set / (1 - p_set)) ** -k)
+    ha, hb = holds_from_set(p_set, tour)
+    need = best_of // 2 + 1
+    sa = sum(a > b for a, b in done_sets)
+    sb = len(done_sets) - sa
+    ga0 = sum(a for a, _ in done_sets)
+    gb0 = sum(b for _, b in done_sets)
+    states: dict = defaultdict(float)
+    for (a, b), q in _set_from(cur[0], cur[1], a_serving, ha, hb).items():
+        states[(sa + (a > b), sb + (b > a), ga0 + a, gb0 + b)] += q
+    sd = _set_games(round(ha, 3), round(hb, 3))
+    out: dict = defaultdict(float)
+    while states:
+        nxt: dict = defaultdict(float)
+        for (x, y, ga, gb), pr in states.items():
+            if x == need or y == need:
+                out[(ga, gb, x, y)] += pr
+                continue
+            for (a, b), q in sd:
+                nxt[(x + (a > b), y + (b > a), ga + a, gb + b)] += pr * q
+        states = nxt
+    return dict(out)
