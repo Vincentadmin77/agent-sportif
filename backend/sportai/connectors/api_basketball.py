@@ -82,3 +82,7 @@ class ApiBasketballProvider:
         """Pre-match odds of one game (raw: game, bookmakers [{name, bets [{id, name, values}]}]), None if none."""
         resp = self._get("/odds", {"game": game_id}, ttl=ttl).get("response") or []
         return resp[0] if resp else None
+
+    def player_stats(self, game_id: int | str, ttl: float = 3600) -> list[dict]:
+        """The box score of a finished game: one row per player (player, team, minutes, points, rebounds...)."""
+        return self._get("/games/statistics/players", {"id": game_id}, ttl=ttl).get("response") or []

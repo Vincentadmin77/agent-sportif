@@ -22,7 +22,7 @@ from sportai.connectors.teams import normalise
 from sportai.engine.football import counts
 from sportai.services.contexte import referee_keys
 
-LEAGUE_IDS = {61: "FR1", 39: "EN1", 140: "ES1", 78: "DE1", 135: "IT1", 71: "BR1", 203: "TR1"}
+LEAGUE_IDS = {61: "FR1", 39: "EN1", 140: "ES1", 78: "DE1", 135: "IT1", 71: "BR1", 203: "TR1", 94: "PT1"}
 FINISHED = ("FT", "AET", "PEN")
 STALE_DAYS = 45
 SUMMARY = "comptages_resume.json.gz"

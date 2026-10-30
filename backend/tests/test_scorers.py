@@ -92,7 +92,8 @@ def test_best_odds_across_bookmakers_and_market_names():
              {"name": "Betano", "bets": [{"name": "Away Anytime Goal Scorer", "values": [
                  {"value": "Alexander Isak", "odd": "2.25"}]},
                  {"name": "First Goal Scorer", "values": [{"value": "Alexander Isak", "odd": "5.0"}]}]}]
-    assert sc.best_scorer_odds(books) == {"Alexander Isak": {"cote": 2.25, "bookmaker": "Betano", "bookmakers": 2}}
+    assert sc.best_scorer_odds(books) == {"Alexander Isak": {"cote": 2.25, "bookmaker": "Betano", "bookmakers": 2,
+                                                 "prix": {"Bet365": 2.1, "Betano": 2.25}}}
 
 
 def test_price_fixture_with_cached_squads_and_lineup(tmp_path, monkeypatch):

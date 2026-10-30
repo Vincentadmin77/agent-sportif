@@ -3,8 +3,8 @@
 One pass = the games of the basketball day (prematch.journee(..., "basket"): 04:00 Paris to 04:00 the next night)
 not started yet: the team-ratings model (sportai/engine/basketball/ratings.py, docs/20-nba-modele.md) is refitted on
 the cached results, each game priced on every market it can read from the odds feed, and one document is written per
-game in basket_matchs/<game id>. The bets of the day go to basket_pronostic/<jour>: one retained bet per game at 1.60
-or more (football's rules), fixed 45 min before tip-off, the Top confiance only among validated "Confiance élevée"
+game in basket_matchs/<game id>. The bets of the day go to basket_pronostic/<jour>: one retained single per game at 1.50 to
+2.30 (football's rules since 2026-10-28), fixed 45 min before tip-off, no Top confiance nor combo (was: only among validated "Confiance élevée"
 bets. Basketball never touches football's matchs / pronostic / stats.
 
 Validated: the NBA winner (overtime included), calibrated by the walk-forward backtest. Everything else (points
@@ -26,8 +26,10 @@ from pathlib import Path
 from statistics import median
 from zoneinfo import ZoneInfo
 
+from sportai.connectors.the_odds_api import NBA_SPORT_KEY, TheOddsApiProvider, french_only, is_french
 from sportai.connectors.api_basketball import DROPPED, FINISHED, LIVE, NOT_STARTED, kickoff, season_for
 from sportai.engine.basketball.ratings import Game, Prediction, RatingsModel, rest_flags
+from sportai.services import basket_players as BP
 
 CACHE = Path(os.getenv("BASKET_CACHE", "/mnt/project-files/agent-sportif/data/api-basketball"))
 CACHE_MAX_AGE = timedelta(hours=6)
@@ -38,9 +40,13 @@ HISTORY_SEASONS = 3  # the current one and the two before (half-life 80 days: ol
 MIN_GAMES = {"NBA": 40, "WNBA": 20}  # a team with fewer games in a full season is an exhibition side
 VALIDATED = {"NBA": {"winner"}, "WNBA": set()}  # docs/20-nba-modele.md: the NBA winner only
 
-MIN_ODDS = 1.60  # owner 2026-10-27: never under 1.60, for every basketball bet
+MIN_ODDS = 1.50  # owner 2026-10-28 11:00: "la plage des cotes : 1.50 / 2.30 toujours en simple" (was 1.60)
 # Unvalidated markets: football's care (pronostic.TRIAL_*), the 5 best of a game by value.
-TRIAL_MIN_VALUE, TRIAL_MIN_PROBA, TRIAL_MAX_ODDS, TRIAL_PER_GAME = 0.03, 0.25, 4.0, 5
+TRIAL_MIN_VALUE, TRIAL_MIN_PROBA, TRIAL_MAX_ODDS, TRIAL_PER_GAME = 0.03, 0.25, 2.30, 5
+# The most reliable markets first (backtest): winner and handicap, then the 1st quarter, then the points totals
+# (unvalidated, the model under-predicts points this early season). A bet of a lower tier is a game's bet only when
+# it is pronostic.COUNT_MARGIN surer than the best bet of the tiers above, as football's count bets.
+TIERS = {"winner": 0, "handicap": 0, "q1": 1, "total": 2, "team_total_home": 2, "team_total_away": 2}
 MAX_DIVERGENCE = 0.10
 MAX_ROWS = 80
 
@@ -58,9 +64,9 @@ PERIODS = {"Q1": "1er quart-temps", "Q2": "2e quart-temps", "HT": "mi-temps", "Q
 INFO = {
     "NBA": ("Basket NBA : modèle de points par équipe (attaque, défense, avantage du terrain, fatigue), testé sur "
             "trois saisons. Vainqueur, prolongation comprise : validé. Total de points, handicaps et points d'une "
-            "équipe : « non validé », jamais la Top confiance. Cote minimale 1,60."),
+            "équipe : « non validé », en simple, cote de 1,50 à 2,30."),
     "WNBA": ("Basket WNBA : même modèle que la NBA, pas encore testé sur la WNBA. Tous les marchés sont « non validé » "
-             "et ne peuvent pas être la Top confiance. Cote minimale 1,60."),
+             "En simple, cote de 1,50 à 2,30."),
 }
 NO_MODEL = "Historique insuffisant pour une des deux équipes : match listé sans estimation."
 NO_ODDS = "Aucune cote disponible pour ce match pour l'instant."
@@ -233,10 +239,17 @@ def price(pred: Prediction, quotes: dict[tuple, dict[str, float]]) -> list[dict]
         p = model_proba(pred, market, sel, line)
         best = max(books.values())
         med = median(books.values())
-        rows.append({"marche_cle": market, "selection": sel, "ligne": line, "cote": round(best, 2),
-                     "cote_mediane": round(med, 2), "proba": round(p, 4),
+        shown_best, shown_med = best, med
+        if french_only():  # same analysis on every bookmaker, the price a French site gives (owner 2026-10-28)
+            fr = [o for b, o in books.items() if is_french(b)]
+            if not fr:
+                continue
+            shown_best, shown_med = max(fr), median(fr)
+        rows.append({"marche_cle": market, "selection": sel, "ligne": line, "cote": round(shown_best, 2),
+                     "cote_mediane": round(shown_med, 2), "proba": round(p, 4),
                      "proba_marche": round(sum(fair) / len(fair), 4), "valeur": round(p * best - 1, 4),
-                     "valeur_mediane": round(p * med - 1, 4), "n_bookmakers": len(books)})
+                     "valeur_mediane": round(p * med - 1, 4), "n_bookmakers": len(books),
+                     **({"cote_reference": round(med, 2)} if shown_med != med else {})})
     return sorted(rows, key=lambda r: -r["valeur"])
 
 
@@ -277,7 +290,7 @@ def settle(market: str, selection: str, line: float | None, hp: int, ap: int) ->
 # The results page shows basketball on collections of its own (owner 2026-10-27, docs/21-basket-passes.md), never
 # mixed with football's matchs / pronostic / stats:
 #   basket_matchs/<game id>   one document per game (the feed's game id)
-#   basket_pronostic/<jour>   the bets of the basketball day: one retained bet per game, the Top confiance
+#   basket_pronostic/<jour>   the bets of the basketball day: one retained single per game (no Top confiance since 2026-10-28)
 
 def doc_key(game: dict) -> str:
     """A game's document id in basket_matchs: the feed's game id."""
@@ -289,9 +302,9 @@ def _utc(ko: datetime) -> str:
 
 
 def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
-    """The bets a game offers (median odds over the books): the validated ones at 1.60 or more, and the 5 best
+    """The bets a game offers (median odds over the books): the validated ones at 1.50 to 2.30, and the 5 best
     unvalidated ones by value that pass football's care for unvalidated markets."""
-    keep, trials = [], []
+    keep, trials, spares = [], [], []
     for r in rows:
         cote = r.get("cote_mediane", r["cote"])
         if cote < MIN_ODDS:
@@ -301,15 +314,19 @@ def bets(comp: str, rows: list[dict], home: str, away: str) -> list[dict]:
         b = {"pari": label(r["marche_cle"], r["selection"], r["ligne"], home, away),
              "marche": MARKET_NAMES[r["marche_cle"]], "cote": cote, "proba": r["proba"],
              "proba_marche": r["proba_marche"], "valeur": val, "valide": ok,
-             "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"]}}
+             "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"]},
+             **({"cote_reference": r["cote_reference"]} if "cote_reference" in r else {})}
         if ok:
             keep.append(b)
             continue
         if (val < TRIAL_MIN_VALUE or r["proba"] < TRIAL_MIN_PROBA or cote > TRIAL_MAX_ODDS
                 or abs(r["proba"] - r["proba_marche"]) > MAX_DIVERGENCE):
+            if MIN_ODDS <= cote <= TRIAL_MAX_ODDS:  # only for a game's forced choice (owner 2026-10-28 evening)
+                spares.append({**b, "validation": NON_VALIDE, "_secours": True})
             continue
         trials.append({**b, "validation": NON_VALIDE})
-    return keep + sorted(trials, key=lambda b: -b["valeur"])[:TRIAL_PER_GAME]
+    # the closest to the bookmakers first among those with value (a large gap is more often the model's error)
+    return keep + sorted(trials, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME] + spares
 
 
 def _phrases(comp: str, pred: Prediction | None, home: str, away: str, rows: list[dict]) -> list[str]:
@@ -329,6 +346,73 @@ def _phrases(comp: str, pred: Prediction | None, home: str, away: str, rows: lis
     out.append("Les blessés et absents ne sont pas encore pris en compte.")
     out.append(INFO.get(comp, INFO["WNBA"]))
     return out
+
+
+# ---------------------------------------------------------------- player bets (NBA, services/basket_players.py)
+# Player points, 3-pointers, rebounds, points+assists, points+rebounds+assists and points milestones, priced by the
+# player model on every cached box score. All "non validé", same care as the other unvalidated markets.
+PLAYER_COMPS = ("NBA",)
+PLAYER_LEAGUE = 12  # the feed's NBA league id
+BOX_BUDGET = 40  # box scores fetched at most per pass (about 10 to 15 new games a night)
+
+
+def fetch_boxes(api, season, games: list[dict], budget: int = BOX_BUDGET) -> int:
+    """Box scores of finished games missing from the shared cache (players_nba_<season>.json.gz)."""
+    path = BP._path(str(season))
+    store = json.load(gzip.open(path, "rt")) if path.exists() else {}
+    todo = [g["id"] for g in games if g["status"]["short"] in FINISHED and str(g["id"]) not in store][:budget]
+    got = 0
+    for gid in todo:
+        try:
+            box = api.player_stats(gid)
+        except Exception as e:  # noqa: BLE001 - the next pass retries
+            print(f"box score {gid} unavailable ({str(e)[:80]})", file=sys.stderr)
+            continue
+        if box:
+            store[str(gid)] = box
+            got += 1
+    if got:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        with gzip.open(tmp, "wt") as f:
+            json.dump(store, f)
+        tmp.replace(path)
+    return got
+
+
+def _roster(api, comp: str, day: date, raw: list[list[dict]]) -> BP.Roster | None:
+    try:
+        seasons = [str(s) for s in _seasons(comp, day)]
+        fetch_boxes(api, seasons[-1], raw[-1])
+        return BP.Roster(seasons, dict(zip(seasons, raw)))
+    except Exception as e:  # noqa: BLE001 - the game bets stay without the player ones
+        print(f"{comp} player model unavailable ({str(e)[:120]})", file=sys.stderr)
+        return None
+
+
+def player_bets(roster: BP.Roster, game: dict, odds_entry: dict) -> list[dict]:
+    rows = BP.price(roster, [game["teams"]["home"]["id"], game["teams"]["away"]["id"]],
+                    BP.parse_odds(odds_entry.get("bookmakers") or []))
+    out = []
+    for r in rows:
+        cote = r["cote_mediane"]
+        if (cote < MIN_ODDS or cote > TRIAL_MAX_ODDS or r["valeur_mediane"] < TRIAL_MIN_VALUE
+                or abs(r["proba"] - r["proba_marche"]) > MAX_DIVERGENCE):
+            continue
+        out.append({"pari": BP.label(r), "marche": BP.MARKET_NAMES[r["marche_cle"].removeprefix("joueur_")],
+                    "cote": cote, "proba": r["proba"], "proba_marche": r["proba_marche"],
+                    "valeur": r["valeur_mediane"], "valide": False, "validation": NON_VALIDE,
+                    "basket": {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"],
+                               "joueur_id": r["joueur_id"]}})
+    return sorted(out, key=lambda b: abs(b["proba"] - b["proba_marche"]))[:TRIAL_PER_GAME]
+
+
+def _box(game_id: str, m: dict) -> list[dict] | None:
+    try:
+        path = BP._path(str(season_for("NBA", date.fromisoformat(m["jour"]))))
+        return json.load(gzip.open(path, "rt")).get(str(game_id)) if path.exists() else None
+    except Exception:  # noqa: BLE001 - settled at a later pass
+        return None
 
 
 def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict | None, current: dict | None,
@@ -360,6 +444,11 @@ def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict |
     win = {r["selection"]: r["cote_mediane"] for r in rows if r["marche_cle"] == "winner"}
     if {"home", "away"} <= win.keys():
         doc["cotes_1x2"] = {"domicile": win["home"], "exterieur": win["away"]}
+    # house closing odds: rewritten at every pass before tip-off, so the last one (45 min before) is the closing line,
+    # to measure the model against the market over the coming weeks
+    doc["cotes_cloture"] = {"maj": now.isoformat(), "lignes": [
+        {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"], "cote": r["cote_mediane"],
+         "proba_marche": r["proba_marche"], "proba": r["proba"]} for r in rows]}
     return doc, bets(comp, rows, home, away)
 
 
@@ -383,6 +472,8 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
         raw = [(load_season(api, comp, s, i == HISTORY_SEASONS - 1, now), i == HISTORY_SEASONS - 1)
                for i, s in enumerate(_seasons(comp, day))]
         preds = predictions(history_games(raw, comp), games)
+        roster = _roster(api, comp, day, [r for r, _ in raw]) if comp in PLAYER_COMPS else None
+        fr_events = french_events(comp, notes) if french_only() else None
         for g in games:
             key = doc_key(g)
             odds = None
@@ -391,9 +482,67 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
                     odds = api.game_odds(g["id"])
                 except Exception as e:  # noqa: BLE001 - the game is still listed, without odds
                     print(f"odds unavailable for game {key} ({str(e)[:120]})", file=sys.stderr)
+                if fr_events is not None:
+                    odds = with_french_books(odds, g, fr_events)
             docs[key], offers[key] = build_doc(comp, g, preds.get(g["id"]), odds, current.get(key), now)
+            if roster is not None and odds and not french_only():  # no French site in the player odds feed
+                offers[key] += player_bets(roster, g, odds)
         notes.append(f"{comp} completed ({len(games)} match(s))")
     return docs, offers, notes
+
+
+def french_events(comp: str, notes: list[str]) -> list[dict]:
+    """The Odds API's NBA games with the French bookmakers' winner, handicap and total (3 credits a pass), the only
+    odds a position may use under the French rule (connectors/the_odds_api.py). [] when unavailable."""
+    from sportai.config import get_settings
+
+    if comp != "NBA":
+        return []
+    try:
+        p = TheOddsApiProvider(get_settings().the_odds_api_key, regions="fr", markets="h2h,spreads,totals")
+        events = p.raw_odds(NBA_SPORT_KEY)
+        notes.append(f"{comp} cotes françaises : {len(events)} match(s), crédits restants "
+                     f"{p.last_quota.get('x-requests-remaining', '?')}")
+        return events
+    except Exception as e:  # noqa: BLE001 - without French odds the games are listed with no position
+        notes.append(f"{comp} cotes françaises indisponibles ({str(e)[:120]})")
+        return []
+
+
+def with_french_books(entry: dict | None, game: dict, events: list[dict]) -> dict | None:
+    """The game's odds entry with the French bookmakers of its Odds API event added in the feed's own format."""
+    from sportai.connectors.teams import normalise
+
+    home, away, ko = normalise(game["teams"]["home"]["name"]), normalise(game["teams"]["away"]["name"]), kickoff(game)
+    ev = next((e for e in events if normalise(e["home_team"]) == home and normalise(e["away_team"]) == away
+               and abs(datetime.fromisoformat(e["commence_time"].replace("Z", "+00:00")) - ko) <= timedelta(hours=3)),
+              None)
+    if ev is None:
+        return entry
+    books = []
+    for bk in ev.get("bookmakers") or []:
+        if not is_french(bk.get("key")):
+            continue
+        bets = []
+        for mk in bk.get("markets") or []:
+            vals = []
+            for oc in mk.get("outcomes") or []:
+                side = "Home" if oc["name"] == ev["home_team"] else "Away" if oc["name"] == ev["away_team"] else None
+                if mk["key"] == "h2h" and side:
+                    vals.append({"value": side, "odd": oc["price"]})
+                elif mk["key"] == "spreads" and side and oc.get("point") is not None:
+                    line = oc["point"] if side == "Home" else -oc["point"]  # the feed's lines are the home side's
+                    vals.append({"value": f"{side} {line:+g}", "odd": oc["price"]})
+                elif mk["key"] == "totals" and oc.get("point") is not None:
+                    vals.append({"value": f"{oc['name']} {oc['point']:g}", "odd": oc["price"]})
+            name = {"h2h": "Home/Away", "spreads": "Asian Handicap", "totals": "Over/Under"}.get(mk["key"])
+            if name and vals:
+                bets.append({"name": name, "values": vals})
+        if bets:
+            books.append({"name": bk["key"], "bets": bets})
+    out = dict(entry or {})
+    out["bookmakers"] = list(out.get("bookmakers") or []) + books
+    return out
 
 
 def quarters(game: dict) -> list[dict]:
@@ -458,12 +607,18 @@ def update_scores(api, comps: list[str], current: dict[str, dict], now: datetime
                 new = follow(g, current[key], now)
                 if new is not None:
                     docs[key] = new
+        done = [g for g in games if g["status"]["short"] in FINISHED and (g.get("league") or {}).get("id") == PLAYER_LEAGUE]
+        if done:
+            try:
+                fetch_boxes(api, season_for("NBA", day), done)
+            except Exception as e:  # noqa: BLE001 - the player bets are settled at a later pass
+                print(f"basket box scores {day}: {str(e)[:120]}", file=sys.stderr)
     return docs
 
 
 # ---------------------------------------------------------------- basket_pronostic/<jour>
 
-NO_PICK = ("Aucune cote à 1,60 ou plus où le modèle et le marché s'accordent assez : l'agent ne force pas de pari.")
+NO_PICK = ("Aucune cote de 1,50 à 2,30 où le modèle et le marché s'accordent assez : l'agent ne force pas de pari.")
 NOTE = "Basket en test : seul le vainqueur NBA est validé ; hors bilan officiel."
 PICK_KEYS = ("pari", "marche", "match", "match_id", "competition", "coup_envoi", "cote", "proba", "proba_marche",
              "confiance", "niveau", "valide")
@@ -482,18 +637,22 @@ def settle_pick(pick: dict, m: dict | None) -> dict:
     r = pick.get("regle") or {}
     if m.get("statut") != "termine" or not m.get("score") or not r:
         return pick
+    if str(r.get("marche", "")).startswith("joueur_"):
+        res = BP.settle({**r, "marche_cle": r["marche"]}, _box(pick["match_id"], m))
+        return {**pick, "resultat": res} if res else pick
     hp, ap = (int(x) for x in str(m["score"]).replace(" ", "").split("-"))
     return {**pick, "resultat": settle(r["marche"], r["selection"], r["ligne"], hp, ap)}
 
 
 def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[dict]], previous: dict | None,
                     now: datetime, passage: str) -> dict:
-    """basket_pronostic/<day>: one retained bet per game (football's rules: 1.60 or more, model and market agreeing,
-    the most likely), fixed 45 min before tip-off and then reused as it was; the Top confiance (selections) is the
+    """basket_pronostic/<day>: one retained bet per game (football's rules: 1.50 to 2.30, model and market agreeing,
+    the most likely of the most reliable market tier), fixed 45 min before tip-off and then reused as it was; the Top confiance (selections) is the
     most likely validated "Confiance élevée" bet. matchs: the basket_matchs documents (page + this pass);
     offers: the bets of the games analysed by this pass."""
-    from sportai.services.pronostic import (FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS, _correct, blended,
-                                            pick_ok)
+    from sportai.services.pronostic import (COUNT_MARGIN, FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
+                                            SELECTIONS_PER_DAY, _correct, blended, pick_ok,
+                                            FORCE_CHOICE, NOT_RETAINED, PICK_ODDS, PICK_MIN_CHANCE)
 
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -513,14 +672,27 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
             picks[mid] = settle_pick({**prev, "fige": True}, m)
             continue
         if mid in offers and not _started(m, ko, now):
-            ok = [b for b in offers[mid] if _correct({**b, "_divergence_max": MAX_DIVERGENCE}) and pick_ok(b)]
+            ok = [b for b in offers[mid] if not b.get("_secours") and _correct({**b, "_divergence_max": MAX_DIVERGENCE})
+                  and pick_ok(b)]
+            forced = False
+            if not ok and FORCE_CHOICE:  # a choice on every game (owner 2026-10-28 evening), never a player bet
+                spare = [b for b in offers[mid] if PICK_ODDS[0] <= b["cote"] <= PICK_ODDS[1]
+                         and not b["basket"]["marche"].startswith("joueur_") and b.get("proba_marche") is not None]
+                ok, forced = spare, bool(spare)
             if ok:
-                b = max(ok, key=lambda b: (blended(b), b["cote"]))
+                b = None
+                for t in sorted({TIERS.get(x["basket"]["marche"], 2) for x in ok}):
+                    top = max((x for x in ok if TIERS.get(x["basket"]["marche"], 2) == t), key=lambda x: (blended(x), x["cote"]))
+                    if b is None or blended(top) >= blended(b) + COUNT_MARGIN:
+                        b = top
                 c = round(blended(b), 4)
                 picks[mid] = {"pari": b["pari"], "marche": b["marche"], **base, "cote": b["cote"],
                               "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
                               "niveau": "Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne",
-                              "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"]}
+                              "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"],
+                              **(NOT_RETAINED if forced else {})}
+                if forced and c < PICK_MIN_CHANCE:
+                    picks[mid]["niveau"] = "Confiance faible"
             else:
                 picks[mid] = {"pari": None, **base, "raison": NO_PICK}
             continue
@@ -532,11 +704,11 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
     # the Top confiance: kept once fixed, otherwise the most likely validated "Confiance élevée" bet not yet fixed
     kept = [s for s in previous.get("selections") or [] if (picks.get(s.get("match_id")) or {}).get("fige")
             and picks[s["match_id"]].get("pari") == s.get("pari")]
-    sel = [picks[s["match_id"]] for s in kept[:1]]
-    if not sel:
+    sel = [picks[s["match_id"]] for s in kept[:SELECTIONS_PER_DAY]]
+    if not sel and SELECTIONS_PER_DAY:
         free = [p for p in picks.values() if p.get("pari") and not p.get("fige") and p.get("valide")
                 and p["cote"] >= SELECTION_MIN_ODDS and p["confiance"] >= PICK_HIGH]
-        sel = sorted(free, key=lambda p: (p["confiance"], p["cote"]), reverse=True)[:1]
+        sel = sorted(free, key=lambda p: (p["confiance"], p["cote"]), reverse=True)[:SELECTIONS_PER_DAY]
     selections = [{**{k: p.get(k) for k in PICK_KEYS}, **({"resultat": p["resultat"]} if "resultat" in p else {})}
                   for p in sel]
     return {"jour": day, "sport": SPORT, "maj": now.isoformat(), "passage": passage, "paris_retenus": picks,

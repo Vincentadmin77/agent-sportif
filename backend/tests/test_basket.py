@@ -199,7 +199,10 @@ def _bet(pari, cote, proba, pm, valide=True, market="winner", sel="home", line=N
     return b if valide else {**b, "validation": "non validé"}
 
 
-def test_floor_one_bet_per_match_and_top_confiance_only_on_elevee_validated():
+def test_floor_one_bet_per_match_and_top_confiance_only_on_elevee_validated(monkeypatch):
+    from sportai.services import pronostic
+
+    monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)  # the Top confiance is off since 2026-10-28 (code kept)
     now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
     ko = datetime(2026, 10, 28, 0, 0, tzinfo=timezone.utc)
     matchs = {k: _mdoc(ko) for k in "abcd"}
@@ -224,7 +227,10 @@ def test_floor_one_bet_per_match_and_top_confiance_only_on_elevee_validated():
     assert basket.build_pronostic("2026-10-27", matchs, offers, None, now, "matin")["selections"] == []
 
 
-def test_retained_bet_frozen_at_m45_then_settled():
+def test_retained_bet_frozen_at_m45_then_settled(monkeypatch):
+    from sportai.services import pronostic
+
+    monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)
     ko = datetime(2026, 10, 27, 23, 30, tzinfo=timezone.utc)
     matchs = {"c": _mdoc(ko)}
     early = basket.build_pronostic("2026-10-27", matchs, {"c": [_bet("Victoire H", 1.65, 0.64, 0.61)]}, None,
@@ -247,6 +253,26 @@ def test_retained_bet_frozen_at_m45_then_settled():
     postponed = {"c": {**_mdoc(ko), "reporte": True}}
     assert basket.build_pronostic("2026-10-27", postponed, {}, again, ko + timedelta(hours=3),
                                   "resultats")["paris_retenus"]["c"]["resultat"] == "rembourse"
+
+
+
+def test_singles_1_50_to_2_30_no_top_and_reliable_markets_first():
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+    matchs = {k: _mdoc(datetime(2026, 10, 28, 0, 0, tzinfo=timezone.utc)) for k in "abc"}
+    total = _bet("Plus de 220,5 points dans le match", 1.70, 0.62, 0.60, False, "total", "over", 220.5)
+    offers = {
+        "a": [_bet("Victoire H", 1.52, 0.70, 0.66)],  # 1.50 is enough now
+        "b": [_bet("Victoire H", 2.45, 0.45, 0.42)],  # over 2.30: never
+        "c": [_bet("Victoire H", 1.80, 0.58, 0.56), total],  # the total is not 10 points surer than the winner
+    }
+    doc = basket.build_pronostic("2026-10-27", matchs, offers, None, now, "matin")
+    picks = doc["paris_retenus"]
+    assert picks["a"]["pari"] == "Victoire H" and picks["b"]["pari"] is None
+    assert picks["c"]["pari"] == "Victoire H"
+    assert doc["selections"] == [] and doc["combines"] == []
+    sure = {**total, "proba": 0.72, "proba_marche": 0.70}
+    doc = basket.build_pronostic("2026-10-27", matchs, {"c": [offers["c"][0], sure]}, None, now, "matin")
+    assert doc["paris_retenus"]["c"]["pari"].startswith("Plus de 220,5")
 
 
 # ---------------------------------------------------------------- agent_pass: the collections written
@@ -391,3 +417,21 @@ def test_plan_schedules_basketball_steps():
     assert steps[("2026-10-27T19:30:00+00:00", "m15")] == ["IT1"]
     assert ap._basket_final_days({"x": {"sport": "basket", "jour": "2026-10-27"}}, {},
                                  datetime(2026, 10, 28, 4, 30, tzinfo=timezone.utc)) == ["2026-10-27"]
+
+
+def test_player_bets_kept_in_range_and_settled_from_the_box_score(monkeypatch):
+    rows = [{"marche_cle": "joueur_pts", "joueur": "J. Doe", "joueur_id": "7", "selection": "over", "ligne": 20.5,
+             "cote_mediane": c, "proba": p, "proba_marche": pm, "valeur_mediane": round(p * c - 1, 4)}
+            for c, p, pm in ((1.90, 0.58, 0.52), (2.60, 0.45, 0.40), (1.80, 0.62, 0.45))]
+    monkeypatch.setattr(basket.BP, "price", lambda roster, ids, quotes: rows)
+    game = {"id": 5, "teams": {"home": {"id": 1}, "away": {"id": 2}}}
+    out = basket.player_bets(None, game, {"bookmakers": []})
+    assert [b["cote"] for b in out] == [1.90]  # 2.60 over 2.30, the third too far from the bookmakers
+    assert out[0]["pari"] == "J. Doe : plus de 20,5 points" and not out[0]["valide"]
+    pick = {"pari": out[0]["pari"], "match_id": "5", "regle": out[0]["basket"]}
+    box = [{"player": {"id": 7}, "minutes": "34:10", "points": 24}]
+    monkeypatch.setattr(basket, "_box", lambda gid, m: box)
+    done = {"statut": "termine", "score": "110-100", "jour": "2026-10-28"}
+    assert basket.settle_pick(pick, done)["resultat"] == "gagne"
+    monkeypatch.setattr(basket, "_box", lambda gid, m: None)
+    assert "resultat" not in basket.settle_pick(pick, done)  # box score not fetched yet: settled later

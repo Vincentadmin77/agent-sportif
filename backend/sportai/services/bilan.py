@@ -143,6 +143,8 @@ def day_positions(doc: dict) -> list[dict]:
     match, within POSITION_ODDS, each bet once."""
     src = doc.get("positions") if isinstance(doc.get("positions"), list) else \
         [p for p in (doc.get("paris_retenus") or {}).values() if p.get("pari")]
+    # owner 2026-10-29: a position the model does not retain (former "choix imposé") is shown, never counted
+    src = [p for p in src if not p.get("non_retenu") and not p.get("choix_impose")]
     out, seen = [], set()
     for p in src:
         key = (p.get("match_id") or p.get("match"), p.get("pari"))
@@ -231,7 +233,8 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                               "cote": c.get("cote_totale"), "proba": c.get("proba_totale"),
                               "jambes": c["jambes"], "retenu": c.get("retenu", True), "valide": c["resultat"] == "gagne"})
         for p in (doc.get("paris_retenus") or {}).values():
-            if p.get("pari") and p.get("resultat") in ("gagne", "perdu") and not under_floor([p]):
+            if p.get("pari") and p.get("resultat") in ("gagne", "perdu") and not under_floor([p]) \
+                    and not p.get("non_retenu") and not p.get("choix_impose"):
                 items.append({"jour": day, "type": "Probabilités retenues", "categorie": "pari_retenu",
                               "libelle": f"{p['pari']} ({p['match']})", "cote": p["cote"], "proba": p.get("confiance"),
                               "niveau": p.get("niveau"), "competition": p.get("competition"),

@@ -21,7 +21,9 @@ from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
-from sportai.connectors.the_odds_api import TheOddsApiProvider, fixtures_from_events
+from sportai.connectors.the_odds_api import (FRENCH_EXTRA_MARKETS, FRENCH_EXTRA_WITHIN, TheOddsApiProvider,
+                                             fixtures_from_events, french_only, french_tracking,
+                                             is_french)
 from sportai.db.models import AnalysisRun, CandidateRow, OddsObservation, ProviderStatus, Selection, Setting
 from sportai.selection.engine import COTE_MIN, SelectionConfig
 from sportai.engine.football import dixon_coles as dc
@@ -69,6 +71,7 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
 
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
+DOMESTIC_CUPS = {"ENC": "EN1"}  # cup -> the league whose history rates its clubs
 # European cups analysed with the cross-league model (owner 2026-10-15: the Europa League too, same rules as the
 # Champions League). Its calibration was fitted on the Champions League only (scripts/backtest_ucl.py).
 EUROPEAN_CUPS = ("UCL", "UEL")
@@ -123,10 +126,12 @@ def _mark(db: DB, provider: str, error: str | None = None, quota: dict | None = 
 
 def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by: str,
                      mode: str | None = None, now: datetime | None = None, goal_markets: bool = False,
-                     max_hours_ahead: float | None = None) -> AnalysisRun:
+                     max_hours_ahead: float | None = None, absence_lookup=None) -> AnalysisRun:
     """goal_markets: also fetch "both teams to score" and totals odds, match by match, for the matches
     inside the analysis window (costs 2 credits per match; used at the 45 min pass).
-    max_hours_ahead: widen the analysis window (the 8 am pass covers every match of the day)."""
+    max_hours_ahead: widen the analysis window (the 8 am pass covers every match of the day).
+    absence_lookup(fixture) -> (f_home, f_away) or None: missing key players, result markets only
+    (prematch.run_prematch, docs/22-absences.md); league matches only, the study did not cover the European cups."""
     now = now or datetime.now(timezone.utc)
     mode = mode or settings.data_mode
     cfg = selection_config(db)
@@ -157,7 +162,9 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             fixtures_p = ApiFootballProvider(settings.api_football_key)
             backup = OpenFootballProvider() if competition in OPENFOOTBALL_FILES else None
             current = fixtures_p.name
-            history, used = load_history(db, competition, now, fixtures_p, backup)
+            # a domestic cup: its clubs are rated on their league's results (owner 2026-10-28: EFL Cup)
+            history, used = load_history(db, DOMESTIC_CUPS.get(competition, competition), now, fixtures_p,
+                                         backup if competition not in DOMESTIC_CUPS else None)
             if competition in EUROPEAN_CUPS:
                 # Clubs of different leagues are only comparable through a model fitted on all of them at once.
                 for dom in UCL_DOMESTIC:
@@ -205,11 +212,14 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     # Each market requested costs one credit: totals only when that market is enabled.
                     odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions=settings.odds_regions,
                                                 bookmakers=settings.odds_bookmakers,
-                                                markets="h2h,totals" if "totals" in cfg.enabled_markets else "h2h")
+                                                markets="h2h,totals" if "totals" in cfg.enabled_markets or french_only()
+                                                else "h2h")
                     quotes = odds_p.odds(competition)
                     _mark(db, odds_p.name, quota=odds_p.last_quota)
                     if fixtures is None:
                         fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
+                    if french_tracking() and FRENCH_EXTRA_MARKETS:  # the French rule's extra markets, last pass only
+                        quotes += [q for q in _french_extra(odds_p, competition, fixtures, now) if is_french(q.bookmaker)]
                     if goal_markets:
                         quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
                     odds_source = odds_p.name
@@ -226,6 +236,19 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     if kept:
                         quotes += kept
                         odds_source = "+".join(x for x in (odds_source, fixtures_p.name) if x)
+            # French rule (owner 2026-10-28): positions only on French bookmakers' odds, which API-Football does not
+            # carry. Their 1X2 and totals come from The Odds API, region fr (2 credits a league per pass).
+            # Since 2026-10-29 the same French odds keep the positions at a French price apart (french_tracking).
+            if french_tracking() and window and quotes and TheOddsApiProvider.name not in (odds_source or ""):
+                try:
+                    odds_p = TheOddsApiProvider(settings.the_odds_api_key, regions="fr", markets="h2h,totals")
+                    quotes += [q for q in odds_p.odds(competition) if is_french(q.bookmaker)]
+                    if FRENCH_EXTRA_MARKETS:
+                        quotes += [q for q in _french_extra(odds_p, competition, window, now) if is_french(q.bookmaker)]
+                    _mark(db, odds_p.name, quota=odds_p.last_quota)
+                    odds_source = "+".join(x for x in (odds_source, odds_p.name) if x)
+                except ProviderUnavailable as e:  # no French odds: no position at a French price on this league
+                    _mark(db, TheOddsApiProvider.name, str(e))
             run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))
@@ -244,7 +267,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                 goals_label = book.data["model"]
         report = run_prematch(history, fixtures, quotes, cfg, fit_cfg=fit_cfg, now=now, goals_lookup=goals_lookup,
                               goals_model_label=goals_label,
-                              calibration=UCL_CALIBRATION if competition in EUROPEAN_CUPS else None)
+                              calibration=UCL_CALIBRATION if competition in EUROPEAN_CUPS else None,
+                              absence_lookup=absence_lookup if competition not in EUROPEAN_CUPS else None)
     except ValueError as e:
         run.status, run.status_detail, run.finished_at = "failed", str(e), datetime.now(timezone.utc)
         db.commit()
@@ -261,6 +285,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                      "probabilities": f.probabilities, "skipped_reason": f.skipped_reason, "n_quotes": f.n_quotes,
                      "likely_score": f.likely_score, "goals_model": f.goals_model,
                      "goals_model_note": f.goals_model_note,
+                     **({"absence_factors": list(f.absence_factors)} if f.absence_factors else {}),
+                     **({"cotes_fr": f.french_odds} if f.french_odds is not None else {}),
                      # bets of the odds feed the score model cannot price: listed with their odds, "non analysé"
                      **({"non_analyses": unpriced[f.fixture.provider_event_id]}
                         if unpriced.get(f.fixture.provider_event_id) and not f.skipped_reason else {})}
@@ -447,6 +473,20 @@ def count_markets(competition: str, raw: list[dict], window, fixtures: list[dict
         out.append({**f, "comptages_cotes": rows,
                     "non_analyses": [o for o in f.get("non_analyses") or [] if o.get("marche") not in FEED]}
                    if rows else f)
+    return out
+
+
+def _french_extra(odds_p: TheOddsApiProvider, competition: str, fixtures, now: datetime):
+    """Double chance, draw no bet and both teams score at the French sites, for the matches of the last pass."""
+    events = {(normalise(e["home_team"]), normalise(e["away_team"])): e["id"] for e in odds_p.last_events}
+    out = []
+    for f in fixtures:
+        event_id = events.get((normalise(f.home), normalise(f.away)))
+        if f.status == "scheduled" and now < f.kickoff <= now + FRENCH_EXTRA_WITHIN and event_id:
+            try:
+                out += odds_p.event_odds(competition, event_id, FRENCH_EXTRA_MARKETS)
+            except ProviderUnavailable as e:  # the match keeps its 1X2 and totals
+                print(f"French extra markets {f.home} - {f.away}: {str(e)[:120]}", file=sys.stderr)
     return out
 
 

@@ -337,6 +337,7 @@ def test_one_bet_per_match_and_top_pick_from_2026_10_28(monkeypatch):
     monkeypatch.setattr(pronostic, "SELECTIONS_PER_DAY", 1)
     monkeypatch.setattr(pronostic, "COMBOS", True)
     monkeypatch.setattr(pronostic, "PICK_ODDS", (1.50, None))
+    monkeypatch.setattr(pronostic, "FORCE_CHOICE", False)
     from sportai.services.bilan import bankroll_settings, build_bilan
 
     now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
@@ -509,3 +510,29 @@ def test_estimated_scores_count_as_positions_once_within_1_50_and_2_30():
     assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
     pos = [i for i in b["valides"] + b["non_valides"] if i["categorie"] == "position"]
     assert sorted(i["libelle"] for i in pos if i.get("origine") == "score estimé") == ["Match nul (C - D)", "Victoire A (A - B)"]
+
+
+def test_top_pick_path_every_match_gets_a_choice_from_2026_10_28_evening():
+    # owner 2026-10-28 16:00: "je veux un choix sur tous les matchs de ce soir"
+    now = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
+
+    def l(match, pari, cote, proba, pm, marche="Nombre de buts"):
+        return {**leg(match, pari, cote, proba, pm, 4), "match_id": f"2026-10-28-{match}", "marche": marche,
+                "coup_envoi": (now + timedelta(hours=4)).isoformat(), "_p_cmp": proba}
+
+    legs = [l("i-j", "Victoire i", 1.80, 0.66, 0.50, "Résultat du match"),  # 16 points apart: not a normal pick
+            l("i-j", "Plus de 2,5 buts", 1.72, 0.50, 0.55),
+            l("i-j", "Les deux équipes marquent : non", 1.70, 0.60, 0.58, "Les deux équipes marquent"),
+            l("k-l", "Victoire k", 2.60, 0.40, 0.38, "Résultat du match")]  # nothing within 1.50-2.30
+    picks = build_pronostic(legs, {}, None, now, "matin")["paris_retenus"]
+    assert picks["2026-10-28-i-j"]["pari"] == "Victoire i" and picks["2026-10-28-i-j"]["non_retenu"]
+    assert picks["2026-10-28-k-l"]["pari"] is None
+
+
+def test_a_position_the_model_does_not_retain_never_counts_in_the_ratio():
+    # owner 2026-10-29: shown with "Le modèle ne le retient pas", outside the ratio
+    from sportai.services.bilan import day_positions
+    doc = {"paris_retenus": {"a": {"match_id": "a", "pari": "Victoire a", "cote": 1.8},
+                             "b": {"match_id": "b", "pari": "Victoire b", "cote": 1.8, "non_retenu": True},
+                             "c": {"match_id": "c", "pari": "Victoire c", "cote": 1.8, "choix_impose": True}}}
+    assert [p["match_id"] for p in day_positions(doc)] == ["a"]

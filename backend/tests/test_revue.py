@@ -93,7 +93,7 @@ def test_goal_leg_from_the_review_enters_the_ideas(tmp_path):
     Base.metadata.create_all(eng)
     db = sessionmaker(bind=eng, expire_on_commit=False)()
     _run_with_rows(db, [("m1", "btts", "yes", None, 1.80, 0.54, 0.0, 0.53), ("m1", "btts", "no", None, 2.05, 0.46, 0.0, 0.47)])
-    assert not [l for l in legs_from_db(db, NOW.date()) if l["pari"].endswith("oui")]
+    assert not [l for l in legs_from_db(db, NOW.date()) if l["pari"].endswith("oui") and not l.get("_secours")]
     legs = legs_from_db(db, NOW.date(), corrections={"btts_oui": {"modele": 1.2, "marche": 1.0}})
     (leg,) = [l for l in legs if l["pari"].endswith("oui")]
     assert leg["proba_brute"] == 0.54 and leg["proba"] > 0.58 and leg["valeur"] > 0 and leg["correction"] == 1.2

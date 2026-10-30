@@ -52,7 +52,7 @@ from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
-FOOT_COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "UCL", "UEL"]
+FOOT_COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "ENC", "PT1", "UCL", "UEL"]
 # Basketball (owner 2026-10-27): NBA and WNBA from API-Basketball, same rules as football (docs/21-basket-passes.md).
 BASKET_COMPETITIONS = ["NBA", "WNBA"]
 COMPETITIONS = FOOT_COMPETITIONS + BASKET_COMPETITIONS
@@ -297,25 +297,41 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     db = session_factory()()
     manage.init(db)
     docs, notes, fixtures = {}, bnotes, []
+    # Missing key players (docs/22-absences.md), read BEFORE the matches are priced: the official line-ups when they
+    # are out (45 min pass, full strength), else the day's injuries list (half strength). API-Football only, never
+    # The Odds API; the injuries list is fetched once a day per match and kept on the page for the live loop.
+    api, raw_today, effects = None, None, {}
+    try:
+        from sportai.connectors.api_football import ApiFootballProvider
+
+        api = ApiFootballProvider(get_settings().api_football_key)
+        raw_today, effects = _absences(api, comps, current, now, morning)
+    except Exception as e:  # the correction is a bonus: without it the probabilities are the usual ones
+        notes.append(f"absences unavailable ({str(e)[:120]})")
+    lookup = _absence_lookup(effects)
     for comp in comps:
         run = execute_prematch(db, get_settings(), comp, "routine", now=now, goal_markets=goals,
-                              max_hours_ahead=24 if morning else None)
+                              max_hours_ahead=24 if morning else None, absence_lookup=lookup)
         notes.append(f"{comp} {run.status}" + (f" ({run.status_detail[:120]})" if run.status_detail else ""))
         if run.status == "completed":
             new = build_match_docs(db, run, {**current, **docs})
             docs.update(new)
             fixtures += run.fixtures or []
     try:  # before the tickets: a high rotation risk (next match) keeps some bets out of them
-        _context(comps, docs, current, now)
+        _context(comps, docs, current, now, api=api, raw_today=raw_today)
     except Exception as e:  # context is a bonus: never lose the pass for it
         notes.append(f"contexte unavailable ({str(e)[:120]})")
+    try:  # after the context, which rebuilds "contexte" from scratch
+        _apply_absences(effects, docs, fixtures, now)
+    except Exception as e:  # noqa: BLE001 - display only
+        notes.append(f"absences display unavailable ({str(e)[:120]})")
     try:
         notes.append("pronostic: " + _pronostic(db, page, docs, out, now, "matin" if morning else "passage"))
     except Exception as e:  # the tab is a bonus: never lose the pass for it
         notes.append(f"pronostic unavailable ({str(e)[:120]})")
     db.close()
     try:
-        docs.update(_lineups(comps, docs, fixtures, now))
+        docs.update(_lineups(comps, docs, fixtures, now, api=api, raw_today=raw_today))
     except Exception as e:  # line-ups are a bonus: never lose the pass for them
         notes.append(f"line-ups unavailable ({str(e)[:120]})")
     try:
@@ -419,7 +435,8 @@ def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now
                                   "exterieur": recent_form(api.team_last(a), a)}
 
 
-def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
+def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime, api=None,
+             raw_today: list[dict] | None = None) -> None:
     """Referee, standings, streaks and weather of the pass's matches still to play (sportai/services/contexte.py).
     Each pass refreshes them (the referee is often named late, the forecast improves); the streaks are fetched
     once a day per match, the teams' next matches too (rotation risk, docs/15-prochain-match.md). No probability
@@ -437,10 +454,10 @@ def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], 
             if d.get("coup_envoi") and datetime.fromisoformat(d["coup_envoi"]) > now}
     if not days:
         return
-    api = ApiFootballProvider(get_settings().api_football_key)
+    api = api or ApiFootballProvider(get_settings().api_football_key)
     src = ContextSources(api, now)
     for day in sorted(days):
-        for fx in api.fixtures_on(comps, day):
+        for fx in (raw_today if raw_today is not None and day == journee(now) else api.fixtures_on(comps, day)):
             if fx["fixture"]["status"]["short"] not in ("NS", "TBD"):
                 continue
             key = find_doc(docs, f"{day:%Y-%m-%d}", fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
@@ -461,7 +478,7 @@ def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], 
 
 
 def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now: datetime,
-             window: timedelta = timedelta(minutes=75)) -> dict[str, dict]:
+             window: timedelta = timedelta(minutes=75), api=None, raw_today: list[dict] | None = None) -> dict[str, dict]:
     """Official line-ups, notable absentees and goalscorer estimates for the matches close to kick-off."""
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
@@ -473,10 +490,10 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
             if d.get("coup_envoi") and now < datetime.fromisoformat(d["coup_envoi"]) <= now + window}
     if not soon:
         return {}
-    api = ApiFootballProvider(get_settings().api_football_key)
+    api = api or ApiFootballProvider(get_settings().api_football_key)
     day = journee(now)
     out = {}
-    for fx in api.fixtures_on(comps, day):
+    for fx in (raw_today if raw_today is not None else api.fixtures_on(comps, day)):
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
         key = find_doc(soon, f"{day:%Y-%m-%d}", home, away)
         if not key:
@@ -486,6 +503,138 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
         doc["scenario"] = scenario_with_squads(doc)
         out[key] = doc
     return out
+
+
+LINEUP_WINDOW = timedelta(minutes=75)  # line-ups are looked for from 75 min before kick-off
+ABSENCE_HORIZON = timedelta(hours=4)  # passes other than the morning one: the matches of the next hours only
+
+
+def _absences(api, comps: list[str], current: dict[str, dict], now: datetime,
+              morning: bool) -> tuple[list[dict], dict[tuple[str, str], dict]]:
+    """Missing key players of the matches this pass prices, before they are priced (docs/22-absences.md).
+
+    Returns today's raw API-Football fixtures (reused by the context and line-up steps, no second request) and, by
+    (home, away) API-Football names, {"effet": lineups.absence_effect(...) or None, "absents": the day's absentees
+    block when it was fetched now, else None}. Uses only what the pass already reads: /fixtures/lineups and /players
+    (line-ups, 45 min pass), /injuries once a day per match and /players of a side with someone listed."""
+    from sportai.connectors.api_football import LEAGUE_IDS
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+    from sportai.services.runs import EUROPEAN_CUPS
+
+    cups = {LEAGUE_IDS[c] for c in EUROPEAN_CUPS if c in LEAGUE_IDS}  # league matches only (the study's scope)
+    day = journee(now)
+    raw = api.fixtures_on(comps, day)
+    horizon = now + (timedelta(hours=24) if morning else ABSENCE_HORIZON)
+    out = {}
+    for fx in raw:
+        ts = fx["fixture"].get("timestamp")
+        if fx["fixture"]["status"]["short"] not in ("NS", "TBD") or not ts or fx["league"].get("id") in cups:
+            continue
+        ko = datetime.fromtimestamp(ts, timezone.utc)
+        if not now < ko <= horizon:
+            continue
+        home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
+        key = find_doc(current, f"{day:%Y-%m-%d}", home, away)
+        try:
+            out[(home, away)] = _absence_of(api, fx, (current.get(key) or {}) if key else {}, ko, now)
+        except Exception as e:  # noqa: BLE001 - this match is priced without the correction
+            print(f"absences unavailable for {home} ({str(e)[:120]})", file=sys.stderr)
+    return raw, out
+
+
+def _absence_of(api, fx: dict, prev: dict, ko: datetime, now: datetime) -> dict:
+    """The absence effect of one raw fixture: official line-ups when both are out and kick-off is near, else the
+    injuries list (kept in prev["absents"] when already read today). No information: "effet" None (factor 1)."""
+    from sportai.services.lineups import (SOURCE_INJURIES, SOURCE_LINEUPS, absence_effect, absentees, absents_ready,
+                                          regular_starters, side_from_absents, side_from_lineup, team_players_index)
+    from sportai.services.prematch import journee
+
+    season, league = fx["league"]["season"], fx["league"].get("id")
+    home, away = fx["teams"]["home"], fx["teams"]["away"]
+    index: dict = {}
+
+    def players(team: dict):
+        if team["id"] not in index:
+            index[team["id"]] = team_players_index(api.team_players(team["id"], season),
+                                                   api.team_players(team["id"], season - 1), team["id"], league)
+        return index[team["id"]]
+
+    if ko <= now + LINEUP_WINDOW:
+        teams = {t["team"]["id"]: t for t in api.lineups(fx["fixture"]["id"], ttl=300)}
+        if home["id"] in teams and away["id"] in teams:
+            sides = [side_from_lineup(teams[t["id"]], players(t)) for t in (home, away)]
+            return {"effet": absence_effect(*sides, home["name"], away["name"], SOURCE_LINEUPS), "absents": None}
+    today = f"{journee(now):%Y-%m-%d}"
+    absents, fresh = prev.get("absents"), None
+    if not absents_ready(absents, today):
+        injuries = api.injuries(fx["fixture"]["id"])
+        listed = {(it.get("team") or {}).get("id") for it in injuries}
+        tps = {t["id"]: players(t) for t in (home, away) if t["id"] in listed}
+        regulars = {tid: regular_starters(api.team_players(tid, season), tid, league) for tid in tps}
+        absents = fresh = {"jour": today, **absentees(injuries, fx, regulars, tps)}
+    if not (absents.get("domicile") or absents.get("exterieur")):
+        return {"effet": None, "absents": fresh}  # an empty list may only mean the league is not covered: factor 1
+    sides = [side_from_absents(absents.get(s) or []) for s in ("domicile", "exterieur")]
+    return {"effet": absence_effect(*sides, home["name"], away["name"], SOURCE_INJURIES), "absents": fresh}
+
+
+def _absence_lookup(effects: dict[tuple[str, str], dict]):
+    """prematch.AbsenceLookup over _absences' result: (f_home, f_away) of a fixture, None when nothing is known."""
+    from sportai.connectors.teams import same_team
+
+    def lookup(fx) -> tuple[float, float] | None:
+        for (home, away), e in effects.items():
+            if e.get("effet") and same_team(home, fx.home) and same_team(away, fx.away):
+                return e["effet"]["domicile"], e["effet"]["exterieur"]
+        return None
+
+    return lookup
+
+
+ABSENCE_NOTE = " Exception : les joueurs clés absents corrigent les chances de victoire, de nul et de handicap."
+
+
+def _apply_absences(effects: dict[tuple[str, str], dict], docs: dict[str, dict], fixtures: list[dict],
+                    now: datetime) -> None:
+    """Writes on the page documents the absentees fetched by _absences and, for each match priced in this pass,
+    contexte.absences_effet {"domicile", "exterieur", "source", "phrases"} with its sentences in contexte.phrases
+    (a match priced without the correction loses an earlier pass's effect)."""
+    from sportai.connectors.teams import same_team
+    from sportai.services.lineups import scenario_with_squads
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+
+    day = f"{journee(now):%Y-%m-%d}"
+    for (home, away), e in effects.items():
+        key = find_doc(docs, day, home, away)
+        if key and e.get("absents"):
+            docs[key]["absents"] = e["absents"]
+            if docs[key].get("scenario"):
+                docs[key]["scenario"] = scenario_with_squads(docs[key])
+    for f in fixtures:
+        if f.get("skipped_reason"):
+            continue
+        h, _, a = f["match"].partition(" - ")
+        key = find_doc(docs, day, h, a)
+        if not key:
+            continue
+        ctx = dict(docs[key].get("contexte") or {})
+        old = ctx.pop("absences_effet", None) or {}
+        phrases = [p for p in ctx.get("phrases") or [] if p not in (old.get("phrases") or [])]
+        note = (ctx.get("note") or "").replace(ABSENCE_NOTE, "")
+        eff = next((e["effet"] for (hh, aa), e in effects.items()
+                    if e.get("effet") and same_team(hh, h) and same_team(aa, a)), None)
+        if f.get("absence_factors") and eff:
+            ctx["absences_effet"] = eff
+            phrases += eff["phrases"]
+            note += ABSENCE_NOTE if note else ""
+        elif not old:
+            continue  # nothing to add or take back
+        ctx["phrases"] = phrases
+        if note:
+            ctx["note"] = note
+        docs[key]["contexte"] = ctx
 
 
 def _fill_lineups(api, fx: dict, doc: dict, fixtures: list[dict], ttl: float = 300) -> bool:
