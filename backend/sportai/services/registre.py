@@ -696,9 +696,11 @@ def tennis_m_choice(tm: dict) -> dict:
                "cote_prise": m.get("cote"), "p_marche": m.get("proba_bookmakers"), "p_modele": m.get("proba_modele"),
                "resultat": m.get("resultat"), "fige": m.get("fige")}
         if m.get("passe"):
-            out = {"pari": None, "raison": m.get("raison"), "resultat": None, "fige": m.get("fige"),
-                   "meilleure_option": {"pari": m.get("position"), "cote_prise": m.get("cote"),
-                                        "p_marche": m.get("proba_bookmakers"), "p_modele": m.get("proba_modele")}}
+            best = {"pari": m.get("position"), "cote_prise": m.get("cote"), "p_marche": m.get("proba_bookmakers"),
+                    "p_modele": m.get("proba_modele")}
+            ok = all(isinstance(best[k], (int, float)) for k in ("cote_prise", "p_marche")) and best["pari"]
+            out = {"pari": None, "raison": _pass_reason(best) if ok else m.get("raison"), "resultat": None,
+                   "fige": m.get("fige"), "meilleure_option": best}
         return {k: v for k, v in out.items() if v is not None or k == "pari"}
     c = tm.get("choix")
     if not c or not c.get("position"):
