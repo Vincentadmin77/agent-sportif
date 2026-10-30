@@ -60,3 +60,13 @@ def test_foot_never_backs_the_lucky_team():
     assert S.foot_choice(m, (0.5, 0.0))["pari"] == "Victoire Lille"
     c = S.foot_choice(m, (3.0, 0.0))
     assert c["pari"] is None and "chance" in c["raison"]
+
+
+def test_basket_passes_on_doubtful_key_player_and_uses_absences():
+    bm = {"competition": "NBA", "domicile": "A", "exterieur": "B", "points": {"total_prevu": 226.5, "ecart_prevu": 0.0},
+          "cotes_cloture": {"lignes": _lines(226.5, 2.2)}}
+    adj = {"marge": 0.0, "total": -6.0, "domicile": {"incertains": [], "absents": ["X"]},
+           "exterieur": {"incertains": [], "absents": []}}
+    assert S.basket_choice(bm, "2026-12-15", adj)["selection"] == "under"
+    adj["exterieur"]["incertains"] = ["Star (25 pts, 35 min)"]
+    assert "incertain" in S.basket_choice(bm, "2026-12-15", adj)["raison"]

@@ -69,13 +69,25 @@ def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
 
 
 def basket(day: str, bmatchs: dict[str, dict], prev: dict, now: datetime) -> dict:
+    try:  # NBA injuries (ESPN, internal test) and the box scores to weigh them
+        from sportai.services import basket_absents as BA
+        injuries, boxes = BA.fetch(now), BA.box_scores()
+    except Exception:  # noqa: BLE001 - V2 then works without injuries
+        injuries = boxes = None
     out = {}
     for mid, bm in sorted(bmatchs.items()):
         if bm.get("jour") != day:
             continue
         ko = _aware(bm.get("coup_envoi"))
         frozen = bool((bm.get("passages") or {}).get("m45")) or bool(ko and now >= ko - FREEZE)
-        c = S.record(prev.get(mid), S.basket_choice(bm, day), ko, now, frozen)
+        adj = None
+        if injuries and (bm.get("competition") or bm.get("code_ligue")) == "NBA":
+            adj = BA.game_adjustment(bm.get("domicile") or "", bm.get("exterieur") or "", injuries, boxes)
+        new = S.basket_choice(bm, day, adj)
+        if adj and (adj["domicile"]["absents"] or adj["exterieur"]["absents"]):
+            new["absents"] = {"domicile": adj["domicile"]["absents"], "exterieur": adj["exterieur"]["absents"],
+                              "points_ecart": adj["marge"], "points_total": adj["total"]}
+        c = S.record(prev.get(mid), new, ko, now, frozen)
         S.basket_settle(c, bm)
         out[mid] = _keep({**c, "match": f"{bm.get('domicile')} - {bm.get('exterieur')}",
                           "competition": bm.get("competition"), "coup_envoi": bm.get("coup_envoi"),

@@ -15,7 +15,8 @@ market overrates lucky teams: backing the unlucky side gained +2.3 % against the
 
 Basketball (inspired by Voulgaris): a projected score, then a bet only when the projection is far from the bookmakers'
 main number, in POINTS (total >= BASKET_TOTAL_GAP, spread >= BASKET_SPREAD_GAP), at the main line; never more than
-twice that far (the ratings do not see injuries yet: a huge gap is usually a missing player, not an edge). Totals and spreads
+twice that far (a huge gap is usually news the projection misses). Injuries (basket_absents): the points lost by an
+absent regular are taken off the projection, and no position while a key player is doubtful. Totals and spreads
 only: no moneyline on a favourite. Early in the season the ratings are young, so the gap needed is larger.
 
 Tennis (inspired by Sackmann): surface Elo is the forecast (overall and surface ratings blended, K shrinking with
@@ -183,12 +184,21 @@ def _best_at(lines: list[dict], market: str, sel: str, line: float) -> dict | No
     return max(rows, key=lambda r: r["cote"]) if rows else None
 
 
-def basket_choice(bm: dict, day: str | None = None) -> dict:
+def basket_choice(bm: dict, day: str | None = None, adj: dict | None = None) -> dict:
+    """adj: injuries of the game (basket_absents.game_adjustment), added to the projection; None = not known."""
     from sportai.services.basket import label
 
     lines = (bm.get("cotes_cloture") or {}).get("lignes") or []
     pts = bm.get("points") or {}
     proj_t, proj_m = pts.get("total_prevu"), pts.get("ecart_prevu")  # ecart = home - away
+    if adj:
+        doubt = (adj.get("domicile") or {}).get("incertains", []) + (adj.get("exterieur") or {}).get("incertains", [])
+        if doubt:
+            return {"pari": None, "raison": f"Je passe : joueur clé incertain ({', '.join(doubt)}), j'attends de savoir s'il joue."}
+        if isinstance(proj_m, (int, float)):
+            proj_m += adj.get("marge", 0.0)
+        if isinstance(proj_t, (int, float)):
+            proj_t += adj.get("total", 0.0)
     start = BASKET_SEASON_START.get(bm.get("competition") or bm.get("code_ligue") or "")
     early = bool(start and day and (date.fromisoformat(day) - start).days < BASKET_EARLY_DAYS)
     f = BASKET_EARLY_FACTOR if early else 1.0
