@@ -49,13 +49,19 @@ def _keep(d: dict) -> dict:
 
 
 def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
+    try:  # xG of every league game, from the API-Football cache the morning goals refresh keeps up to date
+        from sportai.services.goals_refresh import refresh_data
+        history = refresh_data(now, None)[0]
+    except Exception:  # noqa: BLE001 - the xG filter is then skipped
+        history = {}
     out = {}
     for mid, m in sorted(matchs.items()):
         if m.get("jour") != day or m.get("sport", "foot") != "foot":
             continue
         ko = _aware(m.get("coup_envoi"))
         frozen = bool((m.get("passages") or {}).get("m45")) or bool(ko and now >= ko - FREEZE)
-        c = S.record(prev.get(mid), S.foot_choice(m), ko, now, frozen)
+        luck = (S.xg_luck(history, m.get("domicile"), ko or now), S.xg_luck(history, m.get("exterieur"), ko or now))
+        c = S.record(prev.get(mid), S.foot_choice(m, luck), ko, now, frozen)
         S.foot_settle(c, m)
         out[mid] = _keep({**c, "match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
                           "coup_envoi": m.get("coup_envoi"), "score": m.get("score") if m.get("statut") == "termine" else None})

@@ -53,3 +53,10 @@ def test_record_freezes_and_keeps_late_matches_out_of_ratio():
     assert S.record(frozen, {"pari": "y"}, now + timedelta(minutes=30), now, True)["pari"] == "x"
     late = S.record(None, {"pari": "x", "cote_prise": 1.8, "resultat": "gagne"}, now - timedelta(hours=1), now, False)
     assert late["enregistre_apres_coup_envoi"] and S.ratio([late])["positions"] == 0
+
+
+def test_foot_never_backs_the_lucky_team():
+    m = _foot([{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.59}])
+    assert S.foot_choice(m, (0.5, 0.0))["pari"] == "Victoire Lille"
+    c = S.foot_choice(m, (3.0, 0.0))
+    assert c["pari"] is None and "chance" in c["raison"]

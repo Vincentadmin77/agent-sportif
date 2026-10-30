@@ -9,7 +9,9 @@ Football (inspired by Benham / Bloom, Sumpter, Tippett): the market is the best 
 used is mostly the market's (MARKET_WEIGHT) and the model only nudges it; the model is built on expected goals and
 shots (process) rather than past scores. A position needs value at the best odds AND a model that agrees with the
 market (never more than FOOT_MAX_ABOVE above it: when it is, the model usually missed news). Only the three priority
-axes (result, goals, both teams score), never "moins de 0,5", no quarter lines.
+axes (result, goals, both teams score), never "moins de 0,5", no quarter lines. Never back (result bets) a team whose
+goals beat its expected goals, net of conceded, by FOOT_LUCK_GAP more than its opponent's over the last 8 games (the
+market overrates lucky teams: backing the unlucky side gained +2.3 % against the closing odds on 5 seasons).
 
 Basketball (inspired by Voulgaris): a projected score, then a bet only when the projection is far from the bookmakers'
 main number, in POINTS (total >= BASKET_TOTAL_GAP, spread >= BASKET_SPREAD_GAP), at the main line; never more than
@@ -38,6 +40,8 @@ FOOT_FAMILIES = frozenset({"victoire", "double_chance", "rembourse_si_nul", "btt
 FOOT_MIN_CHANCE = 0.55
 FOOT_MAX_ABOVE = 0.06
 FOOT_MIN_VALUE = 1.0
+FOOT_LUCK_MATCHES = 8
+FOOT_LUCK_GAP = 2.0  # never back the side whose goals beat its xG (net of conceded) by 2+ more than the other's
 
 # --- basketball
 BASKET_TOTAL_GAP = 4.0
@@ -70,7 +74,30 @@ def _n(x: float) -> str:
 
 # ---------------------------------------------------------------- football
 
-def foot_options(m: dict) -> list[dict]:
+def xg_luck(history: dict, team: str, before) -> float | None:
+    """Benham / Tippett: goals scored minus xG, minus (goals conceded minus xG against), on the team's last
+    FOOT_LUCK_MATCHES league games with xG before `before` (a datetime). Positive = luckier than its play."""
+    rows = []
+    for ms in history.values():
+        for x in ms:
+            if x.kickoff < before and x.xg_h is not None and x.xg_a is not None and team in (x.home, x.away):
+                home = x.home == team
+                gf, ga, xf, xa = (x.hg, x.ag, x.xg_h, x.xg_a) if home else (x.ag, x.hg, x.xg_a, x.xg_h)
+                rows.append((x.kickoff, (gf - xf) - (ga - xa)))
+    rows = sorted(rows)[-FOOT_LUCK_MATCHES:]
+    return round(sum(v for _, v in rows), 2) if len(rows) == FOOT_LUCK_MATCHES else None
+
+
+def _backs(key) -> str | None:
+    """Which side a result bet backs: home, away, or None (draw, 12, goal markets)."""
+    if key.market in ("1x2", "dnb"):
+        return key.selection if key.selection in ("home", "away") else None
+    if key.market == "double_chance":
+        return {"1X": "home", "X2": "away"}.get(key.selection)
+    return None
+
+
+def foot_options(m: dict, luck: tuple | None = None) -> list[dict]:
     from sportai.engine.football.markets import is_quarter
     from sportai.services.revue import _keys, famille
 
@@ -87,24 +114,35 @@ def foot_options(m: dict) -> list[dict]:
             continue
         seen.add(r["pari"])
         chance = MARKET_WEIGHT * pm + (1 - MARKET_WEIGHT) * p
+        side, lucky = _backs(key), False
+        if side and luck and None not in luck:
+            mine, theirs = (luck[0], luck[1]) if side == "home" else (luck[1], luck[0])
+            lucky = mine - theirs >= FOOT_LUCK_GAP
         out.append({"pari": r["pari"], "marche": r.get("marche"), "cote_prise": cote, "p_marche": round(pm, 4),
-                    "p_modele": round(p, 4), "chance": round(chance, 4),
-                    "ok": chance >= FOOT_MIN_CHANCE and chance * cote >= FOOT_MIN_VALUE and 0 <= p - pm <= FOOT_MAX_ABOVE})
+                    "p_modele": round(p, 4), "chance": round(chance, 4), "chanceux": lucky,
+                    "ok": chance >= FOOT_MIN_CHANCE and chance * cote >= FOOT_MIN_VALUE and 0 <= p - pm <= FOOT_MAX_ABOVE
+                    and not lucky})
     return sorted(out, key=lambda o: -o["chance"])
 
 
-def foot_choice(m: dict) -> dict:
-    opts = foot_options(m)
+def foot_choice(m: dict, luck: tuple | None = None) -> dict:
+    """luck = (home, away) from xg_luck, or None when unknown (the xG filter is then skipped)."""
+    opts = foot_options(m, luck)
     ok = [o for o in opts if o["ok"]]
     if ok:
-        c = {k: v for k, v in ok[0].items() if k != "ok"}
+        c = {k: v for k, v in ok[0].items() if k not in ("ok", "chanceux")}
+        if luck and None not in luck:
+            c["chance_xg"] = {"domicile": luck[0], "exterieur": luck[1]}
         c["raison"] = (f"Le marché la voit à {_pc(c['p_marche'])}, le modèle (buts attendus, tirs) à {_pc(c['p_modele'])} : "
                        f"ils sont d'accord et la cote de {_n(c['cote_prise'])} paie plus que la chance.")
         return c
     if not opts:
         return {"pari": None, "raison": "Je passe : aucune position de résultat, de buts ou « les deux marquent » entre 1,50 et 2,30."}
     b = opts[0]
-    if b["p_modele"] - b["p_marche"] > FOOT_MAX_ABOVE:
+    if b["chanceux"]:
+        why = ("l'équipe choisie marque plus que ses buts attendus ces 8 derniers matchs : elle a eu de la chance, "
+               "le marché la surestime")
+    elif b["p_modele"] - b["p_marche"] > FOOT_MAX_ABOVE:
         why = f"le modèle ({_pc(b['p_modele'])}) est trop au-dessus du marché ({_pc(b['p_marche'])}), il a sans doute raté une info"
     elif b["p_modele"] < b["p_marche"]:
         why = f"le modèle ({_pc(b['p_modele'])}) y croit moins que le marché ({_pc(b['p_marche'])}) : pas de valeur"

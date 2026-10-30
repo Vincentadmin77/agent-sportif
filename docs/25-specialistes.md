@@ -11,7 +11,7 @@ Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/sp
 ## Méthodes
 | Sport | Inspiré de | Marchés | Règle |
 |---|---|---|---|
-| Foot | Benham / Bloom (le marché comme base, xG), Sumpter, Tippett | résultat (1/2, DC, DNB), plus/moins 1,5-3,5, les deux marquent | chance = 65 % marché + 35 % modèle ≥ 55 % ; cote 1,50-2,30 qui paie plus que la chance ; modèle entre 0 et +6 pts au-dessus du marché (plus haut : il a raté une info) ; la plus probable |
+| Foot | Benham / Bloom (le marché comme base, xG), Dixon-Coles, Sumpter, Tippett | résultat (1/2, DC, DNB), plus/moins 1,5-3,5, les deux marquent | chance = 65 % marché + 35 % modèle ≥ 55 % ; cote 1,50-2,30 qui paie plus que la chance ; modèle entre 0 et +6 pts au-dessus du marché (plus haut : il a raté une info) ; jamais sur l'équipe « chanceuse » (buts − xG, net des encaissés, sur 8 matchs, 2 de plus que l'adversaire) ; la plus probable |
 | Basket | Voulgaris (projection de score, écart en points) | total de points, handicap (pas de vainqueur) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale |
 | Tennis | Sackmann (Elo par surface), Benter (mélange logit), Shin/Buchdahl (marge retirée) | vainqueur seulement | chance = mélange logit 90 % marché (marge retirée méthode puissance) + 10 % Elo ; valeur ≥ 3 % à la meilleure cote ; aucun joueur revenu après plus de 60 jours sans match |
 
@@ -40,3 +40,20 @@ Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis
 Choix recalculé à chaque passage avant le match, figé au passage H−45 (foot, basket) ou 45 min avant (tennis).
 Un match vu pour la première fois après le début reste hors ratio (`enregistre_apres_coup_envoi`).
 Journée : 08:00-02:00 foot et tennis, basket jusqu'à 04:00 (un passage avant 04:00 compte pour la veille).
+
+## Équipes chanceuses (Benham, Tippett), testé le 30/10
+Cotes de clôture football-data (Pinnacle), xG API-Football, 5 grands championnats, 2022-23 à 2026-27 (5 706 matchs
+appariés). Miser sur l'équipe la moins chanceuse (buts − xG net des encaissés sur 8 matchs) quand l'écart est ≥ 2 :
+998 positions, 54,3 % pour un point mort de 53,2 %, **+2,3 % contre la cote de clôture** (+3,9 % à la meilleure
+cote). Variable selon la saison (2022-23 négative). Utilisé comme filtre seulement (V1 ne soutient jamais l'équipe
+chanceuse), pas comme raison de prendre position.
+
+## Données qui manquent
+| Agent | Donnée | Source | Coût / blocage |
+|---|---|---|---|
+| V2 | Blessés et incertains NBA (priorité n° 1 des dossiers) | ESPN injuries JSON (site.api.espn.com), rapport officiel NBA (official.nba.com) | gratuit ; hôtes bloqués par le réseau de l'environnement |
+| V2 | Minutes, rythme, efficacité (ORtg/DRtg/pace) | stats.nba.com (nba_api), cdn.nba.com | gratuit ; bloqués |
+| V2 | Cotes NBA du passé pour tester | archives publiques (Kaggle, compte requis) | gratuit ; à voir |
+| V1 | Cote de clôture Pinnacle (mesurer la CLV) | football-data.co.uk (après les matchs) | gratuit, accessible |
+| V3 | Historique plus long des cotes | tennis-data.co.uk | gratuit ; bloqué |
+| V3 | Données Sackmann (GitHub) | | licence non commerciale : à ne pas utiliser |
