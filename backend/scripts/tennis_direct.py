@@ -5,6 +5,7 @@ markets of the five axes from the current score (elo.live_distribution, same hol
 Le M take at most ONE position per match, with the in-play rule given by the M thread:
   odds 1.50-2.30, bookmakers' chance without margin >= 0.60, light not red (same thresholds as before the match),
   never before the first game is over, odds not suspended and updated less than 5 minutes ago.
+Each pass also fills in the result of the day's official choices and of Le M's choices as soon as a match ends.
 The position goes to tennis/<date>.json, matchs[].m_direct = {position, cle, cote, proba_modele,
 proba_bookmakers, feu, score_au_moment, heure, resultat}; the result is filled in once the match is over.
 
@@ -145,8 +146,9 @@ def run_once(a, history_surf) -> bool:
                            "score_au_moment": score, "heure": now.strftime("%H:%M")}
         changed = True
         print("M direct:", row["joueur_1"], "-", row["joueur_2"], score, row["m_direct"]["position"], "@", cote, flush=True)
-    # Results of the positions taken in play, from the day's fixtures.
-    open_ = [m for m in data["matchs"] if m.get("m_direct") and "resultat" not in m["m_direct"]]
+    # Results of the day's positions (official choice, Le M before the match, Le M in play) as soon as a match ends.
+    fields = ("choix", "m", "m_direct")
+    open_ = [m for m in data["matchs"] if any(m.get(f) and "resultat" not in m[f] for f in fields)]
     if open_:
         surf = history_surf
         day = datetime.strptime(data["date"], "%Y-%m-%d").date()
@@ -158,9 +160,14 @@ def run_once(a, history_surf) -> bool:
         for row in open_:
             if row["id"] in fixtures:
                 tour, raw = fixtures[row["id"]]
-                tj.settle(row["m_direct"], bt.parse(raw, tour, surf, {}))
-                if "resultat" in row["m_direct"]:
-                    changed = True
+                match = bt.parse(raw, tour, surf, {})
+                for f in fields:
+                    if row.get(f) and "resultat" not in row[f]:
+                        tj.settle(row[f], match)
+                        if "resultat" in row[f]:
+                            row["score"] = (raw.get("event_final_result") or "").replace(" ", "")
+                            row["statut_match"] = raw.get("event_status")
+                            changed = True
     if changed:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=1))
     return changed
