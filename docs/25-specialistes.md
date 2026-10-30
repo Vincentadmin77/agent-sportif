@@ -15,7 +15,7 @@ Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/sp
 | Basket | Voulgaris (projection de score, écart en points) | total de points, handicap (pas de vainqueur) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale |
 | Tennis | Sackmann (Elo par surface) | vainqueur seulement | Elo et marché à 5 pts au plus, chance 50/50 ≥ 55 %, valeur à la meilleure cote, aucun joueur revenu après plus de 60 jours sans match |
 
-Seuils fixés d'avance, pas ajustés sur les résultats.
+Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis : version choisie parmi 3 essais (voir plus bas).
 
 ## Tests sur l'historique (30/10)
 - Foot, rejoué sur les documents de la page (14-29/10, 140 matchs terminés) : **16/19 (84 %)**, cote moyenne 1,64,
