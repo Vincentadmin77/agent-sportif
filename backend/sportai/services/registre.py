@@ -748,6 +748,20 @@ def tennis_avis(reg: dict, tdoc: dict | None, now: datetime, code_version: str =
             if r in SETTLED:
                 f["resultat"] = r
                 f["gain_unite"] = _gain(f)
+        d = tm.get("m_direct")  # the M's live position, à blanc, noted once by the tennis live loop
+        if d and d.get("position"):
+            did = f"{day}|{key}|direct|{d['position']}"
+            fd = fiches.setdefault(did, {
+                "id": did, "jour": day, "sport": "tennis", "agent": "le M (direct à blanc)", "decision": d.get("heure"),
+                "score_au_moment": d.get("score_au_moment"), "match_id": key,
+                "match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}",
+                "competition": f"{tm.get('circuit')} {tm.get('tournoi')}", "coup_envoi": ko_s, "pari": d["position"],
+                "cote_prise": d.get("cote"), "p_modele": d.get("proba_modele"), "p_marche": d.get("proba_bookmakers"),
+                "feu": d.get("feu"), "version_code": code_version, "recalcule": False, "live_a_blanc": True,
+                "choix_m": True, "direct": True})
+            if d.get("resultat") in SETTLED and fd.get("resultat") not in SETTLED:
+                fd["resultat"] = d["resultat"]
+                fd["gain_unite"] = _gain(fd)
         a = av.get(key) or {"match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}", "sport": "tennis",
                             "competition": f"{tm.get('circuit')} {tm.get('tournoi')}", "coup_envoi": ko_s}
         if not late or "maj" not in a:
@@ -761,6 +775,10 @@ def tennis_avis(reg: dict, tdoc: dict | None, now: datetime, code_version: str =
         if off.get("resultat") in SETTLED and a.get("officielle"):
             a["officielle"]["resultat"] = off["resultat"]
         a["choix_m"] = _m_side(f)
+        if d and d.get("position"):
+            a["choix_m_direct"] = {"pari": d["position"], "cote": d.get("cote"), "proba_marche": d.get("proba_bookmakers"),
+                                   "proba": d.get("proba_modele"), "feu": d.get("feu"), "heure": d.get("heure"),
+                                   "score": d.get("score_au_moment"), "resultat": d.get("resultat")}
         if tm.get("statut_match") == "Finished" and "bilan" not in a \
                 and ((a.get("officielle") or {}).get("resultat") or (a.get("choix_m") or {}).get("resultat")):
             a["bilan"] = _who_was_right(a)

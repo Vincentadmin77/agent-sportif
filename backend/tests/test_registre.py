@@ -332,3 +332,16 @@ def test_tennis_uses_the_m_s_own_pick_when_the_tennis_pass_gives_it():
     reg = R.selection_m(reg, {"paris_retenus": {}}, at(17), None, t)
     assert {c["sport"] for c in reg["selection_m"]} == {"tennis"}
     assert len({c["match_id"] for c in reg["selection_m"]}) == len(reg["selection_m"])
+
+
+def test_tennis_live_position_of_the_m_counts_in_its_ratio_and_shows_in_the_opinions():
+    t = _tennis_day()
+    t["matchs"][0]["m_direct"] = {"position": "A vainqueur", "cote": 1.8, "proba_modele": 0.6, "proba_bookmakers": 0.62,
+                                  "feu": "vert", "heure": "2026-10-29T19:40:00+00:00", "score_au_moment": "1-0, 2-1",
+                                  "resultat": "gagne"}
+    reg = R.tennis_avis({"jour": "2026-10-29", "fiches": {}}, t, at(21), "abc")
+    assert reg["avis"]["tennis-1"]["choix_m_direct"]["pari"] == "A vainqueur"
+    f = reg["fiches"]["2026-10-29|tennis-1|direct|A vainqueur"]
+    assert f["resultat"] == "gagne" and f["live_a_blanc"] and f["choix_m"]
+    rows = R.report([reg])
+    assert rows["le_m_a_blanc"]["global"] and rows["direct_a_blanc"]["global"]
