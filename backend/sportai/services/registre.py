@@ -374,8 +374,11 @@ def m_options(m: dict) -> list[tuple[float, dict, str]]:
 def _pass_reason(best: dict | None) -> str:
     if not best:
         return "Je passe : aucune position de résultat ou de buts entre 1,50 et 2,30."
-    return (f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}".replace(".", ",")
-            + f", n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 60 %).")
+    head = f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}".replace(".", ",")
+    if best["p_marche"] >= M_MIN_MARKET:  # chance enough, but its light is red
+        why = (visa({"pari": "x", "proba": best.get("p_modele"), "proba_marche": best["p_marche"]}) or {}).get("raison", "")
+        return f"{head}, est vue à {_pc(best['p_marche'])} par les bookmakers mais mon feu est rouge : {why[0].lower() + why[1:] if why else ''}"
+    return f"{head}, n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 60 %)."
 
 
 M_SKIP_RED = True  # owner 2026-10-30: the M never takes a choice its own light shows red
@@ -397,7 +400,8 @@ def m_choice(m: dict) -> dict | None:
 
 def _m_pass(m: dict) -> dict:
     opts = m_options(m)
-    best = None if not opts else {"pari": opts[0][1]["pari"], "cote_prise": opts[0][1]["cote"], "p_marche": opts[0][0]}
+    best = None if not opts else {"pari": opts[0][1]["pari"], "cote_prise": opts[0][1]["cote"], "p_marche": opts[0][0],
+                                  "p_modele": opts[0][1].get("proba")}
     return {"pari": None, "raison": _pass_reason(best), "meilleure_option": best}
 
 
@@ -535,7 +539,7 @@ def _m_side(mf: dict) -> dict:
     """The M's own choice in the opinions, with its light (on its choice, or on its best option when it passes)."""
     best = mf.get("meilleure_option") or {}
     lit = visa({"pari": mf.get("pari"), "proba": mf.get("p_modele"), "proba_marche": mf.get("p_marche")}) \
-        if mf.get("pari") else visa({"pari": best.get("pari"), "proba_marche": best.get("p_marche")})
+        if mf.get("pari") else visa({"pari": best.get("pari"), "proba": best.get("p_modele"), "proba_marche": best.get("p_marche")})
     return {"pari": mf.get("pari"), "cote": mf.get("cote_prise"), "proba_marche": mf.get("p_marche"),
             "proba": mf.get("p_modele"), "raison": mf.get("raison"), "resultat": mf.get("resultat"),
             "feu": (lit or {}).get("feu", "rouge" if not mf.get("pari") else None),
@@ -592,7 +596,7 @@ def basket_m_choice(bm: dict) -> dict:
     ok = [o for o in opts if o["p_marche"] >= M_MIN_MARKET and not _red(o.get("p_modele"), o["p_marche"])]
     if ok:
         return ok[0]
-    best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche")} if opts else None
+    best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche", "p_modele")} if opts else None
     reason = (_pass_reason(best) if best else
               "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,50 et 2,30.")
     # the French books give one handicap and one total per game, set near 50/50: the 55 % choice is noted apart

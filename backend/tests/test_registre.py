@@ -282,3 +282,11 @@ def test_the_m_never_takes_a_choice_its_own_light_shows_red():
          "tous_marches": {"analyses": [{"pari": "Moins de 3,5 buts", "cote": 1.50, "proba": 0.74, "proba_marche": 0.65},
                                        {"pari": "Victoire A", "cote": 1.55, "proba": 0.63, "proba_marche": 0.61}]}}
     assert R.m_choice(m)["pari"] == "Victoire A"
+
+
+def test_when_the_m_passes_on_a_red_option_it_says_so():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "a_venir",
+         "tous_marches": {"analyses": [{"pari": "Plus de 2,5 buts", "cote": 1.50, "proba": 0.74, "proba_marche": 0.65}]}}
+    reg = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(17), "abc")
+    c = reg["avis"]["m1"]["choix_m"]
+    assert c["pari"] is None and c["feu"] == "rouge" and "mon feu est rouge" in c["raison"] and "il faut 60" not in c["raison"]
