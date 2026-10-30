@@ -17,9 +17,8 @@ twice that far (the ratings do not see injuries yet: a huge gap is usually a mis
 only: no moneyline on a favourite. Early in the season the ratings are young, so the gap needed is larger.
 
 Tennis (inspired by Sackmann): surface Elo is the forecast (overall and surface ratings blended, K shrinking with
-experience). A position only on the markets that follow from the match-win chance (winner, games handicap, total
-games), never exact sets or aces (too noisy), when Elo and the market agree (TENNIS_MAX_GAP), there is value at the
-best odds, and neither player is back from a long break (Elo is stale after TENNIS_LAYOFF_DAYS without a match).
+experience). A position only on the winner (what Elo forecasts; games, sets and aces derived from it were weaker on
+the 2024-26 backtest), when Elo and the market agree closely (TENNIS_MAX_GAP), there is value at the best odds, and neither player is back from a long break (Elo is stale after TENNIS_LAYOFF_DAYS without a match).
 """
 
 from __future__ import annotations
@@ -46,8 +45,8 @@ BASKET_EARLY_FACTOR = 1.5
 BASKET_SEASON_START = {"NBA": date(2026, 10, 20), "WNBA": date(2026, 5, 15)}
 
 # --- tennis
-TENNIS_MARKETS = ("vainqueur", "handicap_jeux", "jeux")
-TENNIS_MAX_GAP = 0.08
+TENNIS_MARKETS = ("vainqueur",)  # Elo is a match-win model; the games markets derived from it did worse (30/10)
+TENNIS_MAX_GAP = 0.05
 TENNIS_MIN_CHANCE = 0.55
 TENNIS_LAYOFF_DAYS = 60
 
@@ -210,7 +209,7 @@ def tennis_pass_reason(cands: list[dict], layoff_days: float | None) -> str:
         return f"Je passe : un des joueurs revient après {int(layoff_days)} jours sans match, son Elo n'est plus fiable."
     own = [c for c in cands if c["key"][0] in TENNIS_MARKETS]
     if not own:
-        return "Je passe : aucune cote de vainqueur, handicap ou total de jeux entre 1,50 et 2,30."
+        return "Je passe : aucune cote de vainqueur entre 1,50 et 2,30."
     b = max(own, key=lambda c: c["conf"])
     if abs(b["p"] - b["fair"]) > TENNIS_MAX_GAP:
         return f"Je passe : l'Elo ({_pc(b['p'])}) et le marché ({_pc(b['fair'])}) ne sont pas d'accord sur la meilleure option."

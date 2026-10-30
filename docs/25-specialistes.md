@@ -13,15 +13,17 @@ Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/sp
 |---|---|---|---|
 | Foot | Benham / Bloom (le marché comme base, xG), Sumpter, Tippett | résultat (1/2, DC, DNB), plus/moins 1,5-3,5, les deux marquent | chance = 65 % marché + 35 % modèle ≥ 55 % ; cote 1,50-2,30 qui paie plus que la chance ; modèle entre 0 et +6 pts au-dessus du marché (plus haut : il a raté une info) ; la plus probable |
 | Basket | Voulgaris (projection de score, écart en points) | total de points, handicap (pas de vainqueur) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale |
-| Tennis | Sackmann (Elo par surface) | vainqueur, handicap jeux, total de jeux (ni score en sets, ni aces) | Elo et marché à 8 pts au plus, chance 50/50 ≥ 55 %, valeur à la meilleure cote, aucun joueur revenu après plus de 60 jours sans match |
+| Tennis | Sackmann (Elo par surface) | vainqueur seulement | Elo et marché à 5 pts au plus, chance 50/50 ≥ 55 %, valeur à la meilleure cote, aucun joueur revenu après plus de 60 jours sans match |
 
 Seuils fixés d'avance, pas ajustés sur les résultats.
 
 ## Tests sur l'historique (30/10)
 - Foot, rejoué sur les documents de la page (14-29/10, 140 matchs terminés) : **16/19 (84 %)**, cote moyenne 1,64,
   point mort 61 %. Le M sur les mêmes matchs : 42/74 (57 %). Échantillon petit : à confirmer en vrai.
-- Tennis, juillet 2024 → octobre 2026 avec les cotes : **1 979/3 311 (59,8 %)**, cote moyenne 1,64, point mort
-  61,3 %. Le choix tennis actuel : 2 374/4 075 (58,3 %), point mort 59,7 %. Toujours sous le point mort.
+- Tennis, juillet 2024 → octobre 2026 avec les cotes (`backtest_specialistes.py`). Choix tennis actuel : 2 374/4 075
+  (58,3 %), point mort 59,7 %. Spécialiste, 3 marchés, écart 8 pts : 59,8 % pour 61,3 % ; vainqueur seul, 8 pts :
+  59,1 % pour 59,8 % ; **vainqueur seul, 5 pts (retenu) : 521/863 (60,4 %), cote moyenne 1,68, point mort 60,0 %**.
+  Seule version au-dessus du point mort, de peu, choisie parmi 3 essais : à confirmer en vrai.
 - Basket : pas d'historique de cotes ; 4 positions rejouables sur la page (28/10), 0/4. À juger en vrai.
 
 ## Passage (toutes les heures)
