@@ -5,7 +5,7 @@
     python scripts/mathematicien.py rapport --page PAGE [--out FILE]
 
 PAGE holds the page's collections as ArtifactData `list` saves them (matchs/, pronostic/, registre/, and
-basket_pronostic/ and basket_matchs/ for the basketball opinions and the M's choice). `registre` and
+basket_pronostic/ and basket_matchs/ for the basketball opinions and the M's choice, tennis/ for the tennis ones). `registre` and
 `importer` write OUT/registre/<jour>.json, to write in the page's `registre` collection (doc_id = the day). No API call.
 """
 
@@ -61,9 +61,11 @@ def main() -> None:
         matchs = _load(a.page, "matchs")
         days = [a.jour] if a.jour else [d for d, p in prons.items() if not p.get("recalcule")]
         bprons, bmatchs, version = _load(a.page, "basket_pronostic"), _load(a.page, "basket_matchs"), _code_version()
-        _write(a.out, {d: R.selection_m(R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, version),
-                                                      bprons.get(d) or {}, now, bmatchs, version),
-                                        prons[d], now, bprons.get(d))
+        tdocs = _load(a.page, "tennis")
+        _write(a.out, {d: R.selection_m(R.tennis_avis(R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, version),
+                                                                    bprons.get(d) or {}, now, bmatchs, version),
+                                                      tdocs.get(d), now, version),
+                                        prons[d], now, bprons.get(d), tdocs.get(d))
                        for d in days if d in prons and not prons[d].get("recalcule")})
     elif a.cmd == "realigner":  # a day rewritten on the owner's request: replaced records kept, flagged
         matchs, bprons = _load(a.page, "matchs"), _load(a.page, "basket_pronostic")

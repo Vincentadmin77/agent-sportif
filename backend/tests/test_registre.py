@@ -290,3 +290,45 @@ def test_when_the_m_passes_on_a_red_option_it_says_so():
     reg = R.update({}, {"jour": "2026-10-29", "paris_retenus": {}}, {"m1": m}, at(17), "abc")
     c = reg["avis"]["m1"]["choix_m"]
     assert c["pari"] is None and c["feu"] == "rouge" and "mon feu est rouge" in c["raison"] and "il faut 60" not in c["raison"]
+
+
+def _tennis_day():
+    return {"date": "2026-10-29", "matchs": [
+        {"id": "1", "circuit": "ATP", "tournoi": "Paris", "heure_paris": "20:00", "joueur_1": "A", "joueur_2": "B",
+         "nb_marches_cotes": 40, "statut_match": "",
+         "choix": {"position": "Moins de 23.5 jeux dans le match", "marche": "Total de jeux", "cote": 1.55,
+                   "proba_modele": 0.63, "proba_bookmakers": 0.61, "confiance": 0.62, "statut": "retenu"}},
+        {"id": "2", "circuit": "WTA", "tournoi": "Guangzhou", "heure_paris": "20:00", "joueur_1": "C", "joueur_2": "D",
+         "nb_marches_cotes": 40, "statut_match": "",
+         "choix": {"position": "C handicap -1.5 jeux", "cote": 1.6, "proba_modele": 0.75, "proba_bookmakers": 0.60,
+                   "confiance": 0.67, "statut": "Le modèle ne le retient pas"}},
+        {"id": "3", "circuit": "WTA", "tournoi": "Guangzhou", "heure_paris": "20:00", "joueur_1": "E", "joueur_2": "F",
+         "nb_marches_cotes": 0, "statut_match": "", "choix": None}]}
+
+
+def test_tennis_the_m_gives_its_choice_and_light_on_every_match():
+    t = _tennis_day()
+    reg = R.tennis_avis({"jour": "2026-10-29", "fiches": {}}, t, at(17), "abc")
+    av = reg["avis"]
+    assert av["tennis-1"]["choix_m"]["pari"] == "Moins de 23.5 jeux dans le match"
+    assert av["tennis-1"]["choix_m"]["feu"] == "vert"
+    assert av["tennis-2"]["choix_m"]["pari"] is None and av["tennis-2"]["choix_m"]["feu"] == "rouge"
+    assert av["tennis-3"]["sans_position"] == "Pas de cotes disponibles sur ce match."
+    f = reg["fiches"]["2026-10-29|tennis-1|M"]
+    assert f["sport"] == "tennis" and f["coup_envoi"] == "2026-10-29T19:00:00+00:00"
+    t["matchs"][0]["choix"]["resultat"] = "gagne"
+    t["matchs"][0]["statut_match"] = "Finished"
+    reg = R.tennis_avis(reg, t, at(23), "abc")
+    assert reg["fiches"]["2026-10-29|tennis-1|M"]["resultat"] == "gagne"
+    assert R.report([reg])["le_m_a_blanc"]["global"]
+
+
+def test_tennis_uses_the_m_s_own_pick_when_the_tennis_pass_gives_it():
+    t = _tennis_day()
+    t["matchs"][0]["m"] = {"position": "A vainqueur", "marche": "Vainqueur", "cote": 1.52, "proba_modele": 0.66,
+                           "proba_bookmakers": 0.64, "feu": "vert", "passe": False, "fige": False}
+    reg = R.tennis_avis({"jour": "2026-10-29", "fiches": {}}, t, at(17), "abc")
+    assert reg["avis"]["tennis-1"]["choix_m"]["pari"] == "A vainqueur"
+    reg = R.selection_m(reg, {"paris_retenus": {}}, at(17), None, t)
+    assert {c["sport"] for c in reg["selection_m"]} == {"tennis"}
+    assert len({c["match_id"] for c in reg["selection_m"]}) == len(reg["selection_m"])

@@ -19,7 +19,7 @@ import hashlib
 import json
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sportai.services import pronostic as P
 
@@ -675,6 +675,97 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
     return reg
 
 
+def _tennis_ko(day: str, m: dict) -> str | None:
+    from zoneinfo import ZoneInfo
+
+    try:
+        t = datetime.strptime(f"{day} {m.get('heure_paris')}", "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("Europe/Paris"))
+    except (TypeError, ValueError):
+        return None
+    return t.astimezone(timezone.utc).isoformat()
+
+
+def tennis_m_choice(tm: dict) -> dict:
+    """The M's choice on a tennis match: the "m" the tennis pass priced on every market of the match (same rule as
+    football), or, until it exists, the rule applied to the model's own choice alone (flagged base_choix_seul)."""
+    m = tm.get("m")
+    if m:
+        out = {"pari": None if m.get("passe") else m.get("position"), "marche": m.get("marche"),
+               "cote_prise": m.get("cote"), "p_marche": m.get("proba_bookmakers"), "p_modele": m.get("proba_modele"),
+               "resultat": m.get("resultat"), "fige": m.get("fige")}
+        if m.get("passe"):
+            out = {"pari": None, "raison": m.get("raison"), "resultat": None, "fige": m.get("fige"),
+                   "meilleure_option": {"pari": m.get("position"), "cote_prise": m.get("cote"),
+                                        "p_marche": m.get("proba_bookmakers"), "p_modele": m.get("proba_modele")}}
+        return {k: v for k, v in out.items() if v is not None or k == "pari"}
+    c = tm.get("choix")
+    if not c or not c.get("position"):
+        return {"pari": None, "raison": "Je passe : pas de cote sur ce match." if not tm.get("nb_marches_cotes")
+                else "Je passe : aucune position entre 1,50 et 2,30.", "base_choix_seul": True}
+    best = {"pari": c["position"], "cote_prise": c.get("cote"), "p_marche": c.get("proba_bookmakers"),
+            "p_modele": c.get("proba_modele")}
+    ok = isinstance(best["p_marche"], (int, float)) and best["p_marche"] >= M_MIN_MARKET \
+        and not _red(best["p_modele"], best["p_marche"])
+    if ok:
+        return {**best, "marche": c.get("marche"), "resultat": c.get("resultat"), "fige": c.get("fige"),
+                "base_choix_seul": True}
+    return {"pari": None, "raison": _pass_reason(best), "meilleure_option": best, "fige": c.get("fige"),
+            "base_choix_seul": True}
+
+
+def tennis_avis(reg: dict, tdoc: dict | None, now: datetime, code_version: str = "inconnue") -> dict:
+    """The tennis matches of the day in the "avis" list (the model's choice, the M's light on it and the M's own
+    choice, à blanc), keyed tennis-<id>, and the M's tennis records (sport "tennis", their own ratio)."""
+    day = reg.get("jour")
+    if not tdoc or not day:
+        return reg
+    av, fiches = reg.setdefault("avis", {}), reg.setdefault("fiches", {})
+    for tm in tdoc.get("matchs") or []:
+        mid = str(tm.get("id"))
+        key, ko_s = f"tennis-{mid}", _tennis_ko(day, tm)
+        ko = _aware(ko_s)
+        late = bool(ko and now >= ko)
+        c = tm.get("choix") or {}
+        off = {"pari": c.get("position"), "cote": c.get("cote"), "proba": c.get("proba_modele"),
+               "proba_marche": c.get("proba_bookmakers"), "niveau": c.get("niveau"), "resultat": c.get("resultat"),
+               "non_retenu": c.get("statut") not in (None, "retenu") or None} if c else {}
+        rid = f"{day}|{key}|M"
+        prev = fiches.get(rid)
+        if (not late and not (prev or {}).get("fige")) or (late and prev is None):
+            fiches[rid] = {"id": rid, "jour": day, "sport": "tennis", "agent": "le M (à blanc)",
+                           "decision": now.isoformat(), "match_id": key,
+                           "match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}",
+                           "competition": f"{tm.get('circuit')} {tm.get('tournoi')}", "coup_envoi": ko_s,
+                           "recalcule": False, "choix_m": True, "version_regles": f"M>={M_MIN_MARKET}",
+                           "version_code": code_version, **({"enregistre_apres_coup_envoi": True} if late else {}),
+                           **tennis_m_choice(tm)}
+            fiches[rid]["fige"] = late or bool(fiches[rid].get("fige"))
+        f = fiches[rid]
+        if f.get("pari") and f.get("resultat") not in SETTLED:  # settled by the tennis pass on its own copy
+            r = (tm.get("m") or {}).get("resultat") if tm.get("m") else (c.get("resultat") if f.get("base_choix_seul") else None)
+            if r in SETTLED:
+                f["resultat"] = r
+                f["gain_unite"] = _gain(f)
+        a = av.get(key) or {"match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}", "sport": "tennis",
+                            "competition": f"{tm.get('circuit')} {tm.get('tournoi')}", "coup_envoi": ko_s}
+        if not late or "maj" not in a:
+            a["officielle"], a["visa_m"], a["enqueteur"], a["maj"] = _side(off) if off else None, visa(off), [], now.isoformat()
+            a.pop("sans_position", None)
+            if not off.get("pari"):
+                a["sans_position"] = "Pas de cotes disponibles sur ce match." if not tm.get("nb_marches_cotes") \
+                    else "Aucune position retenue sur ce match."
+            if late:
+                a["tardif"] = True
+        if off.get("resultat") in SETTLED and a.get("officielle"):
+            a["officielle"]["resultat"] = off["resultat"]
+        a["choix_m"] = _m_side(f)
+        if tm.get("statut_match") == "Finished" and "bilan" not in a \
+                and ((a.get("officielle") or {}).get("resultat") or (a.get("choix_m") or {}).get("resultat")):
+            a["bilan"] = _who_was_right(a)
+        av[key] = a
+    return reg
+
+
 def realign(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, code_version: str, motif: str,
             bpron: dict | None = None) -> dict:
     """A day whose official list the owner had rewritten afterwards (2026-10-29: back to the best odds of every
@@ -721,7 +812,7 @@ def _conf(mod, mkt) -> float | None:
     return None
 
 
-def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None) -> list[dict]:
+def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc: dict | None = None) -> list[dict]:
     out: dict[tuple, dict] = {}
 
     def add(sport, mid, p, source, cote_key="cote", mod_key="proba", mkt_key="proba_marche"):
@@ -743,17 +834,26 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None) -> li
         add("foot", mid, p, "entre_parentheses")
     for mid, p in ((bpron or {}).get("paris_retenus") or {}).items():
         add("basket", mid, p, "officielle")
+    for tm in (tdoc or {}).get("matchs") or []:  # the tennis model's choices it keeps (not the "non retenu" ones)
+        c = tm.get("choix") or {}
+        if c.get("position") and c.get("statut") == "retenu":
+            add("tennis", str(tm.get("id")), {"pari": c["position"], "cote": c.get("cote"), "confiance": c.get("confiance"),
+                                             "proba": c.get("proba_modele"), "proba_marche": c.get("proba_bookmakers"),
+                                             "match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}",
+                                             "coup_envoi": _tennis_ko(str((tdoc or {}).get("date")), tm),
+                                             "resultat": c.get("resultat"),
+                                             "competition": f"{tm.get('circuit')} {tm.get('tournoi')}"}, "officielle")
     for f in (reg.get("fiches") or {}).values():
         if f.get("choix_m") and f.get("pari"):
             sport = f.get("sport", "foot")
-            mid = str(f["match_id"]).removeprefix("basket-")
+            mid = str(f["match_id"]).removeprefix("basket-").removeprefix("tennis-")
             add(sport, mid, {**f, "cote": f.get("cote_prise")}, "le_m", mod_key="p_modele", mkt_key="p_marche")
     return list(out.values())
 
 
-def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None) -> dict:
+def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None, tdoc: dict | None = None) -> dict:
     """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
-    cands = selection_candidates(reg, pron, bpron)
+    cands = selection_candidates(reg, pron, bpron, tdoc)
     res = {(c["sport"], c["match_id"], c["pari"]): c.get("resultat") for c in cands}
     prev = list(reg.get("selection_m") or [])
 
