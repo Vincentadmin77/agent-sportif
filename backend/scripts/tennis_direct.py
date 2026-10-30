@@ -181,8 +181,11 @@ def main() -> None:
     a = ap.parse_args()
     surf = bt.surfaces()
     while True:
-        if run_once(a, surf) or a.once:
-            return
+        try:
+            if run_once(a, surf) or a.once:
+                return
+        except Exception as e:  # a network or API hiccup must not stop the loop
+            print("erreur, nouvel essai au prochain tour:", type(e).__name__, e, flush=True)
         end = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=PARIS) + timedelta(days=1, hours=2, minutes=30)
         if datetime.now(PARIS) > end:
             print("fin de journée", flush=True)
