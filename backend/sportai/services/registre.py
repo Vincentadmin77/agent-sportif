@@ -378,10 +378,17 @@ def _pass_reason(best: dict | None) -> str:
             + f", n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 60 %).")
 
 
+M_SKIP_RED = True  # owner 2026-10-30: the M never takes a choice its own light shows red
+
+
+def _red(mod, mkt) -> bool:
+    return M_SKIP_RED and (visa({"pari": "x", "proba": mod, "proba_marche": mkt}) or {}).get("feu") == "rouge"
+
+
 def m_choice(m: dict) -> dict | None:
     """The M's position on a match document, or None when no bet of the rule exists."""
-    opts = m_options(m)
-    if not opts or opts[0][0] < M_MIN_MARKET:
+    opts = [o for o in m_options(m) if o[0] >= M_MIN_MARKET and not _red(o[1].get("proba"), o[0])]
+    if not opts:
         return None
     pm, r, fam = opts[0]
     return {"pari": r["pari"], "marche": r.get("marche"), "famille": fam, "cote_prise": r["cote"], "p_marche": pm,
@@ -582,8 +589,9 @@ def basket_m_options(bm: dict) -> list[dict]:
 def basket_m_choice(bm: dict) -> dict:
     """The M's position on a basketball game (same rule as football: market >= 60 %, 1.50-2.30), or why it passes."""
     opts = basket_m_options(bm)
-    if opts and opts[0]["p_marche"] >= M_MIN_MARKET:
-        return opts[0]
+    ok = [o for o in opts if o["p_marche"] >= M_MIN_MARKET and not _red(o.get("p_modele"), o["p_marche"])]
+    if ok:
+        return ok[0]
     best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche")} if opts else None
     reason = (_pass_reason(best) if best else
               "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,50 et 2,30.")

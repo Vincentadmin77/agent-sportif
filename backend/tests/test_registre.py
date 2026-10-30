@@ -275,3 +275,10 @@ def test_the_selection_of_the_m_takes_the_most_confident_of_every_sport_and_keep
     reg = R.selection_m(reg, day, at(22), b)
     assert reg["selection_m"][0]["pari"] in ("Moins de 3,5 buts", "Plus de 2,5 buts")
     assert {c["pari"]: c.get("resultat") for c in reg["selection_m"]}["Plus de 2,5 buts"] == "gagne"
+
+
+def test_the_m_never_takes_a_choice_its_own_light_shows_red():
+    m = {"jour": "2026-10-29", "domicile": "A", "exterieur": "B", "coup_envoi": KO, "statut": "a_venir",
+         "tous_marches": {"analyses": [{"pari": "Moins de 3,5 buts", "cote": 1.50, "proba": 0.74, "proba_marche": 0.65},
+                                       {"pari": "Victoire A", "cote": 1.55, "proba": 0.63, "proba_marche": 0.61}]}}
+    assert R.m_choice(m)["pari"] == "Victoire A"
