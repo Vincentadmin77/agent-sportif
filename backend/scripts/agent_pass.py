@@ -41,6 +41,7 @@ it is copied to a temporary file while the step runs.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import shutil
@@ -276,6 +277,7 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
             return
     current = _load_page(page)
     work = Path(tempfile.mkdtemp()) / "agent.db"
+    atexit.register(shutil.rmtree, work.parent, True)  # each copy is ~290 MB; leftovers filled the disk on 2026-10-30
     if STATE_DB.exists():
         shutil.copy(STATE_DB, work)
     os.environ["DATABASE_URL"] = f"sqlite:///{work}"
