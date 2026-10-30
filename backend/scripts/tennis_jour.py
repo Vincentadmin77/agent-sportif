@@ -3,7 +3,8 @@
 Paris day D = matches from D 08:00 to D+1 02:00 (house rule). For each match, the five axes are priced (winner, set
 score, total games, games handicap, aces 1x2) and ONE choice is kept, the same way as football and basketball:
 best odds of any bookmaker between 1.50 and 2.30, confidence = 50 % model + 50 % market (élevée >= 60 %,
-moyenne 50-60 %). A choice that fails the usual checks (no value at the best odds, or model too far from the
+moyenne 50-60 %). Each match also carries "m": Le M's own choice and light, for the record only (own ratio, never the official one).
+A choice that fails the usual checks (no value at the best odds, or model too far from the
 market) is still shown with "Le modèle ne le retient pas" and stays out of the ratio.
 
 The choice is frozen ("fige") 45 minutes before the start: later runs of the day keep it and only add its result
@@ -64,6 +65,30 @@ def books_of(odds: dict, key: tuple) -> dict:
 def best_book(odds: dict, key: tuple) -> str | None:
     books = {k: float(v) for k, v in books_of(odds, key).items() if str(v).replace(".", "", 1).isdigit()}
     return max(books, key=books.get) if books else None
+
+
+def feu_du_m(p: float, f: float) -> str:
+    """Le M's light on one option (rule given by the M thread, 30/10)."""
+    if f < 0.50 or p >= f + 0.06 or p <= f - 0.10:
+        return "rouge"
+    return "vert" if f >= 0.60 else "orange"
+
+
+def choix_du_m(cands: list[dict], m: bt.Match, frozen: bool) -> dict | None:
+    """Le M's own choice, for the record only: never the official choice, never in the tennis ratio."""
+    if not cands:
+        return None
+    for c in cands:
+        c["feu"] = feu_du_m(c["p"], c["fair"])
+    ok = [c for c in cands if c["fair"] >= 0.60 and c["feu"] != "rouge"]
+    c = max(ok or cands, key=lambda c: c["fair"])
+    raison = ""
+    if not ok:
+        raison = ("moins de 60 % chez les bookmakers" if c["fair"] < 0.60 else
+                  f"vue à {round(100 * c['fair'])} % mais mon feu est rouge : écart modèle/marché")
+    return {"position": label(c["key"], m), "cle": list(c["key"]), "marche": bt.LABEL[c["key"][0]], "cote": c["best"],
+            "proba_modele": round(c["p"], 3), "proba_bookmakers": round(c["fair"], 3), "feu": c["feu"],
+            "passe": not ok, "raison": raison, "fige": frozen}
 
 
 def settle(choix: dict, m: bt.Match) -> None:
@@ -154,6 +179,7 @@ def main() -> None:
             frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M") or bool(
                 a.freeze_until and when[:10] == str(day) and when[11:] <= a.freeze_until)
             old = (before.get(m.key) or {}).get("choix")
+            old_m = (before.get(m.key) or {}).get("m")
             started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
             if old and old.get("fige"):
                 choix = old
@@ -168,6 +194,14 @@ def main() -> None:
                          "pays_bookmaker": PAYS.get(best_book(m.odds, c["key"]), "autre"), "fige": frozen}
             if choix:
                 settle(choix, m)
+            if old_m and old_m.get("fige"):
+                choix_m = old_m
+            elif started:
+                choix_m = None
+            else:
+                choix_m = choix_du_m(cands, m, frozen)
+            if choix_m:
+                settle(choix_m, m)
             report.append({
                 "id": m.key, "circuit": tour, "heure_paris": raw.get("event_time"), "tournoi": m.tournament,
                 "tour": raw.get("tournament_round"), "surface": m.surface, "sets_gagnants": m.best_of // 2 + 1,
@@ -176,7 +210,7 @@ def main() -> None:
                 "joueurs_connus": known, "proba_victoire_j1": round(pm, 3),
                 "jeux_attendus": round(pr.expected_games(), 1),
                 "aces_attendus": [round(ea, 1), round(eb, 1)] if ea is not None else None,
-                "choix": choix, "nb_marches_cotes": len(mk),
+                "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
             })
     report.sort(key=lambda x: (x["heure_paris"] or "", x["circuit"]))
     out = {"date": a.date, "statut": "non validé", "genere": datetime.now(timezone.utc).isoformat(timespec="seconds"),
