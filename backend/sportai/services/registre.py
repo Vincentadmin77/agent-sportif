@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -374,11 +375,12 @@ def m_options(m: dict) -> list[tuple[float, dict, str]]:
 def _pass_reason(best: dict | None) -> str:
     if not best:
         return "Je passe : aucune position de résultat ou de buts entre 1,50 et 2,30."
-    head = f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}".replace(".", ",")
+    head = re.sub(r"(\d)\.(\d)", r"\1,\2", f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}")
     if best["p_marche"] >= M_MIN_MARKET:  # chance enough, but its light is red
         why = (visa({"pari": "x", "proba": best.get("p_modele"), "proba_marche": best["p_marche"]}) or {}).get("raison", "")
         return f"{head}, est vue à {_pc(best['p_marche'])} par les bookmakers mais mon feu est rouge : {why[0].lower() + why[1:] if why else ''}"
-    return f"{head}, n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 60 %)."
+    seen = _pc(best["p_marche"]) if round(best["p_marche"] * 100) < 60 else f"{best['p_marche'] * 100:.1f} %".replace(".", ",")
+    return f"{head}, n'est vue qu'à {seen} par les bookmakers (il faut 60 %)."
 
 
 M_SKIP_RED = True  # owner 2026-10-30: the M never takes a choice its own light shows red
