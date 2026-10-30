@@ -12,8 +12,8 @@ Code : `backend/sportai/services/specialistes.py` (règles), `backend/scripts/sp
 | Sport | Inspiré de | Marchés | Règle |
 |---|---|---|---|
 | Foot | Benham / Bloom (le marché comme base, xG), Dixon-Coles, Sumpter, Tippett | résultat (1/2, DC, DNB), plus/moins 1,5-3,5, les deux marquent | chance = 65 % marché + 35 % modèle ≥ 55 % ; cote 1,50-2,30 qui paie plus que la chance ; modèle entre 0 et +6 pts au-dessus du marché (plus haut : il a raté une info) ; jamais sur l'équipe « chanceuse » (buts − xG, net des encaissés, sur 8 matchs, 2 de plus que l'adversaire) ; la plus probable |
-| Basket | Voulgaris (projection de score, écart en points) | total de points, handicap (pas de vainqueur) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale |
-| Tennis | Sackmann (Elo par surface), Benter (mélange logit), Shin/Buchdahl (marge retirée) | vainqueur seulement | chance = mélange logit 90 % marché (marge retirée méthode puissance) + 10 % Elo ; valeur ≥ 3 % à la meilleure cote ; aucun joueur revenu après plus de 60 jours sans match |
+| Basket | Voulgaris (projection de score, écart en points) | vainqueur, handicap, total de points (axes fixes) | écart projection / chiffre principal des bookmakers ≥ 4 pts (total) ou ≥ 3 pts (handicap), ×1,5 les 3 premières semaines de saison, jamais plus du double (sinon c'est souvent un absent non vu) ; pari sur la ligne principale ; vainqueur du même côté quand la cote du handicap sort de 1,50-2,30 ; blessés ESPN retirés de la projection, joueur clé incertain = passe |
+| Tennis | Sackmann (Elo par surface), Benter (mélange logit), Shin/Buchdahl (marge retirée) | les 5 axes : vainqueur, sets, handicap jeux, total de jeux, aces (axes fixes) | chance = mélange logit 90 % marché (marge retirée méthode puissance) + 10 % Elo ; valeur ≥ 3 % à la meilleure cote (marge retirée méthode puissance sur le vainqueur, proportionnelle ailleurs) ; aucun joueur revenu après plus de 60 jours sans match |
 
 Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis : version choisie parmi 3 essais (voir plus bas).
 
@@ -29,6 +29,9 @@ Foot et basket : seuils fixés d'avance, pas ajustés sur les résultats. Tennis
   positive sur les deux périodes : mélange 90 % marché + 10 % Elo, valeur ≥ 3 % (2024-25 : 54,7 % pour 53,6 % ;
   2026 : 55,6 % pour 54,3 %). **Retenue pour V3 : 344/620 (55,5 %), cote moyenne 1,89, point mort 53,6 %** ;
   ATP 59,3 % (point mort 53,7 %), WTA 51,0 % (53,6 %).
+- Vincent 30/10 14:31 : les axes de chaque sport ne changent jamais. V3 repasse sur ses 5 axes avec la même règle :
+  **1 276/2 305 (55,4 %), cote moyenne 1,88, point mort 53,8 %** ; ATP 55,7 % (53,5 %), WTA 55,0 % (54,1 %). Par axe :
+  vainqueur 56,6 % (54,0 %), total de jeux 56,3 % (52,9 %), handicap jeux 54,2 % (54,3 %), aces 31/52, sets 3/6.
 - Basket : pas d'historique de cotes ; 4 positions rejouables sur la page (28/10), 0/4. À juger en vrai.
 
 ## Passage (toutes les heures)

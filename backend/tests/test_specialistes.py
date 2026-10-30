@@ -70,3 +70,18 @@ def test_basket_passes_on_doubtful_key_player_and_uses_absences():
     assert S.basket_choice(bm, "2026-12-15", adj)["selection"] == "under"
     adj["exterieur"]["incertains"] = ["Star (25 pts, 35 min)"]
     assert "incertain" in S.basket_choice(bm, "2026-12-15", adj)["raison"]
+
+
+def test_basket_winner_axis_when_handicap_price_out_of_range():
+    lines = [{"marche": "handicap", "selection": s, "ligne": -9.5, "cote": c, "proba": .5, "proba_marche": .5}
+             for s, c in (("home", 1.90), ("away", 1.90))]
+    lines += [{"marche": "handicap", "selection": "home", "ligne": -5.5, "cote": 1.45, "proba": .6, "proba_marche": .6},
+              {"marche": "winner", "selection": "home", "ligne": None, "cote": 1.55, "proba": .7, "proba_marche": .64}]
+    bm = {"competition": "NBA", "domicile": "A", "exterieur": "B", "points": {"total_prevu": None, "ecart_prevu": 14.0},
+          "cotes_cloture": {"lignes": lines}}
+    c = S.basket_choice(bm, "2026-12-15")
+    assert c["marche"] == "handicap" and c["selection"] == "home"  # main line -9.5 at 1.90 is in range
+    for r in lines[:2]:
+        r["cote"] = 1.40
+    lines[0]["cote"], lines[1]["cote"] = 1.45, 1.45
+    assert S.basket_choice(bm, "2026-12-15")["marche"] == "winner"
