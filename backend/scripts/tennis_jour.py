@@ -211,6 +211,7 @@ def main() -> None:
                 "jeux_attendus": round(pr.expected_games(), 1),
                 "aces_attendus": [round(ea, 1), round(eb, 1)] if ea is not None else None,
                 "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
+                "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
             })
     report.sort(key=lambda x: (x["heure_paris"] or "", x["circuit"]))
     out = {"date": a.date, "statut": "non validé", "genere": datetime.now(timezone.utc).isoformat(timespec="seconds"),
