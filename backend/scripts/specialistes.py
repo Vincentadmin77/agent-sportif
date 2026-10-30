@@ -163,6 +163,8 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
                                 "surface": m.surface, "coup_envoi": ko.isoformat(),
                                 "score": (raw.get("event_final_result") or "").replace(" ", "") or None
                                 if raw.get("event_status") == "Finished" else None})
+    for k, c in prev.items():  # a match the fixtures no longer list (moved, cancelled) keeps its stored choice
+        out.setdefault(k, c)
     return out
 
 
