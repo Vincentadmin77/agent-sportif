@@ -210,7 +210,7 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
     from_scores = score_positions(matchs, pronostics)
     for day in sorted(set(pronostics) | set(from_scores)):
         doc = pronostics.get(day) or {}
-        for p in day_positions(doc) + from_scores.get(day, []):
+        for p in day_positions({"jour": day, **doc}) + from_scores.get(day, []):
             if p.get("resultat") in ("gagne", "perdu"):
                 items.append({"jour": day, "type": "Positions", "categorie": "position",
                               "libelle": f"{p['pari']} ({p.get('match')})", "cote": p["cote"],
