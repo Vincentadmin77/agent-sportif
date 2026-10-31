@@ -360,3 +360,23 @@ def test_a_selection_pick_dropped_before_kick_off_stays_in_the_history_flagged()
     assert r["pari"] == "Plus de 2,5 buts" and r["mention"] == "Le M s'est finalement retiré"
     reg = R.selection_m(reg, day, at(16))
     assert len(reg["selection_m_retires"]) == 1
+
+
+def test_the_french_sites_list_counts_in_the_official_ratio_once_per_choice():
+    ko = "2026-10-31T19:00:00+00:00"
+    pron = {"jour": "2026-10-31", "paris_retenus": {
+        "m1": {"match_id": "m1", "match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.8, "fige": True, "coup_envoi": ko,
+               "resultat": "gagne"},
+        "m2": {"match_id": "m2", "match": "C - D", "pari": "Victoire C", "cote": 1.9, "fige": True, "coup_envoi": ko,
+               "resultat": "perdu"}},
+        "positions_entre_parentheses": {
+        "m1": {"match_id": "m1", "match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.7, "fige": True, "coup_envoi": ko,
+               "resultat": "gagne"},
+        "m2": {"match_id": "m2", "match": "C - D", "pari": "Moins de 3,5 buts", "cote": 1.6, "fige": True,
+               "coup_envoi": ko, "resultat": "gagne"}}}
+    reg = R.update({}, pron, {}, datetime(2026, 10, 31, 18, tzinfo=timezone.utc), "abc")
+    fiches = [f for f in reg["fiches"].values() if not f.get("choix_m")]
+    assert len(fiches) == 3
+    assert reg["fiches"][R.record_id("2026-10-31", "m1", "Plus de 2,5 buts")]["listes"] == ["officielle", "sites_francais"]
+    g = R.report([reg])["reel"]["global"]
+    assert g["reglees"] == 3 and g["validees"] == 2

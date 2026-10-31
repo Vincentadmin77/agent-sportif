@@ -69,6 +69,43 @@ def _priced_after(m: dict, f: dict, ko: datetime) -> bool:
     return bool(dec) and any(t and dec < t <= ko for t in seen)
 
 
+# Owner 2026-10-31 08:09: the French-sites list (positions_entre_parentheses) counts in the official ratios too. Same
+# match and same choice as the official list = one record (flag listes); a different choice = its own record.
+FRENCH_LIST_COUNTS_FROM = "2026-10-31"
+
+
+def _french_list(reg: dict, pron: dict, now: datetime, code_version: str, r: dict, sport: str) -> None:
+    day = reg["jour"]
+    for p in (pron.get("positions_entre_parentheses") or {}).values():
+        if not p.get("pari") or not p.get("fige"):
+            continue
+        rid = record_id(day, p.get("match_id"), p["pari"])
+        f = reg["fiches"].get(rid)
+        if f is not None and not f.get("liste_francaise"):  # the official position itself: counted once
+            if "sites_francais" not in f.setdefault("listes", ["officielle"]):
+                f["listes"].append("sites_francais")
+            continue
+        if f is None:
+            if any(x["match_id"] == p.get("match_id") and x.get("liste_francaise") for x in reg["fiches"].values()):
+                continue  # one frozen French-list position per match
+            f = reg["fiches"][rid] = {
+                "id": rid, "jour": day, "sport": sport, "agent": "analyse foot (sites français)",
+                "decision": now.isoformat(), "passage": pron.get("passage"), "match_id": p.get("match_id"),
+                "match": p.get("match"), "competition": p.get("competition"), "coup_envoi": p.get("coup_envoi"),
+                "marche": p.get("marche"), "famille": p.get("famille"), "pari": p["pari"], "cote_prise": p.get("cote"),
+                "bookmaker": p.get("bookmaker"), "p_modele": p.get("proba"), "p_marche": p.get("proba_marche"),
+                "p_retenue": p.get("confiance"), "niveau": p.get("niveau"), "valeur": p.get("valeur"),
+                "version_regles": rules_version(r), "version_code": code_version, "recalcule": False,
+                "liste_francaise": True, "listes": ["sites_francais"]}
+            ko = _aware(p.get("coup_envoi"))
+            if ko and now >= ko:
+                f["enregistre_apres_coup_envoi"] = True
+        if p.get("non_retenu"):
+            f["non_retenu"] = True
+        if p.get("resultat") in SETTLED:
+            f["resultat"] = p["resultat"]
+
+
 def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, code_version: str,
            sport: str = "foot") -> dict:
     """The day's registry document after one pass: new frozen positions recorded, closing odds and results added."""
@@ -85,7 +122,7 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
         rid = record_id(day, p.get("match_id"), p["pari"])
         same_match = [f for f in reg["fiches"].values()
                       if f["match_id"] == p.get("match_id") and not f.get("live_a_blanc") and not f.get("choix_m")
-                      and not f.get("remplacee")]
+                      and not f.get("remplacee") and not f.get("liste_francaise")]
         if rid not in reg["fiches"] and same_match:  # the match already has a frozen position: log, never replace
             first = same_match[0]
             log = {"heure": now.isoformat(), "champ": "pari", "avant": first["pari"], "apres": p["pari"]}
@@ -115,6 +152,8 @@ def update(registre: dict, pron: dict, matchs: dict[str, dict], now: datetime, c
                     mods.append(log)
         if p.get("resultat") in SETTLED:
             f["resultat"] = p["resultat"]
+    if day and day >= FRENCH_LIST_COUNTS_FROM:
+        _french_list(reg, pron, now, code_version, r, sport)
     for f in reg["fiches"].values():
         if f.get("live_a_blanc") or f.get("choix_m"):
             continue
