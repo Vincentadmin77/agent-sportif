@@ -136,6 +136,7 @@ def _rate(items: list[dict]) -> dict:
 # Owner 2026-10-28 11:00: singles only, odds 1.50 to 2.30; every odds ever proposed in that range, even inside a
 # combined ticket, is taken out on its own and counted once: one "Validé / Non validé" ratio and a total.
 POSITION_ODDS = (1.50, 2.30)
+FRENCH_COUNT_FROM = "2026-10-31"
 
 
 def day_positions(doc: dict) -> list[dict]:
@@ -143,6 +144,9 @@ def day_positions(doc: dict) -> list[dict]:
     match, within POSITION_ODDS, each bet once."""
     src = doc.get("positions") if isinstance(doc.get("positions"), list) else \
         [p for p in (doc.get("paris_retenus") or {}).values() if p.get("pari")]
+    # owner 2026-10-31: from that day the French-sites list counts too; the same match and bet only once
+    if str(doc.get("jour") or "") >= FRENCH_COUNT_FROM:
+        src = src + [p for p in (doc.get("positions_entre_parentheses") or {}).values() if p.get("pari")]
     # owner 2026-10-29: a position the model does not retain (former "choix imposé") is shown, never counted
     src = [p for p in src if not p.get("non_retenu") and not p.get("choix_impose")]
     out, seen = [], set()

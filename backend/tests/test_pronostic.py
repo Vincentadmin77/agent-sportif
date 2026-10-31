@@ -536,3 +536,16 @@ def test_a_position_the_model_does_not_retain_never_counts_in_the_ratio():
                              "b": {"match_id": "b", "pari": "Victoire b", "cote": 1.8, "non_retenu": True},
                              "c": {"match_id": "c", "pari": "Victoire c", "cote": 1.8, "choix_impose": True}}}
     assert [p["match_id"] for p in day_positions(doc)] == ["a"]
+
+
+def test_french_sites_list_counts_from_31_october_once_per_match_and_bet():
+    from sportai.services.bilan import day_positions
+
+    def p(mid, pari, cote=1.70):
+        return {"match_id": mid, "match": mid, "pari": pari, "cote": cote, "resultat": "gagne"}
+
+    doc = {"paris_retenus": {"a": p("a", "Victoire a")},
+           "positions_entre_parentheses": {"a": p("a", "Victoire a"), "b": p("b", "Plus de 2,5 buts"),
+                                           "c": {**p("c", "Victoire c"), "non_retenu": True}}}
+    assert [x["match_id"] for x in day_positions({**doc, "jour": "2026-10-30"})] == ["a"]
+    assert [x["match_id"] for x in day_positions({**doc, "jour": "2026-10-31"})] == ["a", "b"]
