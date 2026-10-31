@@ -873,6 +873,29 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc:
     return list(out.values())
 
 
+RETIRE_MENTION = "Le M s'est finalement retiré"
+
+
+def _pick_result(c: dict, reg: dict, pron: dict, bpron: dict | None, tdoc: dict | None) -> str | None:
+    """The result of a selection pick from wherever its position now lives (official list, parentheses, the M's
+    records, the tennis day), when it is no longer among the day's candidates."""
+    mid, pari = str(c.get("match_id")), c.get("pari")
+    for p in [*(pron.get("paris_retenus") or {}).items(), *(pron.get("positions_entre_parentheses") or {}).items(),
+              *((bpron or {}).get("paris_retenus") or {}).items()]:
+        if str(p[0]) == mid and p[1].get("pari") == pari and p[1].get("resultat") in SETTLED:
+            return p[1]["resultat"]
+    for f in (reg.get("fiches") or {}).values():
+        fid = str(f.get("match_id", "")).removeprefix("basket-").removeprefix("tennis-")
+        if fid == mid and f.get("pari") == pari and f.get("resultat") in SETTLED:
+            return f["resultat"]
+    for tm in (tdoc or {}).get("matchs") or []:
+        if str(tm.get("id")) == mid:
+            for x in (tm.get("choix"), tm.get("m")):
+                if x and x.get("position") == pari and x.get("resultat") in SETTLED:
+                    return x["resultat"]
+    return None
+
+
 def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None, tdoc: dict | None = None) -> dict:
     """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
     cands = selection_candidates(reg, pron, bpron, tdoc)
@@ -900,6 +923,22 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
             picks.append({**c, "choisie": now.isoformat()})
             seen.add((c["sport"], c["match_id"]))
     reg["selection_m"] = picks
+    # a pick the M had chosen then dropped before kick-off stays in the history, flagged, never counted
+    # (owner 2026-10-31: "les choix que le M avait fait reste en historique ... pour voir si oui ou non il a bien fait")
+    now_keys = {(c["sport"], c["match_id"], c["pari"]) for c in picks}
+    retires = list(reg.get("selection_m_retires") or [])
+    gone = {(c["sport"], c["match_id"], c["pari"]) for c in retires}
+    for c in prev:
+        k = (c["sport"], c["match_id"], c["pari"])
+        if k not in now_keys and k not in gone and not c.get("recalcule"):
+            retires.append({**c, "retiree": now.isoformat(), "mention": RETIRE_MENTION})
+            gone.add(k)
+    for c in retires:
+        r = res.get((c["sport"], c["match_id"], c["pari"])) or _pick_result(c, reg, pron, bpron, tdoc)
+        if r in SETTLED:
+            c["resultat"] = r
+    if retires:
+        reg["selection_m_retires"] = retires
     reg["selection_m_regle"] = (f"Confiance et bookmakers à {_pc(SELECTION_MIN)} ou plus, les {SELECTION_MAX} plus hautes "
                                 "confiances du jour, tous sports.")
     return reg
