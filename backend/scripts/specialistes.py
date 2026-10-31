@@ -126,15 +126,15 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
             ko = datetime.strptime(when, "%Y-%m-%d %H:%M").replace(tzinfo=PARIS).astimezone(timezone.utc)
             started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
             old = prev.get(m.key)
+            r = ratings[tour]
+            known = r.known(m.a, bt.MIN_MATCHES) and r.known(m.b, bt.MIN_MATCHES)
+            pm = r.p_win(m.a, m.b, m.surface)
+            pr = bt.Pricer(pm, m, None, None)
+            if acesm[tour].serve[m.a].den > 0 and acesm[tour].serve[m.b].den > 0:
+                pr = bt.Pricer(pm, m, *acesm[tour].expected(m.a, m.b, tour, m.surface, pr.expected_games()))
             if old and (old.get("fige") or started or now >= ko):
                 c = old
             else:
-                r = ratings[tour]
-                known = r.known(m.a, bt.MIN_MATCHES) and r.known(m.b, bt.MIN_MATCHES)
-                pm = r.p_win(m.a, m.b, m.surface)
-                pr = bt.Pricer(pm, m, None, None)
-                if acesm[tour].serve[m.a].den > 0 and acesm[tour].serve[m.b].den > 0:
-                    pr = bt.Pricer(pm, m, *acesm[tour].expected(m.a, m.b, tour, m.surface, pr.expected_games()))
                 cands = bt.candidates(pr, bt.markets(m.odds))
                 lay = [(d - date.fromisoformat(last[p])).days for p in (m.a, m.b) if p in last]
                 lay = max(lay) if lay else None
@@ -159,6 +159,8 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
                 c = S.record(old, new, ko, now, now >= ko - FREEZE)
             if c.get("pari") and c.get("resultat") not in S.SETTLED:
                 settle(c, m)
+            if not c.get("pari"):
+                c = {**c, "option_envisagee": _tennis_option(c.get("option_envisagee"), pr, m, known, bt, label, settle)}
             out[m.key] = _keep({**c, "match": f"{m.name_a} - {m.name_b}", "competition": f"{tour} {m.tournament}",
                                 "surface": m.surface, "coup_envoi": ko.isoformat(),
                                 "score": (raw.get("event_final_result") or "").replace(" ", "") or None
@@ -166,6 +168,31 @@ def tennis(day: str, prev: dict, now: datetime) -> dict:
     for k, c in prev.items():  # a match the fixtures no longer list (moved, cancelled) keeps its stored choice
         out.setdefault(k, c)
     return out
+
+
+def _tennis_option(opt, pr, m, known, bt, label, settle) -> dict | None:
+    """When V3 passes: the option it would have taken without its rule (the most likely at odds 1.50-2.30 with the
+    same 90/10 blend, any odds when none is in that range, the market alone when a player has no reliable Elo),
+    settled after the match. Never counted: it only shows whether passing was right."""
+    if not opt:
+        cands = bt.candidates(pr, bt.markets(m.odds))
+        if not cands:
+            lo, hi = bt.MIN_ODDS, bt.MAX_ODDS
+            bt.MIN_ODDS, bt.MAX_ODDS = 1.01, 100.0
+            try:
+                cands = bt.candidates(pr, bt.markets(m.odds))
+            finally:
+                bt.MIN_ODDS, bt.MAX_ODDS = lo, hi
+        if not known:
+            cands = [{**c, "p": c["fair"]} for c in cands]
+        s = S.tennis_fallback(cands, bt.markets(m.odds))
+        if not s:
+            return None
+        opt = {"pari": label(s["key"], m), "marche": bt.LABEL[s["key"][0]], "cle": list(s["key"]), "cote_prise": s["best"],
+               "chance": round(s["conf"], 3)}
+    if opt.get("resultat") not in S.SETTLED:
+        settle(opt, m)
+    return opt
 
 
 def bilan(days: dict[str, dict]) -> dict:

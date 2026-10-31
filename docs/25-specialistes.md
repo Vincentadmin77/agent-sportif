@@ -49,6 +49,10 @@ raison « Le spécialiste ne le retient pas : … » ; il reste hors ratio. Choi
 (65/35) entre 1,50 et 2,30 ; V2 le plus grand écart projection / ligne principale (total ou handicap), sinon le
 vainqueur projeté ; V3 l'option la plus probable (mélange 90/10) sur les 5 axes. `ratio` = retenus seulement,
 `ratio_tous` = tous les choix (pour les comparatifs avec le modèle et le M).
+
+Vincent 31/10 : sur un « Je passe » de V3, `option_envisagee` = l'option qu'il aurait prise sans sa règle (la plus
+probable entre 1,50 et 2,30, sinon à n'importe quelle cote), réglée après le match, jamais comptée : elle dit si
+passer était le bon choix. Un passage de 04:00 à 12:00 règle aussi les choix de la veille encore ouverts.
 Journée : 08:00-02:00 foot et tennis, basket jusqu'à 04:00 (un passage avant 04:00 compte pour la veille).
 
 ## Équipes chanceuses (Benham, Tippett), testé le 30/10
