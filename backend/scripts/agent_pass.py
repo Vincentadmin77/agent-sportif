@@ -27,6 +27,11 @@ Each pronostic step first reviews the earlier days (sportai/services/revue.py, o
 nobody chose and the chosen ones that lost, the record of each family of bets, and a correction of the model's
 chances by family applied to the day's tickets, ideas and player; pronostic/<day>.json "revue" holds it.
 
+Basketball (NBA, WNBA, docs/21-basket-passes.md): the same subcommands with the codes NBA / WNBA, from
+API-Basketball (fixtures, quarter scores, odds; never The Odds API); its day runs to 04:00 Paris. Basketball has
+collections of its own on the page: it reads --page/basket_matchs and --page/basket_pronostic and writes only
+out/basket_matchs/<game id>.json and out/basket_pronostic/<day>.json, never matchs/, pronostic/ or stats/.
+
 --page is a folder holding the page's current documents (matchs/<id>.json);
 --out receives the documents to write back, plus manifest.json. The analysis
 database lives in STATE_DB so the 45 min pass can compare with the 3 h pass;
@@ -36,6 +41,7 @@ it is copied to a temporary file while the step runs.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import shutil
@@ -47,16 +53,44 @@ from pathlib import Path
 
 STATE_DB = Path(os.getenv("STATE_DB", "/mnt/project-files/agent-sportif/state/agent.db"))
 LIVE_STEPS = tuple(range(0, 120, 15))  # minutes after kick-off: each step (re)starts the 2-minute live loop
-COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL", "UEL"]
+FOOT_COMPETITIONS = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "TR1", "ENC", "PT1", "UCL", "UEL"]
+# Basketball (owner 2026-10-27): NBA and WNBA from API-Basketball, same rules as football (docs/21-basket-passes.md).
+BASKET_COMPETITIONS = ["NBA", "WNBA"]
+COMPETITIONS = FOOT_COMPETITIONS + BASKET_COMPETITIONS
+BASKET_LIVE_STEPS = tuple(range(0, 180, 30))  # a game lasts about 2 h 15: one light update every 30 min
+BASKET_FINAL_AFTER = timedelta(hours=2, minutes=30)  # final results after the last tip-off (NBA: ~05:00-06:30 Paris)
 # The "Joueur pro" was removed by the owner on 2026-10-26 (too much like gambling, poor results): its code and its
 # history stay, but no pass computes or writes its positions any more, pre-match or live.
 JOUEUR_PRO = False
 
 
+def _split(comps: list[str]) -> tuple[list[str], list[str]]:
+    """(football competitions, basketball competitions) of a step."""
+    return [c for c in comps if c not in BASKET_COMPETITIONS], [c for c in comps if c in BASKET_COMPETITIONS]
+
+
+def _basket_api():
+    from sportai.config import get_settings
+    from sportai.connectors.api_basketball import ApiBasketballProvider
+
+    return ApiBasketballProvider(get_settings().api_football_key)
+
+
 def _load_page(folder: str | None) -> dict[str, dict]:
+    """The page's football documents (matchs/<id>.json; a basketball one left there by an older pass is ignored)."""
     if not folder or not (Path(folder) / "matchs").exists():
         return {}
-    return {p.stem: json.loads(p.read_text()) for p in (Path(folder) / "matchs").glob("*.json")}
+    docs = {p.stem: json.loads(p.read_text()) for p in (Path(folder) / "matchs").glob("*.json")}
+    return {k: d for k, d in docs.items() if d.get("sport") != "basket"}
+
+
+def _load_collection(folder: str | None, name: str) -> dict[str, dict]:
+    if not folder or not (Path(folder) / name).exists():
+        return {}
+    return {p.stem: json.loads(p.read_text()) for p in (Path(folder) / name).glob("*.json")}
+
+
+BASKET_KEYS = ("basket_matchs", "basket_pronostic")
 
 
 def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None:
@@ -65,7 +99,13 @@ def _write(out: str, docs: dict[str, dict], message: str, now: datetime) -> None
     for key, doc in docs.items():
         (d / f"{key}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     (Path(out) / "etat.json").write_text(json.dumps({"maj": now.isoformat(), "message": message}, ensure_ascii=False))
-    (Path(out) / "manifest.json").write_text(json.dumps({"matchs": sorted(docs), "message": message}, ensure_ascii=False))
+    manifest = {"matchs": sorted(docs), "message": message}
+    try:  # a mixed step wrote its basketball collections first: keep them listed
+        old = json.loads((Path(out) / "manifest.json").read_text())
+        manifest.update({k: old[k] for k in BASKET_KEYS if k in old})
+    except (OSError, ValueError):
+        pass
+    (Path(out) / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False))
     print(json.dumps({"written": sorted(docs), "message": message}, ensure_ascii=False))
 
 
@@ -94,7 +134,7 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
         revue = build_revue(matchs, days, joueurs, date.fromisoformat(day))
     except Exception as e:  # the review is a bonus: never lose the pass for it
         print(f"revue unavailable ({str(e)[:160]})", file=sys.stderr)
-    legs = legs_from_db(db, date.fromisoformat(day), corrections=(revue or {}).get("corrections"))
+    legs = legs_from_db(db, date.fromisoformat(day), corrections=(revue or {}).get("corrections")) if db is not None else []
     doc = build_pronostic(legs, matchs, days.get(day), now, passage,
                           date.fromisoformat(day))
     if revue:
@@ -120,6 +160,9 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
 
 
 def _state_session():
+    """The analysis database (read only), None when there is none yet (a basketball-only setup)."""
+    if not STATE_DB.exists():
+        return None
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -129,7 +172,8 @@ def _state_session():
 def pronostic(page: str | None, out: str, now: datetime, day: str | None = None) -> None:
     db = _state_session()
     print(json.dumps({"pronostic": _pronostic(db, page, {}, out, now, "maj", day)}, ensure_ascii=False))
-    db.close()
+    if db is not None:
+        db.close()
 
 
 def plan(now: datetime, comps: list[str] | None = None) -> None:
@@ -141,58 +185,104 @@ def plan(now: datetime, comps: list[str] | None = None) -> None:
     from sportai.connectors.api_football import ApiFootballProvider
     from sportai.services import calendrier
 
-    comps = comps or COMPETITIONS
+    foot, basket = _split(comps or COMPETITIONS)
     today = journee(now)
     by_time: dict[str, set] = defaultdict(set)
     source = "calendrier API-Football"
-    try:  # the season calendar of each competition says which matches are played today, and when
-        cals = calendrier.refresh(ApiFootballProvider(get_settings().api_football_key), comps, now)
-        by_time = calendrier.kickoffs_on(cals, today, now)
-        print("semaine:", json.dumps(calendrier.next_days(cals, today)), file=sys.stderr)
-    except Exception as e:  # noqa: BLE001 - fall back on the odds feed's event list
-        print(f"calendrier unavailable ({str(e)[:160]}), odds events used", file=sys.stderr)
-        source = "événements The Odds API"
-        http = CachedClient(BASE_URL)
-        key = get_settings().the_odds_api_key
-        for comp in comps:
-            for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
-                ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
-                if ko > now and journee(ko) == today:
-                    by_time[ko.isoformat()].add(comp)
+    if foot:
+        try:  # the season calendar of each competition says which matches are played today, and when
+            cals = calendrier.refresh(ApiFootballProvider(get_settings().api_football_key), foot, now)
+            by_time = calendrier.kickoffs_on(cals, today, now)
+            print("semaine:", json.dumps(calendrier.next_days(cals, today)), file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - fall back on the odds feed's event list
+            print(f"calendrier unavailable ({str(e)[:160]}), odds events used", file=sys.stderr)
+            source = "événements The Odds API"
+            http = CachedClient(BASE_URL)
+            key = get_settings().the_odds_api_key
+            for comp in foot:
+                for ev in http.get_json(f"/v4/sports/{SPORT_KEYS[comp]}/events", {"apiKey": key, "dateFormat": "iso"}):
+                    ko = datetime.fromisoformat(ev["commence_time"].replace("Z", "+00:00"))
+                    if ko > now and journee(ko) == today:
+                        by_time[ko.isoformat()].add(comp)
+    basket_times: dict[str, set] = defaultdict(set)
+    if basket:
+        try:  # the games of the basketball day (to 04:00 Paris the next night), 2 requests per competition
+            basket_times = basket_kickoffs(_basket_api(), basket, now)
+            source += " + matchs API-Basketball"
+        except Exception as e:  # noqa: BLE001 - football is planned all the same
+            print(f"basket unavailable ({str(e)[:160]})", file=sys.stderr)
+    print(json.dumps(plan_steps(by_time, basket_times, now, source), indent=1))
+
+
+def basket_kickoffs(api, comps: list[str], now: datetime) -> dict[str, set]:
+    """Tip-off times (ISO, UTC) of the basketball day's games still to be played, with their competitions."""
+    from sportai.connectors.api_basketball import DROPPED, kickoff
+    from sportai.services.prematch import journee
+
+    out: dict[str, set] = defaultdict(set)
+    for comp in comps:
+        for g in api.games_on([comp], journee(now, "basket")):
+            ko = kickoff(g)
+            if ko > now and g["status"]["short"] not in DROPPED:
+                out[ko.isoformat()].add(comp)
+    return out
+
+
+def plan_steps(by_time: dict[str, set], basket_times: dict[str, set], now: datetime, source: str = "") -> dict:
+    """The day's routine steps: football (h3, m45, m15, live every 15 min, final 2 h 15 after the last kick-off)
+    and basketball (h3, m45, a light live update every 30 min, final 2 h 30 after the last tip-off)."""
     steps = []
-    for ko_s, comps in sorted(by_time.items()):
-        ko = datetime.fromisoformat(ko_s)
-        # m15: last look at the odds 15 min before kick-off, so an official ticket still empty at the 45-min pass
-        # is filled when its odds cross the threshold late (owner, 2026-10-13: Atalanta went from 1.49 to 1.52).
-        for kind, at in (("h3", ko - timedelta(hours=3)), ("m45", ko - timedelta(minutes=45)),
-                         ("m15", ko - timedelta(minutes=15))):
-            if at > now:
-                steps.append({"at": at.isoformat(), "kind": kind, "kickoff": ko_s, "competitions": sorted(comps)})
-        # Live follow-up (API-Football): steps every 15 min restart the 2-minute loop if the session went idle.
-        for minutes in LIVE_STEPS:
-            at = ko + timedelta(minutes=minutes)
-            if at > now:
-                steps.append({"at": at.isoformat(), "kind": "live", "kickoff": ko_s, "competitions": sorted(comps)})
-    if by_time:
-        # One final step after the last match settles the whole day (2 credits per competition).
-        last = max(datetime.fromisoformat(k) for k in by_time)
-        steps.append({"at": (last + timedelta(hours=2, minutes=15)).isoformat(), "kind": "final",
-                      "competitions": sorted(set().union(*by_time.values()))})
+    for times, prematch_steps, live_steps in (
+            (by_time, (("h3", timedelta(hours=3)), ("m45", timedelta(minutes=45)), ("m15", timedelta(minutes=15))),
+             LIVE_STEPS),
+            (basket_times, (("h3", timedelta(hours=3)), ("m45", timedelta(minutes=45))), BASKET_LIVE_STEPS)):
+        for ko_s, comps in sorted(times.items()):
+            ko = datetime.fromisoformat(ko_s)
+            # m15: last look at the odds 15 min before kick-off, so an official ticket still empty at the 45-min pass
+            # is filled when its odds cross the threshold late (owner, 2026-10-13: Atalanta went from 1.49 to 1.52).
+            for kind, before in prematch_steps:
+                at = ko - before
+                if at > now:
+                    steps.append({"at": at.isoformat(), "kind": kind, "competitions": sorted(comps)})
+            # Live follow-up: football steps every 15 min restart the 2-minute loop if the session went idle;
+            # basketball steps are single updates (score and quarter).
+            for minutes in live_steps:
+                at = ko + timedelta(minutes=minutes)
+                if at > now:
+                    steps.append({"at": at.isoformat(), "kind": "live", "competitions": sorted(comps)})
+    # One final step after the last match settles the whole day, one for each sport.
+    for times, after in ((by_time, timedelta(hours=2, minutes=15)), (basket_times, BASKET_FINAL_AFTER)):
+        if times:
+            last = max(datetime.fromisoformat(k) for k in times)
+            steps.append({"at": (last + after).isoformat(), "kind": "final",
+                          "competitions": sorted(set().union(*times.values()))})
     merged: dict[tuple[str, str], set] = defaultdict(set)
     for st in steps:
         merged[(st["at"], st["kind"])].update(st["competitions"])
     steps = [{"at": at, "kind": kind, "competitions": sorted(c)} for (at, kind), c in sorted(merged.items())]
-    print(json.dumps({"source": source, "kickoffs": {k: sorted(v) for k, v in sorted(by_time.items())},
-                      "steps": steps}, indent=1))
+    kickoffs: dict[str, set] = defaultdict(set)
+    for times in (by_time, basket_times):
+        for k, v in times.items():
+            kickoffs[k] |= set(v)
+    return {"source": source, "kickoffs": {k: sorted(v) for k, v in sorted(kickoffs.items())}, "steps": steps}
 
 
 def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals: bool = False,
              morning: bool = False) -> None:
+    comps, basket = _split(comps)
+    bnotes = []
+    if basket:  # NBA / WNBA: their own collections, written first (services/basket.py)
+        bnotes = _basket_prematch(basket, page, out, now, "matin" if morning else "passage", final_step=not comps)
+        if not comps:
+            return
+    current = _load_page(page)
     work = Path(tempfile.mkdtemp()) / "agent.db"
+    atexit.register(shutil.rmtree, work.parent, True)  # each copy is ~290 MB; leftovers filled the disk on 2026-10-30
     if STATE_DB.exists():
         shutil.copy(STATE_DB, work)
     os.environ["DATABASE_URL"] = f"sqlite:///{work}"
     os.environ["DATA_MODE"] = "real"
+    _reset_settings()  # the basketball pass above may have read the settings before DATABASE_URL was set
     from alembic import command
     from alembic.config import Config
 
@@ -208,26 +298,42 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
 
     db = session_factory()()
     manage.init(db)
-    current, docs, notes, fixtures = _load_page(page), {}, [], []
+    docs, notes, fixtures = {}, bnotes, []
+    # Missing key players (docs/22-absences.md), read BEFORE the matches are priced: the official line-ups when they
+    # are out (45 min pass, full strength), else the day's injuries list (half strength). API-Football only, never
+    # The Odds API; the injuries list is fetched once a day per match and kept on the page for the live loop.
+    api, raw_today, effects = None, None, {}
+    try:
+        from sportai.connectors.api_football import ApiFootballProvider
+
+        api = ApiFootballProvider(get_settings().api_football_key)
+        raw_today, effects = _absences(api, comps, current, now, morning)
+    except Exception as e:  # the correction is a bonus: without it the probabilities are the usual ones
+        notes.append(f"absences unavailable ({str(e)[:120]})")
+    lookup = _absence_lookup(effects)
     for comp in comps:
         run = execute_prematch(db, get_settings(), comp, "routine", now=now, goal_markets=goals,
-                              max_hours_ahead=24 if morning else None)
+                              max_hours_ahead=24 if morning else None, absence_lookup=lookup)
         notes.append(f"{comp} {run.status}" + (f" ({run.status_detail[:120]})" if run.status_detail else ""))
         if run.status == "completed":
             new = build_match_docs(db, run, {**current, **docs})
             docs.update(new)
             fixtures += run.fixtures or []
     try:  # before the tickets: a high rotation risk (next match) keeps some bets out of them
-        _context(comps, docs, current, now)
+        _context(comps, docs, current, now, api=api, raw_today=raw_today)
     except Exception as e:  # context is a bonus: never lose the pass for it
         notes.append(f"contexte unavailable ({str(e)[:120]})")
+    try:  # after the context, which rebuilds "contexte" from scratch
+        _apply_absences(effects, docs, fixtures, now)
+    except Exception as e:  # noqa: BLE001 - display only
+        notes.append(f"absences display unavailable ({str(e)[:120]})")
     try:
         notes.append("pronostic: " + _pronostic(db, page, docs, out, now, "matin" if morning else "passage"))
     except Exception as e:  # the tab is a bonus: never lose the pass for it
         notes.append(f"pronostic unavailable ({str(e)[:120]})")
     db.close()
     try:
-        docs.update(_lineups(comps, docs, fixtures, now))
+        docs.update(_lineups(comps, docs, fixtures, now, api=api, raw_today=raw_today))
     except Exception as e:  # line-ups are a bonus: never lose the pass for them
         notes.append(f"line-ups unavailable ({str(e)[:120]})")
     try:
@@ -239,6 +345,67 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+def _reset_settings() -> None:
+    from sportai.config import get_settings
+    from sportai.db.session import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+
+
+def _basket_prematch(comps: list[str], page: str | None, out: str, now: datetime, passage: str,
+                     final_step: bool) -> list[str]:
+    """NBA / WNBA: every game of the basketball day not started yet (services/basket.py), written to
+    out/basket_matchs and out/basket_pronostic/<basketball day>. Returns the notes."""
+    from sportai.services import basket
+    from sportai.services.prematch import journee
+
+    current = _load_collection(page, "basket_matchs")
+    try:
+        docs, offers, notes = basket.prematch(_basket_api(), comps, current, now)
+    except Exception as e:  # noqa: BLE001 - football is analysed all the same
+        docs, offers, notes = {}, {}, [f"basket failed ({str(e)[:120]})"]
+    _write_basket(page, out, now, docs, offers, passage, [f"{journee(now, 'basket'):%Y-%m-%d}"],
+                  f"{len(docs)} match(s) de basket mis à jour", final_step)
+    if final_step:
+        print("runs:", "; ".join(notes), file=sys.stderr)
+    return notes
+
+
+def _write_basket(page: str | None, out: str, now: datetime, docs: dict[str, dict], offers: dict[str, list[dict]],
+                  passage: str, days: list[str], message: str, final_step: bool) -> None:
+    """The basketball collections only: out/basket_matchs/<game id>.json (the documents of this step) and
+    out/basket_pronostic/<day>.json for each day given (bets fixed 45 min before tip-off reused from the page's
+    current document, settled once their game is over). final_step: a basketball-only step, which also writes
+    etat.json and manifest.json (never out/matchs)."""
+    from sportai.services import basket
+
+    current = _load_collection(page, "basket_matchs")
+    pronos = _load_collection(page, "basket_pronostic")
+    matchs = {**current, **docs}
+    written = {}
+    for day in sorted(set(days)):
+        try:
+            written[day] = basket.build_pronostic(day, matchs, offers, pronos.get(day), now, passage)
+        except Exception as e:  # noqa: BLE001 - the documents are written all the same
+            print(f"basket pronostic {day} unavailable ({str(e)[:160]})", file=sys.stderr)
+    for sub, items in (("basket_matchs", docs), ("basket_pronostic", written)):
+        if items:
+            (Path(out) / sub).mkdir(parents=True, exist_ok=True)
+        for key, body in items.items():
+            (Path(out) / sub / f"{key}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1))
+    listing = {"basket_matchs": sorted(docs), "basket_pronostic": sorted(written)}
+    Path(out).mkdir(parents=True, exist_ok=True)
+    if final_step:
+        (Path(out) / "etat.json").write_text(json.dumps({"maj": now.isoformat(), "message": message},
+                                                        ensure_ascii=False))
+        (Path(out) / "manifest.json").write_text(json.dumps({"matchs": [], **listing, "message": message},
+                                                            ensure_ascii=False))
+    else:  # a mixed step: football's _write keeps these keys in its manifest
+        (Path(out) / "manifest.json").write_text(json.dumps(listing, ensure_ascii=False))
+    print(json.dumps({"written": listing, "message": message}, ensure_ascii=False))
 
 
 def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
@@ -270,7 +437,8 @@ def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now
                                   "exterieur": recent_form(api.team_last(a), a)}
 
 
-def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime) -> None:
+def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime, api=None,
+             raw_today: list[dict] | None = None) -> None:
     """Referee, standings, streaks and weather of the pass's matches still to play (sportai/services/contexte.py).
     Each pass refreshes them (the referee is often named late, the forecast improves); the streaks are fetched
     once a day per match, the teams' next matches too (rotation risk, docs/15-prochain-match.md). No probability
@@ -288,10 +456,10 @@ def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], 
             if d.get("coup_envoi") and datetime.fromisoformat(d["coup_envoi"]) > now}
     if not days:
         return
-    api = ApiFootballProvider(get_settings().api_football_key)
+    api = api or ApiFootballProvider(get_settings().api_football_key)
     src = ContextSources(api, now)
     for day in sorted(days):
-        for fx in api.fixtures_on(comps, day):
+        for fx in (raw_today if raw_today is not None and day == journee(now) else api.fixtures_on(comps, day)):
             if fx["fixture"]["status"]["short"] not in ("NS", "TBD"):
                 continue
             key = find_doc(docs, f"{day:%Y-%m-%d}", fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
@@ -312,7 +480,7 @@ def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], 
 
 
 def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now: datetime,
-             window: timedelta = timedelta(minutes=75)) -> dict[str, dict]:
+             window: timedelta = timedelta(minutes=75), api=None, raw_today: list[dict] | None = None) -> dict[str, dict]:
     """Official line-ups, notable absentees and goalscorer estimates for the matches close to kick-off."""
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
@@ -324,10 +492,10 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
             if d.get("coup_envoi") and now < datetime.fromisoformat(d["coup_envoi"]) <= now + window}
     if not soon:
         return {}
-    api = ApiFootballProvider(get_settings().api_football_key)
+    api = api or ApiFootballProvider(get_settings().api_football_key)
     day = journee(now)
     out = {}
-    for fx in api.fixtures_on(comps, day):
+    for fx in (raw_today if raw_today is not None else api.fixtures_on(comps, day)):
         home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
         key = find_doc(soon, f"{day:%Y-%m-%d}", home, away)
         if not key:
@@ -337,6 +505,138 @@ def _lineups(comps: list[str], docs: dict[str, dict], fixtures: list[dict], now:
         doc["scenario"] = scenario_with_squads(doc)
         out[key] = doc
     return out
+
+
+LINEUP_WINDOW = timedelta(minutes=75)  # line-ups are looked for from 75 min before kick-off
+ABSENCE_HORIZON = timedelta(hours=4)  # passes other than the morning one: the matches of the next hours only
+
+
+def _absences(api, comps: list[str], current: dict[str, dict], now: datetime,
+              morning: bool) -> tuple[list[dict], dict[tuple[str, str], dict]]:
+    """Missing key players of the matches this pass prices, before they are priced (docs/22-absences.md).
+
+    Returns today's raw API-Football fixtures (reused by the context and line-up steps, no second request) and, by
+    (home, away) API-Football names, {"effet": lineups.absence_effect(...) or None, "absents": the day's absentees
+    block when it was fetched now, else None}. Uses only what the pass already reads: /fixtures/lineups and /players
+    (line-ups, 45 min pass), /injuries once a day per match and /players of a side with someone listed."""
+    from sportai.connectors.api_football import LEAGUE_IDS
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+    from sportai.services.runs import EUROPEAN_CUPS
+
+    cups = {LEAGUE_IDS[c] for c in EUROPEAN_CUPS if c in LEAGUE_IDS}  # league matches only (the study's scope)
+    day = journee(now)
+    raw = api.fixtures_on(comps, day)
+    horizon = now + (timedelta(hours=24) if morning else ABSENCE_HORIZON)
+    out = {}
+    for fx in raw:
+        ts = fx["fixture"].get("timestamp")
+        if fx["fixture"]["status"]["short"] not in ("NS", "TBD") or not ts or fx["league"].get("id") in cups:
+            continue
+        ko = datetime.fromtimestamp(ts, timezone.utc)
+        if not now < ko <= horizon:
+            continue
+        home, away = fx["teams"]["home"]["name"], fx["teams"]["away"]["name"]
+        key = find_doc(current, f"{day:%Y-%m-%d}", home, away)
+        try:
+            out[(home, away)] = _absence_of(api, fx, (current.get(key) or {}) if key else {}, ko, now)
+        except Exception as e:  # noqa: BLE001 - this match is priced without the correction
+            print(f"absences unavailable for {home} ({str(e)[:120]})", file=sys.stderr)
+    return raw, out
+
+
+def _absence_of(api, fx: dict, prev: dict, ko: datetime, now: datetime) -> dict:
+    """The absence effect of one raw fixture: official line-ups when both are out and kick-off is near, else the
+    injuries list (kept in prev["absents"] when already read today). No information: "effet" None (factor 1)."""
+    from sportai.services.lineups import (SOURCE_INJURIES, SOURCE_LINEUPS, absence_effect, absentees, absents_ready,
+                                          regular_starters, side_from_absents, side_from_lineup, team_players_index)
+    from sportai.services.prematch import journee
+
+    season, league = fx["league"]["season"], fx["league"].get("id")
+    home, away = fx["teams"]["home"], fx["teams"]["away"]
+    index: dict = {}
+
+    def players(team: dict):
+        if team["id"] not in index:
+            index[team["id"]] = team_players_index(api.team_players(team["id"], season),
+                                                   api.team_players(team["id"], season - 1), team["id"], league)
+        return index[team["id"]]
+
+    if ko <= now + LINEUP_WINDOW:
+        teams = {t["team"]["id"]: t for t in api.lineups(fx["fixture"]["id"], ttl=300)}
+        if home["id"] in teams and away["id"] in teams:
+            sides = [side_from_lineup(teams[t["id"]], players(t)) for t in (home, away)]
+            return {"effet": absence_effect(*sides, home["name"], away["name"], SOURCE_LINEUPS), "absents": None}
+    today = f"{journee(now):%Y-%m-%d}"
+    absents, fresh = prev.get("absents"), None
+    if not absents_ready(absents, today):
+        injuries = api.injuries(fx["fixture"]["id"])
+        listed = {(it.get("team") or {}).get("id") for it in injuries}
+        tps = {t["id"]: players(t) for t in (home, away) if t["id"] in listed}
+        regulars = {tid: regular_starters(api.team_players(tid, season), tid, league) for tid in tps}
+        absents = fresh = {"jour": today, **absentees(injuries, fx, regulars, tps)}
+    if not (absents.get("domicile") or absents.get("exterieur")):
+        return {"effet": None, "absents": fresh}  # an empty list may only mean the league is not covered: factor 1
+    sides = [side_from_absents(absents.get(s) or []) for s in ("domicile", "exterieur")]
+    return {"effet": absence_effect(*sides, home["name"], away["name"], SOURCE_INJURIES), "absents": fresh}
+
+
+def _absence_lookup(effects: dict[tuple[str, str], dict]):
+    """prematch.AbsenceLookup over _absences' result: (f_home, f_away) of a fixture, None when nothing is known."""
+    from sportai.connectors.teams import same_team
+
+    def lookup(fx) -> tuple[float, float] | None:
+        for (home, away), e in effects.items():
+            if e.get("effet") and same_team(home, fx.home) and same_team(away, fx.away):
+                return e["effet"]["domicile"], e["effet"]["exterieur"]
+        return None
+
+    return lookup
+
+
+ABSENCE_NOTE = " Exception : les joueurs clés absents corrigent les chances de victoire, de nul et de handicap."
+
+
+def _apply_absences(effects: dict[tuple[str, str], dict], docs: dict[str, dict], fixtures: list[dict],
+                    now: datetime) -> None:
+    """Writes on the page documents the absentees fetched by _absences and, for each match priced in this pass,
+    contexte.absences_effet {"domicile", "exterieur", "source", "phrases"} with its sentences in contexte.phrases
+    (a match priced without the correction loses an earlier pass's effect)."""
+    from sportai.connectors.teams import same_team
+    from sportai.services.lineups import scenario_with_squads
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+
+    day = f"{journee(now):%Y-%m-%d}"
+    for (home, away), e in effects.items():
+        key = find_doc(docs, day, home, away)
+        if key and e.get("absents"):
+            docs[key]["absents"] = e["absents"]
+            if docs[key].get("scenario"):
+                docs[key]["scenario"] = scenario_with_squads(docs[key])
+    for f in fixtures:
+        if f.get("skipped_reason"):
+            continue
+        h, _, a = f["match"].partition(" - ")
+        key = find_doc(docs, day, h, a)
+        if not key:
+            continue
+        ctx = dict(docs[key].get("contexte") or {})
+        old = ctx.pop("absences_effet", None) or {}
+        phrases = [p for p in ctx.get("phrases") or [] if p not in (old.get("phrases") or [])]
+        note = (ctx.get("note") or "").replace(ABSENCE_NOTE, "")
+        eff = next((e["effet"] for (hh, aa), e in effects.items()
+                    if e.get("effet") and same_team(hh, h) and same_team(aa, a)), None)
+        if f.get("absence_factors") and eff:
+            ctx["absences_effet"] = eff
+            phrases += eff["phrases"]
+            note += ABSENCE_NOTE if note else ""
+        elif not old:
+            continue  # nothing to add or take back
+        ctx["phrases"] = phrases
+        if note:
+            ctx["note"] = note
+        docs[key]["contexte"] = ctx
 
 
 def _fill_lineups(api, fx: dict, doc: dict, fixtures: list[dict], ttl: float = 300) -> bool:
@@ -385,6 +685,11 @@ def _squad_news(api, fx: dict, doc: dict, fixtures: list[dict], now: datetime) -
 
 
 def scores(comps: list[str], page: str | None, out: str, final: bool, now: datetime) -> None:
+    comps, basket = _split(comps)
+    if basket:  # NBA / WNBA: results from API-Basketball (never The Odds API), their own collections
+        _basket_follow(basket, page, out, now, "resultats" if final else "maj", final, not comps)
+        if not comps:
+            return
     from sportai.config import get_settings
     from sportai.connectors.the_odds_api import TheOddsApiProvider
     from sportai.services.dashboard import apply_scores
@@ -394,6 +699,8 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
     current, docs = _load_page(page), {}
     for comp in comps:
         docs.update(apply_scores(odds.scores(comp, completed_too=final), current, now))
+    if final:
+        _half_time_scores(comps, current, docs)
     if final and STATE_DB.exists():
         db = _state_session()
         for day in sorted({d["jour"] for d in docs.values() if d.get("jour")}):  # a late final runs past midnight
@@ -403,8 +710,80 @@ def scores(comps: list[str], page: str | None, out: str, final: bool, now: datet
     print("quota:", odds.last_quota, file=sys.stderr)
 
 
+def _half_time_scores(comps: list[str], current: dict, docs: dict) -> None:
+    """The final pass marks matches finished from The Odds API, which has no half-time score: read it from
+    API-Football for every finished match still without one, so the half-time bets settle."""
+    from datetime import date as _date
+
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.live_page import find_doc
+
+    merged = {**current, **docs}
+    since = (_date.today() - timedelta(days=2)).isoformat()  # recent days only: older ones are settled already
+    days = {d["jour"] for d in merged.values() if d.get("jour", "") >= since and d.get("statut") == "termine"
+            and not d.get("score_mi_temps") and d.get("sport") != "basket"}
+    if not days:
+        return
+    api = ApiFootballProvider(get_settings().api_football_key)
+    for day in sorted(days):
+        try:
+            fixtures = api.fixtures_on(comps, _date.fromisoformat(day))
+        except Exception as e:  # noqa: BLE001 - extra settlement data, never break the final pass
+            print(f"half-time scores {day}: {str(e)[:120]}", file=sys.stderr)
+            continue
+        for fx in fixtures:
+            key = find_doc(merged, day, fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
+            ht = (fx.get("score") or {}).get("halftime") or {}
+            if not key or merged[key].get("score_mi_temps") or ht.get("home") is None or ht.get("away") is None:
+                continue
+            merged[key] = docs[key] = {**merged[key], "score_mi_temps": f"{int(ht['home'])} - {int(ht['away'])}"}
+
+
+def _basket_final_days(current: dict[str, dict], bdocs: dict[str, dict], now: datetime) -> list[str]:
+    """The basketball days a final step settles: those of the games it just updated, and the night that just ended
+    (the final runs around 05:00-06:30 Paris, already on the next basketball day) or the current one."""
+    from sportai.services.prematch import journee
+
+    today = journee(now, "basket")
+    recent = {f"{today - timedelta(days=1):%Y-%m-%d}", f"{today:%Y-%m-%d}"}
+    return sorted({d["jour"] for d in bdocs.values() if d.get("jour")}
+                  | {d["jour"] for d in current.values() if d.get("sport") == "basket" and d.get("jour") in recent})
+
+
+def _basket_follow(comps: list[str], page: str | None, out: str, now: datetime, passage: str, final: bool,
+                   final_step: bool) -> dict[str, dict]:
+    """Statut, score and quarter scores of the page's basketball games (services/basket.py, one or two requests a
+    day), and their retained bets settled in basket_pronostic. Returns the updated documents."""
+    from sportai.services import basket
+
+    current = _load_collection(page, "basket_matchs")
+    try:
+        docs = basket.update_scores(_basket_api(), comps, current, now)
+    except Exception as e:  # noqa: BLE001 - never lose the football follow-up for it
+        print(f"basket scores unavailable ({str(e)[:160]})", file=sys.stderr)
+        docs = {}
+    days = (_basket_final_days(current, docs, now) if final
+            else sorted({d["jour"] for d in docs.values() if d.get("jour")}))
+    n_live = sum(d.get("statut") == "en_direct" for d in docs.values())
+    n_done = sum(d.get("statut") == "termine" for d in docs.values())
+    _write_basket(page, out, now, docs, {}, passage, days,
+                  f"Basket : {n_live} match(s) en cours, {n_done} terminé(s)", final_step)
+    return docs
+
+
 def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
-    """Follow the page's matches under way (and those that just finished) with API-Football."""
+    """Follow the page's matches under way (and those that just finished): football with API-Football,
+    basketball (score and quarter only) with API-Basketball."""
+    comps, basket = _split(comps)
+    if basket:
+        _basket_follow(basket, page, out, now, "direct", False, not comps)
+        if not comps:
+            return
+    _live_foot(comps, page, out, now, {})
+
+
+def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs: dict[str, dict]) -> None:
     import sqlite3
 
     from sportai.config import get_settings
@@ -415,7 +794,7 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     from sportai.services.prematch import journee
 
     api = ApiFootballProvider(get_settings().api_football_key)
-    current, docs = _load_page(page), {}
+    current = _load_page(page)
     fixtures: list[dict] = []
     if STATE_DB.exists():
         con = sqlite3.connect(f"file:{STATE_DB}?mode=ro", uri=True)
@@ -426,7 +805,8 @@ def live(comps: list[str], page: str | None, out: str, now: datetime) -> None:
     from datetime import date as _date
     # Today, plus the day of any page match still open (a late match runs past midnight in Paris).
     days = {journee(now)} | {_date.fromisoformat(d["jour"]) for d in current.values()
-                                                 if d.get("jour") and d.get("statut") != "termine"}
+                                                 if d.get("jour") and d.get("statut") != "termine"
+                                                 and d.get("sport") != "basket"}
     from sportai.connectors.base import ProviderUnavailable
     raw = []
     for day in sorted(days):  # one day failing upstream (2026-10-21: HTTP 500 on today's dates) must not block the others

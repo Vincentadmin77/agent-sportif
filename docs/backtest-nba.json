@@ -1,0 +1,240 @@
+{
+ "genere": "2026-10-27T21:00:21+00:00",
+ "protocole": "walk-forward, refit tous les 7 jours sur les matchs passés uniquement",
+ "global": {
+  "matchs": 4007,
+  "vainqueur": {
+   "logloss_modele": 0.609,
+   "logloss_reference": 0.6889,
+   "brier_modele": 0.2108,
+   "brier_reference": 0.2479,
+   "favori_juste": 0.663
+  },
+  "total_points": {
+   "brier_modele": 0.2318,
+   "brier_reference": 0.2497,
+   "ecart_moyen_modele": 14.97,
+   "ecart_moyen_reference": 15.95
+  },
+  "ecart_points": {
+   "ecart_moyen_modele": 11.26,
+   "ecart_moyen_reference": 12.77
+  }
+ },
+ "par_saison": {
+  "2023-24": {
+   "matchs": 1319,
+   "vainqueur": {
+    "logloss_modele": 0.6122,
+    "logloss_reference": 0.6897,
+    "brier_modele": 0.2124,
+    "brier_reference": 0.2483,
+    "favori_juste": 0.658
+   },
+   "total_points": {
+    "brier_modele": 0.2376,
+    "brier_reference": 0.25,
+    "ecart_moyen_modele": 14.99,
+    "ecart_moyen_reference": 15.92
+   },
+   "ecart_points": {
+    "ecart_moyen_modele": 11.05,
+    "ecart_moyen_reference": 12.46
+   }
+  },
+  "2024-25": {
+   "matchs": 1321,
+   "vainqueur": {
+    "logloss_modele": 0.6092,
+    "logloss_reference": 0.6894,
+    "brier_modele": 0.2113,
+    "brier_reference": 0.2481,
+    "favori_juste": 0.649
+   },
+   "total_points": {
+    "brier_modele": 0.2301,
+    "brier_reference": 0.2504,
+    "ecart_moyen_modele": 14.72,
+    "ecart_moyen_reference": 15.86
+   },
+   "ecart_points": {
+    "ecart_moyen_modele": 11.21,
+    "ecart_moyen_reference": 12.71
+   }
+  },
+  "2025-26": {
+   "matchs": 1315,
+   "vainqueur": {
+    "logloss_modele": 0.6045,
+    "logloss_reference": 0.6872,
+    "brier_modele": 0.2081,
+    "brier_reference": 0.247,
+    "favori_juste": 0.684
+   },
+   "total_points": {
+    "brier_modele": 0.2279,
+    "brier_reference": 0.2484,
+    "ecart_moyen_modele": 15.2,
+    "ecart_moyen_reference": 16.1
+   },
+   "ecart_points": {
+    "ecart_moyen_modele": 11.48,
+    "ecart_moyen_reference": 13.14
+   }
+  },
+  "2026-27": {
+   "matchs": 52,
+   "vainqueur": {
+    "logloss_modele": 0.6359,
+    "logloss_reference": 0.6982,
+    "brier_modele": 0.2237,
+    "brier_reference": 0.2525,
+    "favori_juste": 0.577
+   },
+   "total_points": {
+    "brier_modele": 0.229,
+    "brier_reference": 0.2547,
+    "ecart_moyen_modele": 14.75,
+    "ecart_moyen_reference": 15.42
+   },
+   "ecart_points": {
+    "ecart_moyen_modele": 11.99,
+    "ecart_moyen_reference": 13.1
+   }
+  }
+ },
+ "premier_quart_temps_1N2": {
+  "matchs": 2688,
+  "logloss_modele": 0.8266,
+  "logloss_reference": 0.853,
+  "calibration_domicile": [
+   {
+    "de": 0.2,
+    "a": 0.35,
+    "n": 150,
+    "prevu": 0.312,
+    "reel": 0.233
+   },
+   {
+    "de": 0.35,
+    "a": 0.5,
+    "n": 1046,
+    "prevu": 0.438,
+    "reel": 0.441
+   },
+   {
+    "de": 0.5,
+    "a": 0.65,
+    "n": 1246,
+    "prevu": 0.569,
+    "reel": 0.55
+   },
+   {
+    "de": 0.65,
+    "a": 0.8,
+    "n": 245,
+    "prevu": 0.691,
+    "reel": 0.69
+   },
+   {
+    "de": 0.8,
+    "a": 1,
+    "n": 1,
+    "prevu": 0.81,
+    "reel": 1.0
+   }
+  ]
+ },
+ "calibration_vainqueur": [
+  {
+   "de": 0,
+   "a": 0.2,
+   "n": 102,
+   "prevu": 0.156,
+   "reel": 0.167
+  },
+  {
+   "de": 0.2,
+   "a": 0.35,
+   "n": 512,
+   "prevu": 0.288,
+   "reel": 0.244
+  },
+  {
+   "de": 0.35,
+   "a": 0.5,
+   "n": 889,
+   "prevu": 0.428,
+   "reel": 0.43
+  },
+  {
+   "de": 0.5,
+   "a": 0.65,
+   "n": 1223,
+   "prevu": 0.573,
+   "reel": 0.57
+  },
+  {
+   "de": 0.65,
+   "a": 0.8,
+   "n": 938,
+   "prevu": 0.722,
+   "reel": 0.732
+  },
+  {
+   "de": 0.8,
+   "a": 1,
+   "n": 343,
+   "prevu": 0.852,
+   "reel": 0.851
+  }
+ ],
+ "calibration_over": [
+  {
+   "de": 0,
+   "a": 0.2,
+   "n": 183,
+   "prevu": 0.155,
+   "reel": 0.208
+  },
+  {
+   "de": 0.2,
+   "a": 0.35,
+   "n": 692,
+   "prevu": 0.286,
+   "reel": 0.328
+  },
+  {
+   "de": 0.35,
+   "a": 0.5,
+   "n": 1218,
+   "prevu": 0.428,
+   "reel": 0.388
+  },
+  {
+   "de": 0.5,
+   "a": 0.65,
+   "n": 1116,
+   "prevu": 0.57,
+   "reel": 0.574
+  },
+  {
+   "de": 0.65,
+   "a": 0.8,
+   "n": 624,
+   "prevu": 0.711,
+   "reel": 0.636
+  },
+  {
+   "de": 0.8,
+   "a": 1,
+   "n": 174,
+   "prevu": 0.85,
+   "reel": 0.73
+  }
+ ],
+ "sigma_derniere_fit": {
+  "ecart": 14.56,
+  "total": 18.4
+ }
+}

@@ -9,3 +9,7 @@ import os
 os.environ["GOALS_MODEL_PATH"] = "/nonexistent/sportai-tests/goals_model.json"
 # Nor write the squads cache of the scorer market (services/buteurs.py) next to the production state.
 os.environ["SPORTAI_PLAYERS_CACHE"] = "/nonexistent/sportai-tests/effectifs"
+# Nor read or write the players' goal history of the scorer model (docs/23-buteurs-stars.md).
+os.environ["SPORTAI_BUTEURS_HISTORY"] = "/nonexistent/sportai-tests/buteurs_historique.json.gz"
+# The French-bookmakers rule (connectors/the_odds_api.py) is tested on its own; the other tests use any bookmaker.
+os.environ["FRENCH_ODDS_ONLY"] = "0"

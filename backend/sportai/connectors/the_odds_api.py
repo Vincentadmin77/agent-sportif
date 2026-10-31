@@ -11,6 +11,7 @@ is forbidden.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -30,7 +31,64 @@ SPORT_KEYS = {
     "UCL": "soccer_uefa_champs_league",
     "UEL": "soccer_uefa_europa_league",
     "BR1": "soccer_brazil_campeonato",
+    "TR1": "soccer_turkey_super_league",
+    "ENC": "soccer_england_efl_cup",
+    "PT1": "soccer_portugal_primeira_liga",  # analysed since 2026-10-29 (owner)
 }
+
+
+# Owner, 2026-10-28: positions only on odds a French player can take, i.e. bookmakers licensed in France (ANJ).
+# Their prices come from this feed's region "fr" (Winamax, Betclic, Unibet, PMU, NetBet), keys ending in "_fr";
+# API-Football's bookmakers (Bet365, Pinnacle, 1xBet... and the international Unibet / NetBet) are not French sites.
+# Every bookmaker still counts for the market's de-vigged chance. FRENCH_ODDS_ONLY=0 turns the rule off.
+NBA_SPORT_KEY = "basketball_nba"
+
+
+# The French result and goal markets the league endpoint lacks, read match by match (1 credit a market a match), at
+# the last pass before kick-off only (FRENCH_EXTRA_WITHIN). Checked 2026-10-28 on Parma - Udinese: region fr returns
+# both teams score (NetBet) but no double chance nor draw no bet, so only btts is asked (1 credit a match).
+FRENCH_EXTRA_MARKETS = os.getenv("FRENCH_EXTRA_MARKETS", "btts")
+FRENCH_EXTRA_WITHIN = timedelta(minutes=75)
+
+
+def french_only() -> bool:
+    """Positions on French sites' odds only. Off since the owner's 2026-10-29 decision: French players also play on
+    foreign sites, so the official position takes the best odds of every bookmaker again (FRENCH_ODDS_ONLY=1 restores
+    the 2026-10-28 rule)."""
+    return os.getenv("FRENCH_ODDS_ONLY", "0") != "0"
+
+
+def french_tracking() -> bool:
+    """French sites' odds still read (The Odds API, region fr) to keep the same positions at a French price apart,
+    for comparison (owner 2026-10-29). FRENCH_TRACKING=0 stops it and saves the credits."""
+    return french_only() or os.getenv("FRENCH_TRACKING", "1") != "0"
+
+
+# owner 2026-10-29: no bookmaker name nor letter on the site, a coloured dot beside the odds for the country of the
+# site's licence (blue: approved in France). Approximate: the main licence of each brand, "autre" when unsure.
+BOOKMAKER_COUNTRY = {
+    **{b: "royaume_uni" for b in ("betfair", "william hill", "betfair sb", "bet365", "ladbrokes", "betfred", "betvictor", "betway",
+                                  "888sport", "sportingbet", "coral", "skybet", "paddypower", "boylesports")},
+    **{b: "malte" for b in ("10bet", "unibet", "betsson", "nordicbet", "comeon", "netbet", "expekt", "interwetten",
+                            "betano", "casumo", "leovegas", "mrgreen", "coolbet", "marathonbet")},
+    **{b: "curacao" for b in ("pinnacle", "1xbet", "dafabet", "188bet", "sbo", "bovada", "5dimes", "intertops",
+                              "betcris", "betonline", "betonlineag", "betanysports", "gtbets")},
+}
+
+
+def bookmaker_country(bookmaker: str | None) -> str | None:
+    """france, royaume_uni, malte, curacao or autre: what the site's coloured dot shows instead of the bookmaker."""
+    key = str(bookmaker or "").strip().lower()
+    if not key:
+        return None
+    if is_french(key):
+        return "france"
+    key = key.removesuffix("_uk").removesuffix("_eu").replace("_", " ")
+    return BOOKMAKER_COUNTRY.get(key) or BOOKMAKER_COUNTRY.get(key.replace(" ", "")) or "autre"
+
+
+def is_french(bookmaker: str | None) -> bool:
+    return str(bookmaker or "").endswith("_fr")
 
 
 class TheOddsApiProvider:
@@ -62,6 +120,14 @@ class TheOddsApiProvider:
         self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
         self.last_events = data
         return list(parse_odds(data, self._validity, live))
+
+    def raw_odds(self, sport_key: str) -> list[dict]:
+        """The feed's events with their bookmakers as returned (any sport key; credits: markets x regions)."""
+        params = {"apiKey": self._key, "markets": self._markets, "oddsFormat": "decimal", "dateFormat": "iso",
+                  "regions": self._regions}
+        data = self._http.get_json(f"/v4/sports/{sport_key}/odds", params, ttl=self._ttl)
+        self.last_quota = {k: v for k, v in self._http.last_headers.items() if k.lower().startswith("x-requests")}
+        return data
 
     def event_odds(self, competition: str, event_id: str, markets: str = "btts,totals") -> list[OddsQuote]:
         """Odds for one match. "Both teams to score" is only offered here, not on the league endpoint;
@@ -129,6 +195,16 @@ def _map(key: str, oc: dict, home: str, away: str):
     if key == "btts":
         sel = {"Yes": "yes", "No": "no"}.get(oc["name"])
         return None if sel is None else ("btts", sel, None)
+    if key == "draw_no_bet":
+        sel = {home: "home", away: "away"}.get(oc["name"])
+        return None if sel is None else ("dnb", sel, None)
+    if key == "double_chance":
+        name = oc["name"]
+        sides = frozenset(s for s, words in (("home", (home, "Home")), ("draw", ("Draw", "Tie")), ("away", (away, "Away")))
+                          if any(w in name for w in words))
+        sel = {frozenset({"home", "draw"}): "1X", frozenset({"draw", "away"}): "X2",
+               frozenset({"home", "away"}): "12"}.get(sides)
+        return None if sel is None else ("double_chance", sel, None)
     if key == "totals" and oc.get("point") is not None:
         return ("totals", oc["name"].lower(), float(oc["point"]))
     return None

@@ -21,10 +21,15 @@ from sportai.connectors.http import CachedClient
 BASE_URL = "https://v3.football.api-sports.io"
 
 LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2, "BR1": 71,
+              # Süper Lig: analysed since 2026-10-27 (owner), and part of the Champions League model's history.
+              "TR1": 203,
+              # English League Cup (EFL Cup / Carabao Cup), analysed since 2026-10-28 (owner) with the Premier League's
+              # history (services/runs.py DOMESTIC_CUPS)
+              "ENC": 48,
               # Only used as training history of the Champions League model (services/runs.py UCL_EXTRA):
               # the other European cups and the leagues their clubs come from.
               "UEL": 3, "UECL": 848,
-              "PT1": 94, "NL1": 88, "TR1": 203, "BE1": 144, "AT1": 218, "SC1": 179, "GR1": 197, "UA1": 333,
+              "PT1": 94, "NL1": 88, "BE1": 144, "AT1": 218, "SC1": 179, "GR1": 197, "UA1": 333,
               "CH1": 207, "CZ1": 345, "DK1": 119, "HR1": 210, "RS1": 286, "NO1": 103, "SK1": 332, "CY1": 318,
               "PL1": 106, "IL1": 383, "SE1": 113, "KZ1": 389, "AZ1": 419, "BG1": 172, "HU1": 271, "RO1": 283,
               "SI1": 373}

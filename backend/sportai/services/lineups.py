@@ -177,10 +177,13 @@ def absence_reason(player: dict) -> str:
     return next((fr for word, fr in _REASONS if word in low), "absent")
 
 
-def absentees(injuries: list[dict], fx: dict, regulars: dict[int, set[int]]) -> dict:
+def absentees(injuries: list[dict], fx: dict, regulars: dict[int, set[int]],
+              players: dict[int, "TeamPlayers"] | None = None) -> dict:
     """{"domicile": [...], "exterieur": [...]} from /injuries?fixture=ID, regular starters first.
 
-    regulars: team id -> ids of its regular starters (regular_starters)."""
+    regulars: team id -> ids of its regular starters (regular_starters). players: team id -> TeamPlayers; when given,
+    each entry also holds the player id, his share of the team's goals + assists ("part_bp") and whether he is a
+    regular goalkeeper / defender ("defense_habituel"), so the absence factor is computed again with no request."""
     out: dict[str, list] = {"domicile": [], "exterieur": []}
     sides = {fx["teams"]["home"]["id"]: "domicile", fx["teams"]["away"]["id"]: "exterieur"}
     seen = set()
@@ -189,8 +192,13 @@ def absentees(injuries: list[dict], fx: dict, regulars: dict[int, set[int]]) -> 
         if tid not in sides or not p.get("name") or (tid, p.get("id")) in seen:
             continue
         seen.add((tid, p.get("id")))
-        out[sides[tid]].append({"joueur": p["name"], "raison": absence_reason(p), "detail": p.get("reason"),
-                                "titulaire_habituel": p.get("id") in regulars.get(tid, set())})
+        entry = {"joueur": p["name"], "raison": absence_reason(p), "detail": p.get("reason"),
+                 "titulaire_habituel": p.get("id") in regulars.get(tid, set())}
+        if players is not None:
+            tp = players.get(tid)
+            entry.update(id=p.get("id"), part_bp=round(tp.shares.get(p.get("id"), 0.0), 4) if tp else 0.0,
+                         defense_habituel=bool(tp) and p.get("id") in tp.defenders)
+        out[sides[tid]].append(entry)
     for side in out:
         out[side].sort(key=lambda a: not a["titulaire_habituel"])
     return out
@@ -223,3 +231,127 @@ def scenario_with_squads(doc: dict) -> str | None:
         if parts:
             extra.append("Onze de départ publié. " + " ; ".join(parts) + ".")
     return " ".join(([base] if base else []) + extra) or None
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Missing key players: correction of the result markets (docs/22-absences.md).
+#
+# Walk-forward study on 13 559 league matches (2020-2026): a side whose players worth a share GA_out of its goals and
+# assists are not in the matchday squad (neither starting nor on the bench) scores fewer goals than the match model
+# expects, and a side facing an opponent without DEF_out of its regular goalkeepers / defenders scores a little more.
+# Fitted on 2020-2025, tested on 2025-07 to 2026-10: 1X2 log-loss -0.0025 [-0.0045, -0.0006], over/under not
+# improved, so the factor moves the result markets only (1X2, double chance, draw no bet, handicaps):
+#   f = exp(k * (A * (GA_out - GA_MEAN) + B * (DEF_out_opponent - DEF_MEAN))), clipped to [ABSENCE_MIN, ABSENCE_MAX]
+# k = 1 once the official line-ups are out, 0.5 from the injuries list only (it misses the coach's omissions).
+ABSENCE_A, ABSENCE_B = -0.395, 0.046
+ABSENCE_GA_MEAN, ABSENCE_DEF_MEAN = 0.128, 0.423
+ABSENCE_MIN, ABSENCE_MAX = 0.80, 1.10
+STRENGTH_LINEUPS, STRENGTH_INJURIES = 1.0, 0.5
+SOURCE_LINEUPS, SOURCE_INJURIES = "compositions", "blessés"
+ABSENCE_PHRASE_FROM = 0.05  # |f - 1| from which the page says it in words
+DEFENSIVE_POSITIONS = ("Goalkeeper", "Defender")
+
+
+def absence_factor(ga_out: float, def_out_opponent: float, strength: float = 1.0) -> float:
+    """Multiplier of a side's expected goals for the result markets. strength: 1 with the official line-ups,
+    0.5 with the injuries list (the exponent is halved)."""
+    x = ABSENCE_A * (ga_out - ABSENCE_GA_MEAN) + ABSENCE_B * (def_out_opponent - ABSENCE_DEF_MEAN)
+    return float(min(max(math.exp(strength * x), ABSENCE_MIN), ABSENCE_MAX))
+
+
+@dataclass
+class TeamPlayers:
+    """What the absence factor needs to know about a squad, from the /players pages already fetched for it."""
+    shares: dict[int, float]  # player id -> share of the team's goals + assists (this season and last, this team only)
+    names: dict[int, str]
+    roster: set[int]  # players of the team this season (one who left in the summer is not "missing")
+    defenders: set[int]  # regular starters this season who are goalkeepers or defenders
+
+
+def team_players_index(current: list[dict], previous: list[dict], team_id: int, league_id: int | None) -> TeamPlayers:
+    """current / previous: /players?team=&season= of this season and of the last one."""
+    ga: dict[int, float] = {}
+    names: dict[int, str] = {}
+    roster: set[int] = set()
+    positions: dict[int, str] = {}
+    for page, this_season in ((current, True), (previous, False)):
+        for item in page:
+            p = item.get("player") or {}
+            pid = p.get("id")
+            if pid is None:
+                continue
+            names.setdefault(pid, p.get("name") or "?")
+            for s in item.get("statistics", []):
+                if (s.get("team") or {}).get("id") not in (None, team_id):
+                    continue
+                if this_season:
+                    roster.add(pid)
+                g = s.get("goals") or {}
+                ga[pid] = ga.get(pid, 0.0) + (g.get("total") or 0) + (g.get("assists") or 0)
+                pos = (s.get("games") or {}).get("position")
+                if pos and pid not in positions:
+                    positions[pid] = pos
+    total = sum(ga.values())
+    shares = {pid: v / total for pid, v in ga.items() if v > 0} if total > 0 else {}
+    defenders = {pid for pid in regular_starters(current, team_id, league_id) if positions.get(pid) in DEFENSIVE_POSITIONS}
+    return TeamPlayers(shares, names, roster, defenders)
+
+
+@dataclass
+class SideAbsence:
+    ga_out: float  # share of the side's goals + assists missing
+    missing: list[tuple[str, float]]  # (player, share) of the missing contributors, biggest first
+    def_out: int  # regular goalkeepers / defenders missing
+    def_missing: list[str]
+
+
+def side_from_lineup(lineup: dict, tp: TeamPlayers) -> SideAbsence:
+    """Official line-up of one side (/fixtures/lineups item): every player of this season's roster neither in the XI
+    nor on the bench is missing. A benched player is not."""
+    named = {(s.get("player") or {}).get("id") for s in (lineup.get("startXI") or []) + (lineup.get("substitutes") or [])}
+    out = tp.roster - named
+    missing = sorted(((tp.names.get(pid, "?"), tp.shares[pid]) for pid in out if tp.shares.get(pid)), key=lambda x: -x[1])
+    defs = sorted(tp.names.get(pid, "?") for pid in out & tp.defenders)
+    return SideAbsence(sum(s for _, s in missing), missing, len(defs), defs)
+
+
+def side_from_absents(entries: list[dict]) -> SideAbsence:
+    """One side of a stored "absents" block (absentees with players): those listed as missing, the doubtful left out."""
+    sure = [e for e in entries if e.get("raison") != "incertain"]
+    missing = sorted(((e["joueur"], float(e["part_bp"])) for e in sure if e.get("part_bp")), key=lambda x: -x[1])
+    defs = sorted(e["joueur"] for e in sure if e.get("defense_habituel"))
+    return SideAbsence(sum(s for _, s in missing), missing, len(defs), defs)
+
+
+def absents_ready(absents: dict | None, day: str) -> bool:
+    """A stored "absents" block of that day that already holds what the factor needs (no request to make again)."""
+    if not absents or absents.get("jour") != day or absents.get("indisponible"):
+        return False
+    return all("part_bp" in e for side in ("domicile", "exterieur") for e in absents.get(side) or [])
+
+
+def _names(xs: list[str]) -> str:
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " et " + xs[-1]
+
+
+def absence_phrase(team: str, opponent: str, f: float, side: SideAbsence, opp: SideAbsence) -> str | None:
+    """One plain sentence when the factor moves a side's attack by 5 % or more."""
+    if abs(f - 1) < ABSENCE_PHRASE_FROM:
+        return None
+    if f < 1 and side.missing:
+        who = [n for n, s in side.missing if s >= 0.05][:3] or [side.missing[0][0]]
+        return (f"Sans {_names(who)} ({round(side.ga_out * 100):.0f} % des buts et passes décisives), "
+                f"l'attaque de {team} est revue à la baisse.")
+    if f > 1 and opp.def_missing:
+        return f"Sans {_names(opp.def_missing[:3])} en défense chez {opponent}, l'attaque de {team} est revue à la hausse."
+    return None
+
+
+def absence_effect(home: SideAbsence, away: SideAbsence, home_name: str, away_name: str, source: str) -> dict:
+    """Both sides' factors and their sentences: {"domicile", "exterieur", "source", "phrases"}."""
+    strength = STRENGTH_LINEUPS if source == SOURCE_LINEUPS else STRENGTH_INJURIES
+    f_h = absence_factor(home.ga_out, away.def_out, strength)
+    f_a = absence_factor(away.ga_out, home.def_out, strength)
+    phrases = [p for p in (absence_phrase(home_name, away_name, f_h, home, away),
+                           absence_phrase(away_name, home_name, f_a, away, home)) if p]
+    return {"domicile": round(f_h, 4), "exterieur": round(f_a, 4), "source": source, "phrases": phrases}

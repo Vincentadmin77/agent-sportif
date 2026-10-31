@@ -8,28 +8,96 @@
 - During the match (services/live_page.py): the goals (own goals apart), substitutions and red cards from the match
   events are written to the page document ("buteurs.marques", "feuille_de_match"), so a scorer bet can be followed
   and settled.
+- History (docs/23-buteurs-stars.md): every player's decayed record of past matches, all clubs and seasons of the
+  cached leagues, kept in HISTORY_PATH. Built from the cached /fixtures?ids= files (scripts/buteurs_historique.py)
+  and brought up to date with the files the daily goals refresh downloads anyway (finished league fixtures, 20 per
+  request): no request of its own.
 - Settlement: won when the player scored (an own goal is not his), lost otherwise, refunded when he did not play at
   all, as the bookmakers do. Never settled on a guess: without the match sheet the bet stays open.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sportai.connectors.teams import normalise
+from sportai.engine.football.scorer_history import History
 from sportai.engine.football.scorers import (PlayerSeason, Squad, best_scorer_odds, match_player, name_score,
                                              price_scorers, squad_from_api)
 
 PLAYERS_CACHE = "/mnt/project-files/agent-sportif/state/effectifs"
+HISTORY_PATH = "/mnt/project-files/agent-sportif/state/buteurs_historique.json.gz"
 LINEUP_WINDOW = timedelta(minutes=75)
 MARCHE = "Buteur"
 
 
 def cache_dir() -> Path:
     return Path(os.getenv("SPORTAI_PLAYERS_CACHE", PLAYERS_CACHE))
+
+
+def history_path() -> Path:
+    return Path(os.getenv("SPORTAI_BUTEURS_HISTORY", HISTORY_PATH))
+
+
+_loaded: dict = {}
+
+
+def load_history(path: Path | None = None) -> History | None:
+    """The saved history (re-read only when the file changed), None when there is none: the scorer model then falls
+    back to the this-season share."""
+    path = path or history_path()
+    try:
+        stamp = path.stat().st_mtime
+        if _loaded.get("key") != (str(path), stamp):
+            with gzip.open(path, "rt") as f:
+                _loaded.update(key=(str(path), stamp), history=History(json.load(f)))
+        return _loaded["history"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def save_history(history: History, path: Path | None = None) -> Path:
+    path = path or history_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with gzip.open(tmp, "wt") as f:
+        json.dump(history.to_dict(), f, ensure_ascii=False, separators=(",", ":"))
+    tmp.rename(path)
+    return path
+
+
+def update_history(folder: Path | None = None, path: Path | None = None, rebuild: bool = False) -> dict:
+    """Add the cached /fixtures?ids= files not read yet (all of them with rebuild) to the history and save it.
+    No API request: the files are those the goals refresh and the backtests already downloaded."""
+    if folder is None:
+        from sportai.services.goals_refresh import cache_dir  # late import: it loads the goals models
+
+        folder = cache_dir()
+    history = History() if rebuild else (load_history(path) or History())
+    report = {"fichiers": 0, "matchs": 0}
+    for p in sorted(Path(folder).glob("fixtures_ids_*.json.gz")):
+        if p.name in history.files:
+            continue
+        try:
+            with gzip.open(p, "rt") as f:
+                data = json.load(f).get("data")
+        except (OSError, ValueError, AttributeError):
+            continue  # unreadable (being written): read on the next update
+        # file by file, in any order: the decayed sums do not depend on it (History._add)
+        for x in data.get("response", []) if isinstance(data, dict) else (data or []):
+            report["matchs"] += history.add_fixture(x)
+        history.files.add(p.name)
+        report["fichiers"] += 1
+    if report["fichiers"] or rebuild:
+        history.built_at = datetime.now(timezone.utc).isoformat()
+        save_history(history, path)
+        _loaded.clear()
+    report.update(joueurs=len(history.players), equipes=len(history.teams), total_matchs=len(history.fixtures))
+    return report
 
 
 def squad_players(api, team_id: int, season: int, day: str) -> list[dict]:
@@ -64,6 +132,13 @@ def lineup_sides(lineups: list[dict], ids: dict[str, int]) -> dict[str, dict[int
     return out
 
 
+def lineup_positions(lineups: list[dict]) -> dict[int, str]:
+    """Starters' positions on the official team sheet (player id -> "F" / "M" / "D" / "G"): the history model's
+    position prior, as in the study (a winger listed as a forward tonight)."""
+    return {p["player"]["id"]: p["player"]["pos"] for t in lineups or [] for p in t.get("startXI") or []
+            if (p.get("player") or {}).get("id") and p["player"].get("pos") in ("F", "M", "D", "G")}
+
+
 def price_fixture(api, item: dict, fixture, expected_goals, now: datetime, season: int) -> dict | None:
     """Scorer rows of one fixture: item is its raw /odds entry; fixture has home_id / away_id. None when the
     bookmakers offer no anytime scorer market or the match model has no expected goals."""
@@ -73,13 +148,18 @@ def price_fixture(api, item: dict, fixture, expected_goals, now: datetime, seaso
     ids = {"domicile": fixture.home_id, "exterieur": fixture.away_id}
     day = f"{now:%Y-%m-%d}"
     squads = {side: squad_from_api(squad_players(api, tid, season, day), tid, season) for side, tid in ids.items()}
-    sheet = {}
+    sheet, posts = {}, {}
     if fixture.kickoff - now <= LINEUP_WINDOW:
         try:
-            sheet = lineup_sides(api.lineups(fixture.provider_event_id), ids)
+            raw = api.lineups(fixture.provider_event_id)
+            sheet = lineup_sides(raw, ids)
+            posts = lineup_positions(raw) if sheet else {}
         except Exception:  # noqa: BLE001 - the line-up only sharpens the minutes, never blocks the pricing
             sheet = {}
-    rows, dropped = price_scorers(odds, squads, {"domicile": expected_goals[0], "exterieur": expected_goals[1]}, sheet)
+    context = {"equipes": ids, "ts": fixture.kickoff.timestamp(), "ligue": (item.get("league") or {}).get("id"),
+               "postes": posts}
+    rows, dropped = price_scorers(odds, squads, {"domicile": expected_goals[0], "exterieur": expected_goals[1]}, sheet,
+                                  load_history(), context)
     names = {"domicile": fixture.home, "exterieur": fixture.away}
     for r in rows:
         r["equipe"] = names[r["cote_equipe"]]
@@ -169,7 +249,8 @@ def scorer_leg_info(row: dict) -> dict:
     """What a leg keeps to be followed and settled."""
     return {"id": row.get("joueur_id"), "nom": row["joueur"], "nom_api": row.get("nom_api"),
             "cote_equipe": row.get("cote_equipe"), "part": row.get("part"),
-            "minutes_par_titularisation": row.get("minutes_par_titularisation")}
+            "minutes_par_titularisation": row.get("minutes_par_titularisation"),
+            "composition": row.get("composition"), "modele": row.get("modele")}
 
 
 def live_odds_by_player(bets: list[dict]) -> dict[str, dict]:

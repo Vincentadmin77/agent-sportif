@@ -209,7 +209,9 @@ def build_revue(page: dict[str, dict], pronostics: dict[str, dict], joueurs: dic
     start = f"{today - timedelta(days=fenetre):%Y-%m-%d}"
     by_day: dict[str, list[dict]] = defaultdict(list)
     for key, doc in page.items():
-        if start <= (doc.get("jour") or "") < f"{today:%Y-%m-%d}" and doc.get("statut") == "termine":
+        # basketball has its own markets: its bets never correct the football families
+        if (start <= (doc.get("jour") or "") < f"{today:%Y-%m-%d}" and doc.get("statut") == "termine"
+                and doc.get("sport") != "basket"):
             by_day[doc["jour"]].append({**doc, "_id": key})
     acc: dict[str, dict] = defaultdict(lambda: defaultdict(float))
     days_out = {}
