@@ -178,9 +178,14 @@ def main() -> None:
     ap.add_argument("--date", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--max-minutes", type=int, default=110, help="stop after this long (the caller starts it again)")
     a = ap.parse_args()
     surf = bt.surfaces()
+    stop_at = datetime.now(PARIS) + timedelta(minutes=a.max_minutes)
     while True:
+        if datetime.now(PARIS) > stop_at:
+            print("relance", flush=True)
+            return
         try:
             if run_once(a, surf) or a.once:
                 return
