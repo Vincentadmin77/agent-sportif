@@ -345,3 +345,18 @@ def test_tennis_live_position_of_the_m_counts_in_its_ratio_and_shows_in_the_opin
     assert f["resultat"] == "gagne" and f["live_a_blanc"] and f["choix_m"]
     rows = R.report([reg])
     assert rows["le_m_a_blanc"]["global"] and rows["direct_a_blanc"]["global"]
+
+
+def test_a_selection_pick_dropped_before_kick_off_stays_in_the_history_flagged():
+    day = {"jour": "2026-10-29", "paris_retenus": {
+        "m1": {"match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.6, "confiance": 0.66, "proba": 0.68,
+               "proba_marche": 0.64, "coup_envoi": KO}}}
+    reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))
+    assert [c["pari"] for c in reg["selection_m"]] == ["Plus de 2,5 buts"]
+    day["paris_retenus"]["m1"].update(pari="Moins de 3,5 buts", confiance=0.55)  # the pass changed its mind
+    reg = R.selection_m(reg, day, at(15))
+    assert reg["selection_m"] == []
+    r = reg["selection_m_retires"][0]
+    assert r["pari"] == "Plus de 2,5 buts" and r["mention"] == "Le M s'est finalement retiré"
+    reg = R.selection_m(reg, day, at(16))
+    assert len(reg["selection_m_retires"]) == 1
