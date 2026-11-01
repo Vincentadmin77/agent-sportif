@@ -391,3 +391,15 @@ def test_nba_official_positions_are_in_the_registry_with_their_own_ratio():
     assert f["sport"] == "basket" and f["resultat"] == "gagne"
     rep = R.report([reg])
     assert rep["reel_basket"]["global"]["validees"] == 1 and rep["reel"]["global"]["positions"] == 0
+
+
+def test_a_lost_selection_is_replayed_from_the_frozen_positions():
+    day = {"jour": "2026-10-29", "paris_retenus": {
+        "m1": {"match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.6, "confiance": 0.66, "proba": 0.68,
+               "proba_marche": 0.64, "coup_envoi": "2026-10-29T14:00:00+00:00", "resultat": "gagne"},
+        "m2": {"match": "C - D", "pari": "Victoire C", "cote": 1.55, "confiance": 0.70, "proba": 0.71,
+               "proba_marche": 0.66, "coup_envoi": "2026-10-29T19:00:00+00:00"}}}
+    reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(16))  # nothing kept from earlier runs
+    picks = {c["pari"]: c for c in reg["selection_m"]}
+    assert picks["Plus de 2,5 buts"].get("rejoue") and picks["Plus de 2,5 buts"]["resultat"] == "gagne"
+    assert "Victoire C" in picks

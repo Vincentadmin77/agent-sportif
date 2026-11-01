@@ -944,6 +944,25 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc:
     return list(out.values())
 
 
+def _replay_locked(cands: list[dict], now: datetime) -> list[dict]:
+    """The picks the selection held when each match started, replayed from the day's frozen candidates: at each kick-off
+    time, the SELECTION_MAX most confident among the picks already locked and the matches not yet started."""
+    ok = [c for c in cands if c["confiance"] >= SELECTION_MIN and isinstance(c.get("p_marche"), (int, float))
+          and c["p_marche"] >= SELECTION_MIN and _aware(str(c.get("coup_envoi") or "").replace("Z", "+00:00"))]
+    ko = lambda c: _aware(str(c["coup_envoi"]).replace("Z", "+00:00"))
+    locked: list[dict] = []
+    for t in sorted({ko(c) for c in ok if ko(c) <= now}):
+        board, seen = list(locked), {(c["sport"], c["match_id"]) for c in locked}
+        for c in sorted((c for c in ok if ko(c) >= t), key=lambda c: -c["confiance"]):
+            if len(board) >= SELECTION_MAX:
+                break
+            if (c["sport"], c["match_id"]) not in seen:
+                board.append(c)
+                seen.add((c["sport"], c["match_id"]))
+        locked = [c for c in board if ko(c) <= t]
+    return locked
+
+
 RETIRE_MENTION = "Le M s'est finalement retiré"
 
 
@@ -978,6 +997,8 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
         return bool(ko and now >= ko)
 
     kept = [c for c in prev if started(c)]
+    if not kept:  # a lost copy of the day (rewritten without its selection): replay the picks frozen at each kick-off
+        kept = [{**c, "rejoue": True} for c in _replay_locked(cands, now)]
     for c in kept:  # results of the frozen picks
         r = res.get((c["sport"], c["match_id"], c["pari"]))
         if r in SETTLED:
