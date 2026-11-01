@@ -246,7 +246,8 @@ def report(registres: list[dict], min_group: int = 5) -> dict:
     out = {}
     official = [f for f in fiches if not (f.get("recalcule") or f.get("live_a_blanc") or f.get("choix_m")
                                           or f.get("remplacee"))]
-    for label, rows in (("reel", [f for f in official if not f.get("non_retenu")]),
+    for label, rows in (("reel", [f for f in official if not f.get("non_retenu") and f.get("sport", "foot") == "foot"]),
+                        ("reel_basket", [f for f in official if not f.get("non_retenu") and f.get("sport") == "basket"]),
                         ("non_retenu", [f for f in official if f.get("non_retenu")]),
                         ("le_m_a_blanc", [f for f in fiches if f.get("choix_m") and f.get("pari")]),  # late ones too (owner 29/10)
                         ("le_m_nba_55", [{**f["choix_55"], "sport": "basket", "competition": f.get("competition")}
@@ -679,12 +680,43 @@ def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_ve
     return reg
 
 
+def basket_official_records(reg: dict, bpron: dict, now: datetime, code_version: str) -> dict:
+    """The NBA official positions in the registry too (sport basket, own ratio), frozen ones only, as for football."""
+    day = reg.get("jour")
+    for mid, p in (bpron.get("paris_retenus") or {}).items():
+        if not p.get("pari") or not p.get("fige"):
+            continue
+        rid = record_id(day, f"basket-{mid}", p["pari"])
+        if rid not in reg["fiches"]:
+            if any(f.get("match_id") == f"basket-{mid}" and f.get("sport") == "basket" and not f.get("choix_m")
+                   and not f.get("live_a_blanc") for f in reg["fiches"].values()):
+                continue  # one frozen official position a game
+            reg["fiches"][rid] = {
+                "id": rid, "jour": day, "sport": "basket", "agent": "analyse basket (position retenue)",
+                "decision": now.isoformat(), "match_id": f"basket-{mid}", "match": p.get("match"),
+                "competition": p.get("competition"), "coup_envoi": p.get("coup_envoi"), "marche": p.get("marche"),
+                "pari": p["pari"], "cote_prise": p.get("cote"), "bookmaker": p.get("bookmaker"),
+                "p_modele": p.get("proba"), "p_marche": p.get("proba_marche"), "p_retenue": p.get("confiance"),
+                "niveau": p.get("niveau"), "version_code": code_version, "recalcule": False}
+            ko = _aware(str(p.get("coup_envoi") or "").replace("Z", "+00:00"))
+            if ko and now >= ko:
+                reg["fiches"][rid]["enregistre_apres_coup_envoi"] = True
+        f = reg["fiches"][rid]
+        if p.get("non_retenu"):
+            f["non_retenu"] = True
+        if p.get("resultat") in SETTLED:
+            f["resultat"] = p["resultat"]
+            f["gain_unite"] = _gain(f) if f.get("cote_prise") else 0.0
+    return reg
+
+
 def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] | None = None,
                 code_version: str = "inconnue") -> dict:
     """The basketball games of the day in the same "avis" list (official position, the M's visa and the M's own
     choice; no Enquêteur yet), keyed basket-<id>."""
     bmatchs = {k: v for k, v in (bmatchs or {}).items() if v.get("jour") == reg.get("jour")}
     basket_m_records(reg, bmatchs, now, code_version)
+    basket_official_records(reg, bpron, now, code_version)
     av = reg.setdefault("avis", {})
     picks = bpron.get("paris_retenus") or {}
     for mid in sorted(set(picks) | set(bmatchs)):

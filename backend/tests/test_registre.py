@@ -380,3 +380,14 @@ def test_the_french_sites_list_counts_in_the_official_ratio_once_per_choice():
     assert reg["fiches"][R.record_id("2026-10-31", "m1", "Plus de 2,5 buts")]["listes"] == ["officielle", "sites_francais"]
     g = R.report([reg])["reel"]["global"]
     assert g["reglees"] == 3 and g["validees"] == 2
+
+
+def test_nba_official_positions_are_in_the_registry_with_their_own_ratio():
+    b = {"paris_retenus": {"9": {"match": "New Orleans - Atlanta", "pari": "McCollum moins de 20,5 pts+passes",
+                                 "cote": 1.83, "proba": 0.6, "proba_marche": 0.55, "fige": True,
+                                 "coup_envoi": "2026-10-31T23:30:00Z", "resultat": "gagne"}}}
+    reg = R.basket_avis({"jour": "2026-10-31", "fiches": {}}, b, datetime(2026, 11, 1, 3, tzinfo=timezone.utc))
+    f = reg["fiches"][R.record_id("2026-10-31", "basket-9", "McCollum moins de 20,5 pts+passes")]
+    assert f["sport"] == "basket" and f["resultat"] == "gagne"
+    rep = R.report([reg])
+    assert rep["reel_basket"]["global"]["validees"] == 1 and rep["reel"]["global"]["positions"] == 0
