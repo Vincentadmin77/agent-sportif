@@ -181,8 +181,10 @@ def main() -> None:
             old = (before.get(m.key) or {}).get("choix")
             old_m = (before.get(m.key) or {}).get("m")
             started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
-            if old and old.get("fige"):
-                choix = old
+            if old and (old.get("fige") or started):
+                # Frozen, or the last choice made before the start (no run between the freeze time and the start):
+                # a position never disappears once its match has begun.
+                choix = {**old, "fige": True}
             elif started:
                 pass  # no choice made once the match has begun (the odds would be live ones)
             elif c:
@@ -194,8 +196,8 @@ def main() -> None:
                          "pays_bookmaker": PAYS.get(best_book(m.odds, c["key"]), "autre"), "fige": frozen}
             if choix:
                 settle(choix, m)
-            if old_m and old_m.get("fige"):
-                choix_m = old_m
+            if old_m and (old_m.get("fige") or started):
+                choix_m = {**old_m, "fige": True}
             elif started:
                 choix_m = None
             else:
