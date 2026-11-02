@@ -227,6 +227,10 @@ def main() -> None:
                 "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
                 "marches_matin": seen,
             })
+    # A match seen earlier in the day but missing from today's fixtures answer (API gap, moved day) is kept as it was:
+    # its positions must never disappear from the page.
+    seen = {x["id"] for x in report}
+    report += [x for k, x in before.items() if k not in seen]
     report.sort(key=lambda x: (x["heure_paris"] or "", x["circuit"]))
     out = {"date": a.date, "statut": "non validé", "genere": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "matchs": report}
