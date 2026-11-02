@@ -258,7 +258,7 @@ def test_a_pick_the_model_does_not_retain_stays_out_of_its_ratio():
     assert rep["reel"]["global"]["positions"] == 0 and rep["non_retenu"]["global"]["validees"] == 1
 
 
-def test_the_selection_of_the_m_takes_the_most_confident_of_every_sport_and_keeps_them_from_kick_off():
+def test_the_selection_of_the_m_takes_the_highest_odds_of_every_sport_and_keeps_them_from_kick_off():
     day = pron(cote=1.55)
     day["paris_retenus"]["m1"].update(confiance=0.66, proba_marche=0.64)
     day["positions_entre_parentheses"] = {"m2": {"match": "C - D", "pari": "Moins de 3,5 buts", "cote": 1.6,
@@ -269,7 +269,8 @@ def test_the_selection_of_the_m_takes_the_most_confident_of_every_sport_and_keep
                            "8": {"match": "G - H", "pari": "Victoire G", "cote": 1.9, "proba": 0.55,
                                  "proba_marche": 0.52, "coup_envoi": "2026-10-29T23:00:00Z"}}}
     reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(17), b)
-    assert [c["pari"] for c in reg["selection_m"]] == ["Moins de 3,5 buts", "Plus de 2,5 buts", "Victoire E"]
+    # version 02 (owner 2026-11-02): the 5 highest odds, whatever the confidence; equal odds: the most confident first
+    assert [c["pari"] for c in reg["selection_m"]] == ["Victoire G", "Moins de 3,5 buts", "Plus de 2,5 buts", "Victoire E"]
     day["paris_retenus"]["m1"]["resultat"] = "gagne"
     day["paris_retenus"]["m1"]["confiance"] = 0.50  # after kick-off the pick stays as it was
     reg = R.selection_m(reg, day, at(22), b)
@@ -355,7 +356,7 @@ def test_a_selection_pick_dropped_before_kick_off_stays_in_the_history_flagged()
     assert [c["pari"] for c in reg["selection_m"]] == ["Plus de 2,5 buts"]
     day["paris_retenus"]["m1"].update(pari="Moins de 3,5 buts", confiance=0.55)  # the pass changed its mind
     reg = R.selection_m(reg, day, at(15))
-    assert reg["selection_m"] == []
+    assert [c["pari"] for c in reg["selection_m"]] == ["Moins de 3,5 buts"]
     r = reg["selection_m_retires"][0]
     assert r["pari"] == "Plus de 2,5 buts" and r["mention"] == "Le M s'est finalement retiré"
     reg = R.selection_m(reg, day, at(16))
@@ -403,3 +404,15 @@ def test_a_lost_selection_is_replayed_from_the_frozen_positions():
     picks = {c["pari"]: c for c in reg["selection_m"]}
     assert picks["Plus de 2,5 buts"].get("rejoue") and picks["Plus de 2,5 buts"]["resultat"] == "gagne"
     assert "Victoire C" in picks
+
+
+def test_v02_the_selection_of_the_m_keeps_the_5_highest_odds_one_per_match():
+    odds = [1.52, 2.1, 1.8, 1.95, 1.6, 2.25, 1.7]
+    day = {"jour": "2026-10-29", "paris_retenus": {
+        f"m{i}": {"match": f"A{i} - B{i}", "pari": f"Victoire A{i}", "cote": o, "confiance": 0.55, "proba": 0.55,
+                  "proba_marche": 0.5, "coup_envoi": KO} for i, o in enumerate(odds)}}
+    day["positions_entre_parentheses"] = {"m1": {"match": "A1 - B1", "pari": "Plus de 2,5 buts", "cote": 2.3,
+                                                 "confiance": 0.5, "proba": 0.5, "proba_marche": 0.45, "coup_envoi": KO}}
+    reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))
+    assert [c["cote"] for c in reg["selection_m"]] == [2.3, 2.25, 1.95, 1.8, 1.7]
+    assert "5 plus grosses cotes" in reg["selection_m_regle"]
