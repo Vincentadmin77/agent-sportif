@@ -34,7 +34,9 @@ from sportai.engine.tennis import elo  # noqa: E402
 from sportai.engine.tennis.aces import AcesModel  # noqa: E402
 
 NON_RETENU = "Le modèle ne le retient pas"
-V02_MAX_GAP, V02_DROP = 0.15, 0.03  # version 02 (owner 2026-11-02)
+# Version 02 (owner 2026-11-02 12:23Z): tennis keeps its v01 choice rule, only the retained sort goes (every choice
+# counts). No gap filter, no odds-drop switch: "pour le tennis je le trouvais déjà parfait".
+V02_MAX_GAP, V02_DROP = float("inf"), float("inf")
 FREEZE_MIN = 45  # the choice is frozen 45 minutes before the start, as in football and basketball
 
 # Country of each bookmaker's licence, for the coloured dot on the page (no name shown).
@@ -174,9 +176,8 @@ def main() -> None:
             pr = bt.Pricer(pm, m, ea, eb)
             mk = bt.markets(m.odds)
             cands = bt.candidates(pr, mk) if known else []
-            # Version 02 (owner 2026-11-02): every choice counts (the retained sort did no better), no choice where
-            # model and market are 15 points apart or more, and a market chance that fell 3 points since it was
-            # first seen gives way to another option.
+            # Version 02 (owner 2026-11-02): every choice counts (the retained sort did no better). The gap filter and
+            # the odds-drop switch are off for tennis (V02_MAX_GAP / V02_DROP), the morning odds are still recorded.
             seen = dict((before.get(m.key) or {}).get("marches_matin") or {})
             for x in cands:
                 seen.setdefault("|".join(map(str, x["key"])), round(x["fair"], 4))
