@@ -34,6 +34,7 @@ from sportai.engine.tennis import elo  # noqa: E402
 from sportai.engine.tennis.aces import AcesModel  # noqa: E402
 
 NON_RETENU = "Le modèle ne le retient pas"
+V02_MAX_GAP, V02_DROP = 0.15, 0.03  # version 02 (owner 2026-11-02)
 FREEZE_MIN = 45  # the choice is frozen 45 minutes before the start, as in football and basketball
 
 # Country of each bookmaker's licence, for the coloured dot on the page (no name shown).
@@ -173,7 +174,15 @@ def main() -> None:
             pr = bt.Pricer(pm, m, ea, eb)
             mk = bt.markets(m.odds)
             cands = bt.candidates(pr, mk) if known else []
-            c = bt.choose(cands)
+            # Version 02 (owner 2026-11-02): every choice counts (the retained sort did no better), no choice where
+            # model and market are 15 points apart or more, and a market chance that fell 3 points since it was
+            # first seen gives way to another option.
+            seen = dict((before.get(m.key) or {}).get("marches_matin") or {})
+            for x in cands:
+                seen.setdefault("|".join(map(str, x["key"])), round(x["fair"], 4))
+            near = [x for x in cands if abs(x["p"] - x["fair"]) < V02_MAX_GAP]
+            steady = [x for x in near if x["fair"] > seen["|".join(map(str, x["key"]))] - V02_DROP]
+            c = bt.choose(steady) or bt.choose(near)
             choix = None
             start = datetime.strptime(when, "%Y-%m-%d %H:%M")
             frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M") or bool(
@@ -192,7 +201,8 @@ def main() -> None:
                          "cote": c["best"], "cote_mediane": c["median"], "proba_modele": round(c["p"], 3),
                          "proba_bookmakers": round(c["fair"], 3), "confiance": round(c["conf"], 3),
                          "niveau": "Confiance " + bt.level(c["conf"]),
-                         "statut": "retenu" if c["retenu"] else NON_RETENU,
+                         "statut": "retenu", "ancien_tri": "retenu" if c["retenu"] else NON_RETENU,
+                         "proba_bookmakers_matin": seen["|".join(map(str, c["key"]))], "version": "v02",
                          "pays_bookmaker": PAYS.get(best_book(m.odds, c["key"]), "autre"), "fige": frozen}
             if choix:
                 settle(choix, m)
@@ -214,6 +224,7 @@ def main() -> None:
                 "aces_attendus": [round(ea, 1), round(eb, 1)] if ea is not None else None,
                 "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
                 "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
+                "marches_matin": seen,
             })
     report.sort(key=lambda x: (x["heure_paris"] or "", x["circuit"]))
     out = {"date": a.date, "statut": "non validé", "genere": datetime.now(timezone.utc).isoformat(timespec="seconds"),
