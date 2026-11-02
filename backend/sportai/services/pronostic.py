@@ -146,7 +146,13 @@ ROTATION_LEVEL = "élevé"
 # - not a team's "moins de X buts" (6 won out of 14 for 68 % announced), paused until it proves itself.
 # Among those, the most likely; a match without one says why. Each bet is fixed 45 min before its kick-off.
 PER_MATCH_FROM = "2026-10-01"  # owner 2026-10-27 09:31: "comme si nous avions fait comme ça depuis le début"
-PICK_ODDS = (1.50, 2.30)  # owner 2026-10-28 11:00: "la plage des cotes : 1.50 / 2.30 toujours en simple"
+PICK_ODDS = (1.50, 2.00)  # version 02 (owner 2026-11-02): football odds capped at 2.00 (4 won out of 9 above 2.00
+# since 29/10); was 1.50 / 2.30 since 2026-10-28 11:00 ("la plage des cotes : 1.50 / 2.30 toujours en simple")
+SYSTEM_VERSION = "v02"  # owner 2026-11-02: version 02 of the system, test week until the bilan of 2026-11-09
+# Version 02, odds movement (owner 2026-11-02, bilan v01: market chance up 3 points or more between the morning and
+# 45 min before kick-off: 7 won out of 7; down 3 points or more: 5 out of 10): a position whose market chance fell
+# MOVE_DROP or more since it was first seen that day gives way to the match's next position.
+MOVE_DROP = 0.03
 PICK_MAX_GAP = 0.08
 PICK_MIN_CHANCE = 0.50
 HALF_MIN_CHANCE = 0.70  # a half-time bet needs 7 chances in 10 (owner 2026-10-28: "7 a la rigueur ou 8")
@@ -163,10 +169,10 @@ SELECTION_MIN_ODDS = 1.60
 SELECTION_MIN_CONF = PICK_HIGH  # owner 2026-10-27 14:56: the best single only among "Confiance élevée" bets
 SELECTION_TITLE = "Top confiance du jour"
 PICK_TITLE = "Probabilité retenue"
-NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote de 1,50 à 2,30 où le modèle et les bookmakers "
+NO_PICK = ("Aucune cote valable sur ce match : il faudrait une cote de 1,50 à 2,00 où le modèle et les bookmakers "
            "s'accordent, avec au moins 50 % de chances et de la valeur. On ne force pas de position.")
 PICKS_NOTE = ("Sur chaque match, l'agent retient au plus une position simple : celle où le modèle et les bookmakers "
-              "s'accordent le mieux, à une cote de 1,50 à 2,30. Quand rien n'est assez sûr, il ne retient rien. "
+              "s'accordent le mieux, à une cote de 1,50 à 2,00. Quand rien n'est assez sûr, il ne retient rien. "
               "Ajoute celles que tu veux à ton carnet. Estimation, jamais une garantie.")
 
 
@@ -306,6 +312,33 @@ def _brackets(foreign: list[dict], page: dict[str, dict], previous: dict, now: d
     return out
 
 
+def _morning_map(prev: dict | None, legs: list[dict]) -> dict[str, float]:
+    """Market chance of each of the match's positions when first seen that day (kept from pass to pass)."""
+    seen = dict((prev or {}).get("marches_matin") or {})
+    if prev and prev.get("pari") and prev.get("proba_marche") is not None:
+        seen.setdefault(prev["pari"], prev.get("proba_marche_matin", prev["proba_marche"]))
+    for l in legs:
+        if l.get("proba_marche") is not None:
+            seen.setdefault(l["pari"], l["proba_marche"])
+    return seen
+
+
+def _dropped(leg: dict, seen: dict[str, float]) -> bool:
+    m = seen.get(leg["pari"])
+    return m is not None and leg.get("proba_marche") is not None and leg["proba_marche"] <= m - MOVE_DROP
+
+
+def _with_morning(pick: dict, seen: dict[str, float]) -> dict:
+    m = seen.get(pick.get("pari"))
+    if m is not None:
+        pick["proba_marche_matin"] = m
+        if pick.get("proba_marche") is not None:
+            pick["mouvement_marche"] = round(pick["proba_marche"] - m, 4)
+    pick["marches_matin"] = seen
+    pick["version"] = SYSTEM_VERSION
+    return pick
+
+
 def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, now: datetime, day,
                 started, blocked, force: bool = True) -> tuple[dict[str, dict], list[dict]]:
     """The bet of each match of the day (match_id -> bet, or a reason when none) and the day's official pick(s)."""
@@ -328,24 +361,27 @@ def build_picks(legs: list[dict], page: dict[str, dict], previous: dict | None, 
         ok = [l for l in by_match.get(mid, []) if not l.get("_secours") and not started(l) and _correct(l)
               and pick_ok(l) and not blocked(l)
               and (not l.get("buteur") or frozen(l))]  # a scorer: only once fixed, line-up read (45 min)
-        best = _best(ok)
+        seen = _morning_map(prev, by_match.get(mid, []))
+        # version 02: positions whose market chance fell MOVE_DROP or more since the morning give way to the others
+        best = _best([l for l in ok if not _dropped(l, seen)]) or _best(ok)
         if best:
-            picks[mid] = {**_pick(best), "fige": frozen(best)}
+            picks[mid] = _with_morning({**_pick(best), "fige": frozen(best)}, seen)
             continue
-        forced = _forced([l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]) if FORCE_CHOICE and force else None
+        pool = [l for l in by_match.get(mid, []) if not started(l) and not blocked(l)]
+        forced = (_forced([l for l in pool if not _dropped(l, seen)]) or _forced(pool)) if FORCE_CHOICE and force else None
+        if forced and blended(forced) < PICK_MIN_CHANCE:  # version 02: no more "Confiance faible" (6 won out of 11)
+            forced = None
         if forced:
-            c = blended(forced)
             # owner 2026-10-29: still a choice on every match, shown to the client with "Le modèle ne le retient pas",
             # never counted in the ratio (was "choix imposé" on 2026-10-28)
-            picks[mid] = {**_pick(forced), "fige": frozen(forced), **NOT_RETAINED,
-                          **({"niveau": "Confiance faible"} if c < PICK_MIN_CHANCE else {})}
+            picks[mid] = _with_morning({**_pick(forced), "fige": frozen(forced), **NOT_RETAINED}, seen)
             continue
         m = page.get(mid) or {}
         doc = (by_match.get(mid) or [{}])[0]
         match = doc.get("match") or (f"{m.get('domicile')} - {m.get('exterieur')}" if m else mid)
         ko = doc.get("coup_envoi") or m.get("coup_envoi")
         under_way = (m.get("statut", "a_venir") != "a_venir") or (ko and datetime.fromisoformat(ko) <= now)
-        picks[mid] = {"match_id": mid, "match": match, "titre": PICK_TITLE, "pari": None,
+        picks[mid] = {"match_id": mid, "match": match, "titre": PICK_TITLE, "pari": None, "marches_matin": seen,
                       "raison": "Pas de cote retenue avant le coup d'envoi." if under_way and not prev else
                       (prev or {}).get("raison") if under_way else NO_PICK}
     # the official pick: once fixed it stays, otherwise it goes to the best bet not yet fixed at 1.60 or more
