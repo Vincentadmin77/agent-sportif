@@ -146,6 +146,11 @@ def run_once(a, history_surf) -> bool:
                            "score_au_moment": score, "heure": now.strftime("%H:%M")}
         changed = True
         print("M direct:", row["joueur_1"], "-", row["joueur_2"], score, row["m_direct"]["position"], "@", cote, flush=True)
+        try:  # phone alert to the owner (admin only), once per position; never breaks the loop
+            from sportai.services.alerte_m import alerter_tennis
+            alerter_tennis(data["date"], row)
+        except Exception as e:  # noqa: BLE001
+            print("alerte M:", e, flush=True)
     # Results of the day's positions (official choice, Le M before the match, Le M in play) as soon as a match ends.
     fields = ("choix", "m", "m_direct")
     open_ = [m for m in data["matchs"] if any(m.get(f) and "resultat" not in m[f] for f in fields)]
