@@ -51,7 +51,8 @@ def test_failed_push_retried_next_cycle(monkeypatch, tmp_path):
     monkeypatch.setattr(A, "_post", lambda *a: False)
     assert not A.alerter("foot", "c", "A - B", "Victoire A", 1.7, now=NOW)
     monkeypatch.setattr(A, "_post", lambda *a: True)
-    assert A.alerter("foot", "c", "A - B", "Victoire A", 1.7, now=NOW)
+    A.alerter("foot", "c", "A - B", "Victoire A", 1.7, now=NOW)  # the waiting push goes first
+    assert "c" in A._load("foot") and not A.relancer(NOW)
 
 
 def test_tennis_winner_sites(monkeypatch, tmp_path):
@@ -66,3 +67,15 @@ def test_tennis_winner_sites(monkeypatch, tmp_path):
     assert not A.alerter_tennis("2026-11-03", row, NOW)
     body = sent[0][2]
     assert "Rublev vainqueur · cote 1,60" in body and "score 6-4 1-0" in body and "PMU 1,62" in body
+
+
+def test_rate_limited_push_waits_then_goes(monkeypatch, tmp_path):
+    sent = setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(A, "_odds_api", lambda path, **p: [])
+    monkeypatch.setattr(A, "_post", lambda *a: False)
+    assert not A.alerter("tennis", "t1", "X - Y", "Moins de 28,5 jeux", 1.5, now=NOW)
+    monkeypatch.setattr(A, "_post", lambda t, title, body: sent.append(body) or True)
+    assert A.relancer(NOW + timedelta(minutes=2)) == 1
+    assert "en retard" in sent[0] and A.relancer(NOW + timedelta(minutes=3)) == 0
+    assert not A.alerter("tennis", "t1", "X - Y", "Moins de 28,5 jeux", 1.5, now=NOW)  # already sent
+

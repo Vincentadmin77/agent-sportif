@@ -9,13 +9,18 @@ raises: a failed push is only printed and retried on the next cycle while the po
 Each position is pushed once (ledger in the project folder, one file per sport).
 
 Topic: env ALERTE_M_TOPIC, else the first line of state/alerte_m_topic.txt. No topic -> nothing is sent.
-Server: env ALERTE_M_SERVEUR (default https://ntfy.sh).
+Server: env ALERTE_M_SERVEUR (default https://ntfy.sh). Token: env ALERTE_M_TOKEN (ntfy account access token).
+The cloud sessions share their outgoing address, and ntfy limits anonymous publishing per address (HTTP 429 seen
+2026-11-03 13:52Z): a push is retried a few seconds later, then kept waiting (state/alertes_m_attente.json) and
+retried at every later call while fresh. With a token, ntfy counts the owner's account instead of the address.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -67,16 +72,62 @@ def _load(sport: str) -> dict:
         return {}
 
 
+RETRY_WAITS = (3, 8, 15)  # seconds between tries when ntfy answers 429 or 5xx
+
+
 def _post(t: str, title: str, body: str) -> bool:
     url = os.environ.get("ALERTE_M_SERVEUR", "https://ntfy.sh").rstrip("/") + "/" + t
-    req = urllib.request.Request(url, data=body.encode(), method="POST",
-                                 headers={"Title": _h(title), "Priority": "high", "Tags": "stopwatch"})
+    headers = {"Title": _h(title), "Priority": "high", "Tags": "stopwatch"}
+    if os.environ.get("ALERTE_M_TOKEN"):
+        headers["Authorization"] = "Bearer " + os.environ["ALERTE_M_TOKEN"]
+    for wait in (0,) + RETRY_WAITS:
+        time.sleep(wait)
+        try:
+            req = urllib.request.Request(url, data=body.encode(), method="POST", headers=headers)
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return 200 <= r.status < 300
+        except urllib.error.HTTPError as e:
+            print("alerte M non envoyée:", e, flush=True)
+            if e.code != 429 and e.code < 500:
+                return False
+        except Exception as e:  # noqa: BLE001 - an alert must never break a live loop
+            print("alerte M non envoyée:", e, flush=True)
+    return False
+
+
+def _attente() -> Path:
+    return STATE / "alertes_m_attente.json"
+
+
+def _save(path: Path, data: dict) -> None:
     try:
-        with urllib.request.urlopen(req, timeout=8) as r:
-            return 200 <= r.status < 300
-    except Exception as e:  # noqa: BLE001 - an alert must never break a live loop
-        print("alerte M non envoyée:", e, flush=True)
-        return False
+        STATE.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=0))
+    except OSError as e:
+        print("fichier des alertes M non écrit:", path.name, e, flush=True)
+
+
+def relancer(now: datetime | None = None) -> int:
+    """Retry the pushes kept waiting, while fresh. Called by every alerter() call; loops may call it each pass."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        wait = json.loads(_attente().read_text())
+    except (OSError, ValueError):
+        return 0
+    t, n, left = topic(), 0, {}
+    for cle, w in wait.items():
+        if now - datetime.fromisoformat(w["depuis"]) > FRESH or cle in _load(w["sport"]):
+            continue
+        if t and _post(t, w["titre"], w["texte"] + "\n(alerte envoyée en retard)"):
+            sent = _load(w["sport"])
+            sent[cle] = now.isoformat()
+            _save(_ledger(w["sport"]), sent)
+            n += 1
+        else:
+            left[cle] = w
+    if left != wait:
+        _save(_attente(), left)
+    return n
 
 
 def _h(s: str) -> str:
@@ -94,6 +145,7 @@ def alerter(sport: str, cle: str, match: str, pari: str, cote, moment: str | Non
             heure: datetime | None = None, now: datetime | None = None, sites=None) -> bool:
     """Push one live position of Le M once. `cle` identifies it (day + match + pari). True when sent now."""
     now = now or datetime.now(timezone.utc)
+    relancer(now)
     if heure is not None and heure.tzinfo is None:
         heure = heure.replace(tzinfo=timezone.utc)
     if heure is not None and now - heure > FRESH:
@@ -112,13 +164,15 @@ def alerter(sport: str, cle: str, match: str, pari: str, cote, moment: str | Non
             sites = None
     title, body = message(sport, match, pari, cote, moment, sites)
     if not _post(t, title, body):
+        try:
+            wait = json.loads(_attente().read_text())
+        except (OSError, ValueError):
+            wait = {}
+        wait.setdefault(cle, {"sport": sport, "titre": title, "texte": body, "depuis": (heure or now).isoformat()})
+        _save(_attente(), wait)
         return False
     sent[cle] = now.isoformat()
-    try:
-        STATE.mkdir(parents=True, exist_ok=True)
-        _ledger(sport).write_text(json.dumps(sent, ensure_ascii=False, indent=0))
-    except OSError as e:
-        print("registre des alertes M non écrit:", e, flush=True)
+    _save(_ledger(sport), sent)
     return True
 
 
