@@ -862,6 +862,11 @@ def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs
         doc = live_doc(current[key], fx, snap, stats_by_side(raw_stats, fx["teams"]["home"]["id"]),
                        pre_match_rates(fixtures, current[key]["domicile"], current[key]["exterieur"]), now, odds,
                        lineups, players)
+        try:  # owner 2026-11-03: a push to his phone as soon as the M takes a live position (admin only)
+            from sportai.services.alerte_m import alerter_foot
+            alerter_foot(doc, current[key].get("live_a_blanc"), doc.get("live_a_blanc"), now, key)
+        except Exception as e:  # noqa: BLE001 - an alert never breaks the live follow-up
+            print(f"alerte M unavailable ({str(e)[:120]})", file=sys.stderr)
         docs[key] = doc
     n_live = sum(d["statut"] == "en_direct" for d in docs.values())
     try:  # the "Joueur pro" player's bets followed live

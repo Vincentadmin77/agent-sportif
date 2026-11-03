@@ -40,6 +40,7 @@ sportai/engine/football/goals_model.py
 sportai/engine/football/halves.py
 sportai/engine/football/live.py
 sportai/engine/football/markets.py
+sportai/engine/football/scorer_history.py
 sportai/engine/football/scorers.py
 sportai/mcp/__init__.py
 sportai/mcp/engine_server.py
@@ -47,6 +48,7 @@ sportai/selection/__init__.py
 sportai/selection/engine.py
 sportai/services/__init__.py
 sportai/services/accounts.py
+sportai/services/alerte_m.py
 sportai/services/basket.py
 sportai/services/basket_players.py
 sportai/services/bilan.py
@@ -70,14 +72,18 @@ sportai/services/registre.py
 sportai/services/revue.py
 sportai/services/runs.py
 sportai/services/shopify.py
+tests/test_absences.py
+tests/test_alerte_m.py
 tests/test_all_markets.py
 tests/test_api.py
 tests/test_basket.py
 tests/test_basket_players.py
 tests/test_basketball_model.py
+tests/test_buteurs_stars.py
 tests/test_calendrier.py
 tests/test_connectors.py
 tests/test_contexte.py
+tests/test_cotes_francaises.py
 tests/test_counts.py
 tests/test_dashboard.py
 tests/test_football_model.py
@@ -94,6 +100,7 @@ tests/test_movement.py
 tests/test_pipeline.py
 tests/test_position.py
 tests/test_pronostic.py
+tests/test_pronostic_bookmaker.py
 tests/test_registre.py
 tests/test_review_agent.py
 tests/test_revue.py
