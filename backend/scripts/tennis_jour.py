@@ -153,6 +153,12 @@ def main() -> None:
     before = {}
     if a.out and Path(a.out).exists():
         before = {x["id"]: x for x in json.loads(Path(a.out).read_text()).get("matchs", [])}
+    # A match postponed from the previous day keeps the position it had there (one position per match): skip it here.
+    postponed = set()
+    if a.out:
+        prev = Path(a.out).with_name(f"{day - timedelta(days=1)}.json")
+        if prev.exists():
+            postponed = {x["id"] for x in json.loads(prev.read_text()).get("matchs", []) if x.get("choix") or x.get("m")}
     now_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y-%m-%d %H:%M")
     report = []
     for tour, key in fetch_tennis.TOURS.items():
@@ -164,6 +170,8 @@ def main() -> None:
             if not f"{day} 08:00" <= when <= f"{day + timedelta(days=1)} 02:00":
                 continue
             if not raw.get("first_player_key") or not raw.get("second_player_key"):
+                continue
+            if str(raw.get("event_key")) in postponed:
                 continue
             m = bt.parse(raw, tour, surf, odds if isinstance(odds, dict) else {})
             r = ratings[tour]
