@@ -260,13 +260,16 @@ def test_a_pick_the_model_does_not_retain_stays_out_of_its_ratio():
 
 def test_the_selection_of_the_m_takes_the_highest_odds_of_every_sport_and_keeps_them_from_kick_off():
     day = pron(cote=1.55)
-    day["paris_retenus"]["m1"].update(confiance=0.66, proba_marche=0.64)
-    day["positions_entre_parentheses"] = {"m2": {"match": "C - D", "pari": "Moins de 3,5 buts", "cote": 1.6,
+    day["paris_retenus"]["m1"].update(confiance=0.66, proba_marche=0.64, niveau="Confiance élevée")
+    day["positions_entre_parentheses"] = {"m2": {"match": "C - D", "pari": "Moins de 3,5 buts", "cote": 1.6, "niveau": "Confiance élevée", 
+                                                 
                                                  "confiance": 0.70, "proba": 0.72, "proba_marche": 0.68,
                                                  "coup_envoi": KO}}
-    b = {"paris_retenus": {"7": {"match": "E - F", "pari": "Victoire E", "cote": 1.55, "proba": 0.62,
+    b = {"paris_retenus": {"7": {"match": "E - F", "pari": "Victoire E", "cote": 1.55, "proba": 0.62, "niveau": "Confiance élevée", 
+                                 
                                  "proba_marche": 0.61, "coup_envoi": "2026-10-29T23:00:00Z"},
-                           "8": {"match": "G - H", "pari": "Victoire G", "cote": 1.9, "proba": 0.55,
+                           "8": {"match": "G - H", "pari": "Victoire G", "cote": 1.9, "proba": 0.55, "niveau": "Confiance élevée", 
+                                 
                                  "proba_marche": 0.52, "coup_envoi": "2026-10-29T23:00:00Z"}}}
     reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(17), b)
     # version 02 (owner 2026-11-02): the 5 highest odds, whatever the confidence; equal odds: the most confident first
@@ -330,6 +333,7 @@ def test_tennis_uses_the_m_s_own_pick_when_the_tennis_pass_gives_it():
                            "proba_bookmakers": 0.64, "feu": "vert", "passe": False, "fige": False}
     reg = R.tennis_avis({"jour": "2026-10-29", "fiches": {}}, t, at(17), "abc")
     assert reg["avis"]["tennis-1"]["choix_m"]["pari"] == "A vainqueur"
+    t["matchs"][0]["choix"]["niveau"] = "Confiance élevée"
     reg = R.selection_m(reg, {"paris_retenus": {}}, at(17), None, t)
     assert {c["sport"] for c in reg["selection_m"]} == {"tennis"}
     assert len({c["match_id"] for c in reg["selection_m"]}) == len(reg["selection_m"])
@@ -351,7 +355,7 @@ def test_tennis_live_position_of_the_m_counts_in_its_ratio_and_shows_in_the_opin
 def test_a_selection_pick_dropped_before_kick_off_stays_in_the_history_flagged():
     day = {"jour": "2026-10-29", "paris_retenus": {
         "m1": {"match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.6, "confiance": 0.66, "proba": 0.68,
-               "proba_marche": 0.64, "coup_envoi": KO}}}
+               "proba_marche": 0.64, "coup_envoi": KO, "niveau": "Confiance élevée"}}}
     reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))
     assert [c["pari"] for c in reg["selection_m"]] == ["Plus de 2,5 buts"]
     day["paris_retenus"]["m1"].update(pari="Moins de 3,5 buts", confiance=0.55)  # the pass changed its mind
@@ -397,22 +401,27 @@ def test_nba_official_positions_are_in_the_registry_with_their_own_ratio():
 def test_a_lost_selection_is_replayed_from_the_frozen_positions():
     day = {"jour": "2026-10-29", "paris_retenus": {
         "m1": {"match": "A - B", "pari": "Plus de 2,5 buts", "cote": 1.6, "confiance": 0.66, "proba": 0.68,
-               "proba_marche": 0.64, "coup_envoi": "2026-10-29T14:00:00+00:00", "resultat": "gagne"},
+               "proba_marche": 0.64, "coup_envoi": "2026-10-29T14:00:00+00:00", "resultat": "gagne",
+               "niveau": "Confiance élevée"},
         "m2": {"match": "C - D", "pari": "Victoire C", "cote": 1.55, "confiance": 0.70, "proba": 0.71,
-               "proba_marche": 0.66, "coup_envoi": "2026-10-29T19:00:00+00:00"}}}
+               "proba_marche": 0.66, "coup_envoi": "2026-10-29T19:00:00+00:00", "niveau": "Confiance élevée"}}}
     reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(16))  # nothing kept from earlier runs
     picks = {c["pari"]: c for c in reg["selection_m"]}
     assert picks["Plus de 2,5 buts"].get("rejoue") and picks["Plus de 2,5 buts"]["resultat"] == "gagne"
     assert "Victoire C" in picks
 
 
-def test_v02_the_selection_of_the_m_keeps_the_5_highest_odds_one_per_match():
+def test_v03_the_selection_of_the_m_keeps_the_5_highest_odds_at_high_confidence_one_per_match():
     odds = [1.52, 2.1, 1.8, 1.95, 1.6, 2.25, 1.7]
+    levels = ["Confiance élevée", "Confiance moyenne", "Confiance élevée", "Confiance élevée", "Confiance élevée",
+              "Confiance élevée", "Confiance élevée"]
     day = {"jour": "2026-10-29", "paris_retenus": {
-        f"m{i}": {"match": f"A{i} - B{i}", "pari": f"Victoire A{i}", "cote": o, "confiance": 0.55, "proba": 0.55,
-                  "proba_marche": 0.5, "coup_envoi": KO} for i, o in enumerate(odds)}}
+        f"m{i}": {"match": f"A{i} - B{i}", "pari": f"Victoire A{i}", "cote": o, "confiance": 0.6, "proba": 0.6,
+                  "proba_marche": 0.6, "coup_envoi": KO, "niveau": n} for i, (o, n) in enumerate(zip(odds, levels))}}
+    day["paris_retenus"]["m5"]["valide"] = False  # 2.25 at high confidence, but the model does not retain it
     day["positions_entre_parentheses"] = {"m1": {"match": "A1 - B1", "pari": "Plus de 2,5 buts", "cote": 2.3,
-                                                 "confiance": 0.5, "proba": 0.5, "proba_marche": 0.45, "coup_envoi": KO}}
+                                                 "confiance": 0.6, "proba": 0.6, "proba_marche": 0.6, "coup_envoi": KO,
+                                                 "niveau": "Confiance élevée"}}
     reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))
-    assert [c["cote"] for c in reg["selection_m"]] == [2.3, 2.25, 1.95, 1.8, 1.7]
-    assert "5 plus grosses cotes" in reg["selection_m_regle"]
+    assert [c["cote"] for c in reg["selection_m"]] == [2.3, 1.95, 1.8, 1.7, 1.6]
+    assert "Confiance élevée" in reg["selection_m_regle"]

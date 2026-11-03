@@ -900,10 +900,15 @@ SELECTION_MIN = 0.60  # version 01 only (kept for the record)
 # the M, the 3 sports together, one per match: the selection is chosen on the odds, to see how many pass by odds level.
 SELECTION_MAX = 5
 SELECTION_MIN_ODDS = 1.50
+# Version 03 (owner 2026-11-03): "une sélection des plus hautes cotes en confiance élevée": the same biggest odds, but
+# only among the model's positions it keeps at "Confiance élevée" (3 sports, one per match); the M's own choices carry
+# no confidence level and no longer enter.
+SELECTION_LEVEL = "Confiance élevée"
 
 
 def _sel_ok(c: dict) -> bool:
-    return isinstance(c.get("cote"), (int, float)) and c["cote"] >= SELECTION_MIN_ODDS
+    return (isinstance(c.get("cote"), (int, float)) and c["cote"] >= SELECTION_MIN_ODDS
+            and c.get("niveau") == SELECTION_LEVEL and not c.get("non_retenu"))
 
 
 def _sel_rank(c: dict):
@@ -930,7 +935,8 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc:
         out[key] = {"sport": sport, "match_id": str(mid), "match": p.get("match"), "pari": p["pari"],
                     "cote": p.get(cote_key), "confiance": c, "p_modele": p.get(mod_key), "p_marche": p.get(mkt_key),
                     "source": source, "coup_envoi": p.get("coup_envoi"), "resultat": p.get("resultat"),
-                    "competition": p.get("competition")}
+                    "competition": p.get("competition"), "niveau": p.get("niveau"),
+                    "non_retenu": bool(p.get("non_retenu") or (sport == "foot" and p.get("valide") is False))}
 
     for mid, p in (pron.get("paris_retenus") or {}).items():
         add("foot", mid, p, "officielle")
@@ -945,7 +951,7 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc:
                                              "proba": c.get("proba_modele"), "proba_marche": c.get("proba_bookmakers"),
                                              "match": f"{tm.get('joueur_1')} - {tm.get('joueur_2')}",
                                              "coup_envoi": _tennis_ko(str((tdoc or {}).get("date")), tm),
-                                             "resultat": c.get("resultat"),
+                                             "resultat": c.get("resultat"), "niveau": c.get("niveau"),
                                              "competition": f"{tm.get('circuit')} {tm.get('tournoi')}"}, "officielle")
     for f in (reg.get("fiches") or {}).values():
         if f.get("choix_m") and f.get("pari"):
@@ -1040,8 +1046,8 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
             c["resultat"] = r
     if retires:
         reg["selection_m_retires"] = retires
-    reg["selection_m_regle"] = (f"Les {SELECTION_MAX} plus grosses cotes du jour parmi toutes les positions du modèle "
-                                "et du M, tous sports, une par match.")
+    reg["selection_m_regle"] = (f"Les {SELECTION_MAX} plus grosses cotes du jour parmi les positions du modèle en "
+                                "Confiance élevée, tous sports, une par match.")
     return reg
 
 
@@ -1050,7 +1056,7 @@ def rebuilt_selection(pron: dict, bpron: dict | None = None, reg: dict | None = 
     cands = [c for c in selection_candidates(reg or {}, pron, bpron) if _sel_ok(c)]
     for p in pron.get("positions") or []:  # rebuilt days store a list
         c = _conf(p.get("proba"), p.get("proba_marche"))
-        if p.get("pari") and c and _sel_ok(p):
+        if p.get("pari") and c and _sel_ok({**p, "non_retenu": p.get("valide") is False}):
             cands.append({"sport": "foot", "match_id": str(p.get("match_id")), "match": p.get("match"), "pari": p["pari"],
                           "cote": p.get("cote"), "confiance": p.get("confiance") or c, "p_modele": p.get("proba"),
                           "p_marche": p.get("proba_marche"), "source": "officielle", "resultat": p.get("resultat")})
