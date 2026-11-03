@@ -106,6 +106,11 @@ def run_once(a, history_surf) -> bool:
     path = Path(a.out)
     if not path.exists():
         return False
+    try:  # phone alerts kept waiting after a refused push (ntfy rate limit) are retried at each pass
+        from sportai.services.alerte_m import relancer
+        relancer()
+    except Exception:  # noqa: BLE001
+        pass
     data = json.loads(path.read_text())
     by_id = {m["id"]: m for m in data.get("matchs", [])}
     now = datetime.now(PARIS)
