@@ -340,11 +340,46 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         _form(comps, docs, current, now)
     except Exception as e:  # form is a bonus: never lose the pass for it
         notes.append(f"forme unavailable ({str(e)[:120]})")
-    STATE_DB.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(work, STATE_DB)
+    _merge_back(work)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
     print("runs:", "; ".join(notes), file=sys.stderr)
+
+
+_UPSERT_TABLES = {"alembic_version", "competitions", "plans", "provider_status", "settings"}
+
+
+def _merge_back(work: Path) -> None:
+    """Fold this pass's rows into STATE_DB instead of copying the whole file over it: several sessions run passes
+    at once (football, tennis, the M), and a plain copy erased the runs another pass had written meanwhile
+    (2026-11-03: six runs lost). New rows are added, rows another pass wrote are kept; only small settings-like
+    tables are overwritten. A lock file serialises the merges of passes running side by side."""
+    import fcntl
+    import sqlite3
+
+    STATE_DB.parent.mkdir(parents=True, exist_ok=True)
+    with open(STATE_DB.with_name(STATE_DB.name + ".lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not STATE_DB.exists():
+            shutil.copy(work, STATE_DB)
+            return
+        con = sqlite3.connect(STATE_DB, timeout=120)
+        try:
+            con.execute("ATTACH DATABASE ? AS w", (str(work),))
+            mine = {r[0] for r in con.execute("SELECT name FROM main.sqlite_master WHERE type='table'")}
+            for (table,) in con.execute("SELECT name FROM w.sqlite_master WHERE type='table' "
+                                        "AND name NOT LIKE 'sqlite_%'").fetchall():
+                if table not in mine:  # a migration this pass ran: take the whole table
+                    sql = con.execute("SELECT sql FROM w.sqlite_master WHERE name=?", (table,)).fetchone()[0]
+                    con.execute(sql)
+                cols = [r[1] for r in con.execute(f'PRAGMA main.table_info("{table}")')]
+                theirs = {r[1] for r in con.execute(f'PRAGMA w.table_info("{table}")')}
+                cols = ", ".join(f'"{c}"' for c in cols if c in theirs)
+                verb = "INSERT OR REPLACE" if table in _UPSERT_TABLES else "INSERT OR IGNORE"
+                con.execute(f'{verb} INTO main."{table}" ({cols}) SELECT {cols} FROM w."{table}"')
+            con.commit()
+        finally:
+            con.close()
 
 
 def _reset_settings() -> None:
