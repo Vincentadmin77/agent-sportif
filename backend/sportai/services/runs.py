@@ -21,6 +21,7 @@ from sportai.connectors.openfootball import CALENDAR_YEAR, FILES as OPENFOOTBALL
 from sportai.connectors.openfootball import OpenFootballProvider
 from sportai.connectors.simulation import SimulationProvider
 from sportai.connectors.teams import normalise
+from sportai.connectors import oddspapi
 from sportai.connectors.the_odds_api import (FRENCH_EXTRA_MARKETS, FRENCH_EXTRA_WITHIN, TheOddsApiProvider,
                                              fixtures_from_events, french_only, french_tracking,
                                              is_french)
@@ -220,6 +221,8 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                         fixtures = fixtures_from_events(odds_p.last_events, competition, now, timedelta(hours=24))
                     if french_tracking() and FRENCH_EXTRA_MARKETS:  # the French rule's extra markets, last pass only
                         quotes += [q for q in _french_extra(odds_p, competition, fixtures, now) if is_french(q.bookmaker)]
+                    if french_tracking():  # OddsPapi: double chance, draw no bet... at the French sites, last pass
+                        quotes += oddspapi.french_quotes(fixtures or [], competition, now, FRENCH_EXTRA_WITHIN)
                     if goal_markets:
                         quotes += _goal_quotes(odds_p, competition, fixtures, now, cfg)
                     odds_source = odds_p.name
@@ -249,6 +252,11 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
                     odds_source = "+".join(x for x in (odds_source, odds_p.name) if x)
                 except ProviderUnavailable as e:  # no French odds: no position at a French price on this league
                     _mark(db, TheOddsApiProvider.name, str(e))
+                # owner 2026-11-03: OddsPapi adds Winamax, PMU, Bet365 FR, Bwin FR, PokerStars FR with double
+                # chance, draw no bet, both teams score and goals, one request a match at the last pass (economy)
+                if (fr_extra := oddspapi.french_quotes(window, competition, now, FRENCH_EXTRA_WITHIN)):
+                    quotes += fr_extra
+                    odds_source = "+".join(x for x in (odds_source, oddspapi.NAME) if x)
             run.data_sources = {"history": "+".join(sorted(used)), "fixtures": fixtures_source, "odds": odds_source}
     except ProviderUnavailable as e:
         _mark(db, current, str(e))

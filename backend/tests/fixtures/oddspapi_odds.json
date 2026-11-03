@@ -1,0 +1,264 @@
+{
+"fixtureId": "id1000000774165988",
+"bookmakerOdds": {
+"winamax.fr": {
+"bookmakerIsActive": true,
+"suspended": false,
+"markets": {
+"104": {
+"outcomes": {
+"104": {
+"players": {
+"0": {
+"price": 1.46,
+"active": true,
+"changedAt": "2026-11-03T12:52:47.160Z"
+}
+}
+},
+"105": {
+"players": {
+"0": {
+"price": 2.5,
+"active": true,
+"changedAt": "2026-11-03T10:27:57.062Z"
+}
+}
+}
+}
+},
+"101902": {
+"outcomes": {
+"101902": {
+"players": {
+"0": {
+"price": 1.19,
+"active": true,
+"changedAt": "2026-11-03T09:08:35.899Z"
+}
+}
+},
+"101903": {
+"players": {
+"0": {
+"price": 1.22,
+"active": true,
+"changedAt": "2026-11-03T09:08:35.899Z"
+}
+}
+},
+"101904": {
+"players": {
+"0": {
+"price": 2.15,
+"active": true,
+"changedAt": "2026-11-03T10:27:14.666Z"
+}
+}
+}
+}
+},
+"101": {
+"outcomes": {
+"102": {
+"players": {
+"0": {
+"price": 4.1,
+"active": true,
+"changedAt": "2026-11-03T09:08:35.899Z"
+}
+}
+},
+"103": {
+"players": {
+"0": {
+"price": 4.1,
+"active": true,
+"changedAt": "2026-11-03T09:08:35.899Z"
+}
+}
+},
+"101": {
+"players": {
+"0": {
+"price": 1.6,
+"active": true,
+"changedAt": "2026-11-03T10:27:14.666Z"
+}
+}
+}
+}
+},
+"10214": {
+"outcomes": {
+"10214": {
+"players": {
+"0": {
+"price": 1.23,
+"active": true,
+"changedAt": "2026-11-03T09:08:35.899Z"
+}
+}
+}
+}
+},
+"1010": {
+"outcomes": {
+"1011": {
+"players": {
+"0": {
+"price": 2.45,
+"active": true,
+"changedAt": "2026-11-03T12:52:47.160Z"
+}
+}
+},
+"1010": {
+"players": {
+"0": {
+"price": 1.43,
+"active": true,
+"changedAt": "2026-11-03T12:52:47.160Z"
+}
+}
+}
+}
+}
+}
+},
+"pmu": {
+"bookmakerIsActive": true,
+"suspended": false,
+"markets": {
+"101": {
+"outcomes": {
+"101": {
+"players": {
+"0": {
+"price": 1.62,
+"active": true,
+"changedAt": "2026-11-03T12:11:29.337Z"
+}
+}
+},
+"102": {
+"players": {
+"0": {
+"price": 3.95,
+"active": true,
+"changedAt": "2026-11-03T12:11:29.337Z"
+}
+}
+},
+"103": {
+"players": {
+"0": {
+"price": 4.1,
+"active": true,
+"changedAt": "2026-11-03T09:10:08.569Z"
+}
+}
+}
+}
+},
+"104": {
+"outcomes": {
+"104": {
+"players": {
+"0": {
+"price": 1.38,
+"active": true,
+"changedAt": "2026-11-03T07:55:27.139Z"
+}
+}
+},
+"105": {
+"players": {
+"0": {
+"price": 2.5,
+"active": true,
+"changedAt": "2026-11-03T07:55:27.139Z"
+}
+}
+}
+}
+},
+"1010": {
+"outcomes": {
+"1011": {
+"players": {
+"0": {
+"price": 2.63,
+"active": true,
+"changedAt": "2026-11-03T12:11:29.337Z"
+}
+}
+},
+"1010": {
+"players": {
+"0": {
+"price": 1.35,
+"active": true,
+"changedAt": "2026-11-03T07:55:10.826Z"
+}
+}
+}
+}
+},
+"10214": {
+"outcomes": {
+"10215": {
+"players": {
+"0": {
+"price": 3.05,
+"active": true,
+"changedAt": "2026-11-03T09:10:08.569Z"
+}
+}
+},
+"10214": {
+"players": {
+"0": {
+"price": 1.2,
+"active": true,
+"changedAt": "2026-11-03T09:10:08.569Z"
+}
+}
+}
+}
+},
+"101902": {
+"outcomes": {
+"101902": {
+"players": {
+"0": {
+"price": 1.15,
+"active": true,
+"changedAt": "2026-11-03T09:10:08.569Z"
+}
+}
+},
+"101903": {
+"players": {
+"0": {
+"price": 1.16,
+"active": true,
+"changedAt": "2026-11-03T12:11:29.337Z"
+}
+}
+},
+"101904": {
+"players": {
+"0": {
+"price": 2.05,
+"active": true,
+"changedAt": "2026-11-03T13:11:22.020Z"
+}
+}
+}
+}
+}
+}
+}
+}
+}
