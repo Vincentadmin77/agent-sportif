@@ -422,6 +422,8 @@ def test_v03_the_selection_of_the_m_keeps_the_5_highest_odds_at_high_confidence_
     day["positions_entre_parentheses"] = {"m1": {"match": "A1 - B1", "pari": "Plus de 2,5 buts", "cote": 2.3,
                                                  "confiance": 0.6, "proba": 0.6, "proba_marche": 0.6, "coup_envoi": KO,
                                                  "niveau": "Confiance élevée"}}
-    reg = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))
+    reg = R.selection_m({"jour": "2026-11-04", "fiches": {}}, {**day, "jour": "2026-11-04"}, at(12))
     assert [c["cote"] for c in reg["selection_m"]] == [2.3, 1.95, 1.8, 1.7, 1.6]
     assert "Confiance élevée" in reg["selection_m_regle"]
+    old = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))  # before 4/11: version 02 kept
+    assert [c["cote"] for c in old["selection_m"]] == [2.3, 2.25, 1.95, 1.8, 1.7]
