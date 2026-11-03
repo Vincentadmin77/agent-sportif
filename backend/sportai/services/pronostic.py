@@ -512,6 +512,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 if f["match_id"] in priced:
                     goals_run[f["match_id"]] = run.id
     legs, foreign = [], []
+    fr_by_match: dict[str, dict] = {}  # page match id -> French sites' best odds by bet (cotes_fr)
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
@@ -650,6 +651,8 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
+        if f.get("cotes_fr"):
+            fr_by_match[doc_id(ko, home, away)] = f["cotes_fr"]
         if french_only():  # French rule (owner 2026-10-28): the same analysis, the position at a French site's price
             fr = f.get("cotes_fr") or {}
             # the same bets at the price the analysis saw (any bookmaker, any market): the bracketed position
@@ -674,10 +677,28 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
         legs += [l for l in spares if PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])]
     legs += foreign
     for l in legs:
+        # owner 2026-11-03 (admin only): beside each decision, the same bet at the best French site and which one,
+        # so a choice priced abroad shows what it pays in France ("france": {"cote", "site"}, cote None if absent)
+        if not l.get("_etranger") and l.get("match_id") in fr_by_match:
+            l["france"] = french_match(l.get("_cle"), fr_by_match[l["match_id"]])
         l.pop("_cle", None)
         # owner 2026-10-29: beside the odds, a dot coloured by the site's country (blue: France), never its name
         l["pays_bookmaker"] = bookmaker_country(l.get("bookmaker"))
     return legs
+
+
+FRENCH_SITE_NAMES = {"winamax_fr": "Winamax", "betclic_fr": "Betclic", "unibet_fr": "Unibet", "pmu_fr": "PMU",
+                     "netbet_fr": "NetBet", "bet365_fr": "Bet365", "bwin_fr": "Bwin", "pokerstars_fr": "PokerStars",
+                     "fdj_fr": "FDJ", "zebet_fr": "ZEbet"}
+
+
+def french_match(key: str | None, fr: dict[str, list]) -> dict:
+    """The same bet at the best French site: {"cote": 1.5, "site": "Winamax"}, or {"cote": None} when no French site
+    quotes it (half-time, corners, cards, scorers... or not offered)."""
+    got = fr.get(key) if key else None
+    if not got:
+        return {"cote": None, "site": None}
+    return {"cote": got[0], "site": FRENCH_SITE_NAMES.get(got[1], str(got[1]).removesuffix("_fr").capitalize())}
 
 
 def french_price(leg: dict, fr: dict[str, list]) -> dict | None:

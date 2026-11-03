@@ -56,3 +56,13 @@ def test_budget_once_per_match_and_daily_cap(tmp_path, monkeypatch):
     again = oddspapi.french_quotes(fx, "UCL", NOW, timedelta(minutes=75))
     assert len(again) == len(first) and calls == ["/fixtures", "/odds"]  # cached, nothing spent
     assert oddspapi.french_quotes(fx, "UCL", NOW - timedelta(hours=3), timedelta(minutes=75)) == []
+
+
+def test_french_correspondence_beside_each_decision():
+    from sportai.services.pronostic import french_match
+
+    fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"]}
+    assert french_match("btts:yes", fr) == {"cote": 1.5, "site": "Winamax"}
+    assert french_match("1x2:home", fr) == {"cote": 1.64, "site": "Bet365"}
+    assert french_match("corners:over:9.5", fr) == {"cote": None, "site": None}
+    assert french_match(None, fr) == {"cote": None, "site": None}
