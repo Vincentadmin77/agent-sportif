@@ -61,9 +61,18 @@ def test_budget_once_per_match_and_daily_cap(tmp_path, monkeypatch):
 def test_french_correspondence_beside_each_decision():
     from sportai.services.pronostic import french_match
 
-    fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"]}
+    fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"], "double_chance:1X": [1.2, "pmu_fr"]}
     assert french_match("btts:yes", fr) == {"cote": 1.5, "site": "Winamax"}
     assert french_match("1x2:home", fr) == {"cote": 1.64, "site": "Bet365"}
     assert french_match("totals:under@3.5", fr) == {"cote": None, "site": None}  # read, no French site
     assert french_match("corners:over@9.5", fr) == {"cote": None, "site": None, "non_lu": True}
     assert french_match(None, fr) == {"cote": None, "site": None, "non_lu": True}
+
+
+def test_not_read_yet_before_the_full_french_read():
+    from sportai.services.pronostic import french_match
+
+    morning = {"1x2:home": [1.64, "betclic_fr"], "totals:under@3.5": [1.5, "pmu_fr"]}  # The Odds API only
+    assert french_match("totals:under@4.5", morning) == {"cote": None, "site": None, "non_lu": True}
+    assert french_match("dnb:home", morning)["non_lu"] is True
+    assert french_match("totals:under@3.5", morning) == {"cote": 1.5, "site": "PMU"}

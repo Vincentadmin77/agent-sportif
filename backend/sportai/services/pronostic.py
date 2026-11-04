@@ -705,7 +705,10 @@ def french_match(key: str | None, fr: dict[str, list]) -> dict:
     French site quotes a bet the French feeds read; plus "non_lu": True for a bet they do not read at all."""
     got = fr.get(key) if key else None
     if not got:
-        read = bool(key) and key.split(":", 1)[0] in FRENCH_READ_MARKETS
+        # "Pas en France" only once the match has had its full French read (OddsPapi, last pass: its double chance
+        # is the mark); before that, a missing goals line or draw no bet was simply not read yet (owner 2026-11-04)
+        full = any(k.startswith("double_chance:") for k in fr)
+        read = bool(key) and key.split(":", 1)[0] in FRENCH_READ_MARKETS and full
         return {"cote": None, "site": None, **({} if read else {"non_lu": True})}
     return {"cote": got[0], "site": FRENCH_SITE_NAMES.get(got[1], str(got[1]).removesuffix("_fr").capitalize())}
 
