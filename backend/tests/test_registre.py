@@ -427,3 +427,19 @@ def test_v03_the_selection_of_the_m_keeps_the_5_highest_odds_at_high_confidence_
     assert "Confiance élevée" in reg["selection_m_regle"]
     old = R.selection_m({"jour": "2026-10-29", "fiches": {}}, day, at(12))  # before 4/11: version 02 kept
     assert [c["cote"] for c in old["selection_m"]] == [2.3, 2.25, 1.95, 1.8, 1.7]
+
+
+def test_v04_the_selection_of_the_m_keeps_4_per_sport():
+    day = {"jour": "2026-11-05", "paris_retenus": {
+        f"m{i}": {"match": f"A{i} - B{i}", "pari": f"Victoire A{i}", "cote": 1.5 + i / 20, "confiance": 0.6, "proba": 0.6,
+                  "proba_marche": 0.6, "coup_envoi": KO, "niveau": "Confiance élevée"} for i in range(6)}}
+    t = {"date": "2026-11-05", "matchs": [
+        {"id": str(i), "circuit": "ATP", "tournoi": "Paris", "heure_paris": "11:00", "joueur_1": f"P{i}", "joueur_2": f"Q{i}",
+         "choix": {"position": f"P{i} gagne le match", "cote": 1.9 + i / 20, "proba_modele": 0.6, "proba_bookmakers": 0.6,
+                   "confiance": 0.6, "statut": "retenu", "niveau": "Confiance élevée"}} for i in range(6)]}
+    reg = R.selection_m({"jour": "2026-11-05", "fiches": {}}, day, datetime(2026, 11, 5, 8, tzinfo=timezone.utc), None, t)
+    by = {}
+    for c in reg["selection_m"]:
+        by.setdefault(c["sport"], []).append(c["cote"])
+    assert len(by["foot"]) == 4 and len(by["tennis"]) == 4
+    assert min(by["foot"]) == 1.6 and "par sport" in reg["selection_m_regle"]

@@ -907,8 +907,25 @@ SELECTION_LEVEL = "Confiance élevée"
 SELECTION_V03_FROM = "2026-11-04"  # owner's card 2026-11-03 12:52Z: "dès demain"; earlier days keep version 02
 
 
+# Version 04 (owner 2026-11-04 20:08Z: "faire les passages par sport ... une sélection de 4 par sport"): the same
+# rule as version 03, but 4 places per sport, so the morning tennis no longer takes the evening football's places.
+SELECTION_PER_SPORT = 4
+SELECTION_V04_FROM = "2026-11-05"
+
+
 def _v03(day) -> bool:
     return str(day or "") >= SELECTION_V03_FROM
+
+
+def _v04(day) -> bool:
+    return str(day or "") >= SELECTION_V04_FROM
+
+
+def _full(board: list[dict], c: dict, v04: bool) -> bool:
+    """No place left for c: 4 per sport from version 04, 5 in all before."""
+    if v04:
+        return sum(1 for b in board if b.get("sport") == c.get("sport")) >= SELECTION_PER_SPORT
+    return len(board) >= SELECTION_MAX
 
 
 def _sel_ok(c: dict, v03: bool = True) -> bool:
@@ -967,7 +984,7 @@ def selection_candidates(reg: dict, pron: dict, bpron: dict | None = None, tdoc:
     return list(out.values())
 
 
-def _replay_locked(cands: list[dict], now: datetime, v03: bool = True) -> list[dict]:
+def _replay_locked(cands: list[dict], now: datetime, v03: bool = True, v04: bool = False) -> list[dict]:
     """The picks the selection held when each match started, replayed from the day's frozen candidates: at each kick-off
     time, the SELECTION_MAX most confident among the picks already locked and the matches not yet started."""
     ok = [c for c in cands if _sel_ok(c, v03) and _aware(str(c.get("coup_envoi") or "").replace("Z", "+00:00"))]
@@ -976,8 +993,8 @@ def _replay_locked(cands: list[dict], now: datetime, v03: bool = True) -> list[d
     for t in sorted({ko(c) for c in ok if ko(c) <= now}):
         board, seen = list(locked), {(c["sport"], c["match_id"]) for c in locked}
         for c in sorted((c for c in ok if ko(c) >= t), key=_sel_rank):
-            if len(board) >= SELECTION_MAX:
-                break
+            if _full(board, c, v04):
+                continue
             if (c["sport"], c["match_id"]) not in seen:
                 board.append(c)
                 seen.add((c["sport"], c["match_id"]))
@@ -1012,6 +1029,7 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
     """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
     cands = selection_candidates(reg, pron, bpron, tdoc)
     v03 = _v03(reg.get("jour") or pron.get("jour"))
+    v04 = _v04(reg.get("jour") or pron.get("jour"))
     res = {(c["sport"], c["match_id"], c["pari"]): c.get("resultat") for c in cands}
     prev = list(reg.get("selection_m") or [])
 
@@ -1021,7 +1039,7 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
 
     kept = [c for c in prev if started(c)]
     if not kept:  # a lost copy of the day (rewritten without its selection): replay the picks frozen at each kick-off
-        kept = [{**c, "rejoue": True} for c in _replay_locked(cands, now, v03)]
+        kept = [{**c, "rejoue": True} for c in _replay_locked(cands, now, v03, v04)]
     for c in kept:  # results of the frozen picks
         r = res.get((c["sport"], c["match_id"], c["pari"]))
         if r in SETTLED:
@@ -1031,8 +1049,8 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
                     and _sel_ok(c, v03)), key=_sel_rank)
     picks, seen = list(kept), set(taken)
     for c in fresh:
-        if len(picks) >= SELECTION_MAX:
-            break
+        if _full(picks, c, v04):
+            continue
         if (c["sport"], c["match_id"]) not in seen:
             picks.append({**c, "choisie": now.isoformat()})
             seen.add((c["sport"], c["match_id"]))
@@ -1053,7 +1071,9 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
             c["resultat"] = r
     if retires:
         reg["selection_m_retires"] = retires
-    reg["selection_m_regle"] = (f"Les {SELECTION_MAX} plus grosses cotes du jour parmi les positions du modèle en "
+    reg["selection_m_regle"] = (f"Les {SELECTION_PER_SPORT} plus grosses cotes du jour par sport parmi les positions du "
+                                "modèle en Confiance élevée, une par match." if v04 else
+                                f"Les {SELECTION_MAX} plus grosses cotes du jour parmi les positions du modèle en "
                                 "Confiance élevée, tous sports, une par match." if v03 else
                                 f"Les {SELECTION_MAX} plus grosses cotes du jour parmi toutes les positions du modèle "
                                 "et du M, tous sports, une par match.")
@@ -1063,6 +1083,7 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
 def rebuilt_selection(pron: dict, bpron: dict | None = None, reg: dict | None = None) -> list[dict]:
     """The selection a past day would have had (chosen afterwards from its stored positions): kept apart, recalcule."""
     v03 = _v03((reg or {}).get("jour") or pron.get("jour"))
+    v04 = _v04((reg or {}).get("jour") or pron.get("jour"))
     cands = [c for c in selection_candidates(reg or {}, pron, bpron) if _sel_ok(c, v03)]
     for p in pron.get("positions") or []:  # rebuilt days store a list
         c = _conf(p.get("proba"), p.get("proba_marche"))
@@ -1072,7 +1093,7 @@ def rebuilt_selection(pron: dict, bpron: dict | None = None, reg: dict | None = 
                           "p_marche": p.get("proba_marche"), "source": "officielle", "resultat": p.get("resultat")})
     out, seen = [], set()
     for c in sorted(cands, key=_sel_rank):
-        if len(out) < SELECTION_MAX and (c["sport"], c["match_id"]) not in seen:
+        if not _full(out, c, v04) and (c["sport"], c["match_id"]) not in seen:
             out.append({**c, "recalcule": True})
             seen.add((c["sport"], c["match_id"]))
     return out
