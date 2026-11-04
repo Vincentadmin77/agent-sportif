@@ -207,10 +207,11 @@ def score_positions(matchs: dict[str, dict], pronostics: dict[str, dict]) -> dic
 
 def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: dict, now: datetime) -> dict:
     items = []
-    from_scores = score_positions(matchs, pronostics)
-    for day in sorted(set(pronostics) | set(from_scores)):
+    # owner 2026-11-04 08:13: estimated-score outcomes are not taken by the model or the M, so they never count
+    # (reverses 2026-10-28 11:25; score_positions stays for display only)
+    for day in sorted(pronostics):
         doc = pronostics.get(day) or {}
-        for p in day_positions({"jour": day, **doc}) + from_scores.get(day, []):
+        for p in day_positions({"jour": day, **doc}):
             if p.get("resultat") in ("gagne", "perdu"):
                 items.append({"jour": day, "type": "Positions", "categorie": "position",
                               "libelle": f"{p['pari']} ({p.get('match')})", "cote": p["cote"],

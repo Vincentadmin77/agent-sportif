@@ -490,7 +490,7 @@ def test_positions_ratio_takes_every_odds_once_within_1_50_and_2_30():
     assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
 
 
-def test_estimated_scores_count_as_positions_once_within_1_50_and_2_30():
+def test_estimated_scores_never_count_in_the_ratio_since_4_november():
     from sportai.services.bilan import bankroll_settings, build_bilan
 
     def m(home, away, h, a, res, cotes):
@@ -507,9 +507,10 @@ def test_estimated_scores_count_as_positions_once_within_1_50_and_2_30():
     days = {"2026-10-20": {"positions": [{"match_id": "e", "match": "I - J", "pari": "Victoire I", "cote": 1.90,
                                           "resultat": "gagne"}]}}
     b = build_bilan(matchs, days, bankroll_settings(None), datetime(2026, 10, 29, tzinfo=timezone.utc))
-    assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (2, 1)
+    # owner 2026-11-04: not taken by the model or the M, so only the real position counts
+    assert (b["positions"]["valides"], b["positions"]["non_valides"]) == (1, 0)
     pos = [i for i in b["valides"] + b["non_valides"] if i["categorie"] == "position"]
-    assert sorted(i["libelle"] for i in pos if i.get("origine") == "score estimé") == ["Match nul (C - D)", "Victoire A (A - B)"]
+    assert not [i for i in pos if i.get("origine") == "score estimé"]
 
 
 def test_top_pick_path_every_match_gets_a_choice_from_2026_10_28_evening():
