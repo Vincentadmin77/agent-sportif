@@ -501,12 +501,15 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
     # Markets beyond 1X2 / double chance / draw no bet: with The Odds API their odds were only fetched 45 min before,
     # so the last run that has them is kept for them.
     goals_run: dict[str, int] = {}
+    fr_day: dict[str, dict] = {}  # provider match id -> French sites' best odds by bet, over the day's passes
     for run in runs:
         if (run.competition in EUROPEAN_CUPS and not ucl) or journee(_aware(run.started_at)) != day:
             continue
         priced = set(db.scalars(select(CandidateRow.match_id).where(
             CandidateRow.run_id == run.id, CandidateRow.market.not_in(VALIDATED_MARKETS))))
         for f in run.fixtures or []:
+            if f.get("cotes_fr"):  # every pass of the day: a later pass without a French price keeps the earlier one
+                fr_day.setdefault(f["match_id"], {}).update(f["cotes_fr"])
             if not f.get("skipped_reason"):
                 latest[f["match_id"]] = (run, f)
                 if f["match_id"] in priced:
@@ -651,8 +654,8 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
-        if f.get("cotes_fr"):
-            fr_by_match[doc_id(ko, home, away)] = f["cotes_fr"]
+        if fr_day.get(match_id):
+            fr_by_match[doc_id(ko, home, away)] = {**fr_day[match_id], **(f.get("cotes_fr") or {})}
         if french_only():  # French rule (owner 2026-10-28): the same analysis, the position at a French site's price
             fr = f.get("cotes_fr") or {}
             # the same bets at the price the analysis saw (any bookmaker, any market): the bracketed position
@@ -692,12 +695,18 @@ FRENCH_SITE_NAMES = {"winamax_fr": "Winamax", "betclic_fr": "Betclic", "unibet_f
                      "fdj_fr": "FDJ", "zebet_fr": "ZEbet"}
 
 
+# Bets the French feeds read (The Odds API region fr, OddsPapi): for any other bet (team goals, corners, cards,
+# half-time, scorers) a missing French price only means it was not read, not that France does not offer it.
+FRENCH_READ_MARKETS = ("1x2", "double_chance", "dnb", "btts", "totals")
+
+
 def french_match(key: str | None, fr: dict[str, list]) -> dict:
-    """The same bet at the best French site: {"cote": 1.5, "site": "Winamax"}, or {"cote": None} when no French site
-    quotes it (half-time, corners, cards, scorers... or not offered)."""
+    """The same bet at the best French site: {"cote": 1.5, "site": "Winamax"}; {"cote": None, "site": None} when no
+    French site quotes a bet the French feeds read; plus "non_lu": True for a bet they do not read at all."""
     got = fr.get(key) if key else None
     if not got:
-        return {"cote": None, "site": None}
+        read = bool(key) and key.split(":", 1)[0] in FRENCH_READ_MARKETS
+        return {"cote": None, "site": None, **({} if read else {"non_lu": True})}
     return {"cote": got[0], "site": FRENCH_SITE_NAMES.get(got[1], str(got[1]).removesuffix("_fr").capitalize())}
 
 

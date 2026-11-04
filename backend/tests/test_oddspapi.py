@@ -64,5 +64,6 @@ def test_french_correspondence_beside_each_decision():
     fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"]}
     assert french_match("btts:yes", fr) == {"cote": 1.5, "site": "Winamax"}
     assert french_match("1x2:home", fr) == {"cote": 1.64, "site": "Bet365"}
-    assert french_match("corners:over:9.5", fr) == {"cote": None, "site": None}
-    assert french_match(None, fr) == {"cote": None, "site": None}
+    assert french_match("totals:under@3.5", fr) == {"cote": None, "site": None}  # read, no French site
+    assert french_match("corners:over@9.5", fr) == {"cote": None, "site": None, "non_lu": True}
+    assert french_match(None, fr) == {"cote": None, "site": None, "non_lu": True}
