@@ -238,24 +238,25 @@ def leg(cote, proba, composition="titulaire", minutes_to_ko=40, marche="Résulta
 
 def test_scorer_pick_rule():
     ok = pronostic.pick_ok
-    assert ok(leg(2.22, 0.535))  # Kane 21/10: 1/2.22 = 0.45, +8.5 points
-    assert not ok(leg(2.22, 0.535, composition="inconnue"))  # line-up not read: never
-    assert not ok(leg(2.22, 0.535, composition="remplacant"))  # on the bench: never
+    assert ok(leg(1.95, 0.585))  # 1/1.95 = 0.513, +7 points
+    assert not ok(leg(2.22, 0.535))  # Kane 21/10 at 2.22: over 2.00 since version 02
+    assert not ok(leg(1.95, 0.585, composition="inconnue"))  # line-up not read: never
+    assert not ok(leg(1.95, 0.585, composition="remplacant"))  # on the bench: never
     assert not ok(leg(2.0, 0.52))  # 2 points over 1/odds: not enough value
     assert not ok(leg(2.0, 0.62))  # 12 points over: model and market too far apart
-    assert not ok(leg(1.45, 0.75)) and not ok(leg(2.40, 0.45))  # odds outside 1.50-2.30
+    assert not ok(leg(1.45, 0.75)) and not ok(leg(2.40, 0.45))  # odds outside 1.50-2.00
 
 
 def test_scorer_position_only_once_fixed_and_after_result_markets():
     no = lambda l: False  # noqa: E731
     pick = lambda legs: pronostic.build_picks(legs, {}, None, NOW, NOW.date(), no, no)[0]["2026-10-28-a-b"]  # noqa
-    alone = leg(2.22, 0.535)
+    alone = leg(1.95, 0.585)
     assert pick([alone])["pari"] == "Buteur : H. Kane"  # no result/goals position: the scorer
     assert pick([alone])["validation"] == "non validé"
-    assert pick([leg(2.22, 0.535, minutes_to_ko=120)])["pari"] is None  # 2 h before: not yet
+    assert pick([leg(1.95, 0.585, minutes_to_ko=120)])["pari"] is None  # 2 h before: not yet
     # a result position the match already has keeps priority unless the scorer is COUNT_MARGIN surer
     result = leg(1.80, 0.60, buteur=False, pm=0.55)
     assert pick([alone, result])["pari"] == "Victoire a"
-    weak = leg(1.95, 0.53, buteur=False, pm=0.50)  # 0.515 confidence; the scorer 0.49: not 0.10 surer
+    weak = leg(1.95, 0.58, buteur=False, pm=0.52)  # 0.55 confidence; the scorer 0.55: not 0.10 surer
     assert pick([alone, weak])["pari"] == "Victoire a"
     assert not pronostic.top_ok({**alone, "pari": "x"})

@@ -48,6 +48,8 @@ TRIAL_MIN_VALUE, TRIAL_MIN_PROBA, TRIAL_MAX_ODDS, TRIAL_PER_GAME = 0.03, 0.25, 2
 # it is pronostic.COUNT_MARGIN surer than the best bet of the tiers above, as football's count bets.
 TIERS = {"winner": 0, "handicap": 0, "q1": 1, "total": 2, "team_total_home": 2, "team_total_away": 2}
 MAX_DIVERGENCE = 0.10
+BASKET_ODDS = (1.50, 2.30)  # version 02: basketball keeps 1.50-2.30 (football is capped at 2.00)
+BASKET_MARKET_MIN = 0.60  # version 02: the M's rule, a market chance of 60 % or more first
 MAX_ROWS = 80
 
 MARKETS = {  # feed bet (id, name) -> our market
@@ -650,9 +652,8 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
     the most likely of the most reliable market tier), fixed 45 min before tip-off and then reused as it was; the Top confiance (selections) is the
     most likely validated "Confiance élevée" bet. matchs: the basket_matchs documents (page + this pass);
     offers: the bets of the games analysed by this pass."""
-    from sportai.services.pronostic import (COUNT_MARGIN, FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
-                                            SELECTIONS_PER_DAY, _correct, blended, pick_ok,
-                                            FORCE_CHOICE, NOT_RETAINED, PICK_ODDS, PICK_MIN_CHANCE)
+    from sportai.services.pronostic import (FIX_BEFORE, FIX_SLACK, PICK_HIGH, SELECTION_MIN_ODDS,
+                                            SELECTIONS_PER_DAY, _dropped, _morning_map, _with_morning)
 
     previous = previous or {}
     old = previous.get("paris_retenus") or {}
@@ -672,27 +673,30 @@ def build_pronostic(day: str, matchs: dict[str, dict], offers: dict[str, list[di
             picks[mid] = settle_pick({**prev, "fige": True}, m)
             continue
         if mid in offers and not _started(m, ko, now):
-            ok = [b for b in offers[mid] if not b.get("_secours") and _correct({**b, "_divergence_max": MAX_DIVERGENCE})
-                  and pick_ok(b)]
-            forced = False
-            if not ok and FORCE_CHOICE:  # a choice on every game (owner 2026-10-28 evening), never a player bet
-                spare = [b for b in offers[mid] if PICK_ODDS[0] <= b["cote"] <= PICK_ODDS[1]
-                         and not b["basket"]["marche"].startswith("joueur_") and b.get("proba_marche") is not None]
-                ok, forced = spare, bool(spare)
-            if ok:
-                b = None
-                for t in sorted({TIERS.get(x["basket"]["marche"], 2) for x in ok}):
-                    top = max((x for x in ok if TIERS.get(x["basket"]["marche"], 2) == t), key=lambda x: (blended(x), x["cote"]))
-                    if b is None or blended(top) >= blended(b) + COUNT_MARGIN:
-                        b = top
-                c = round(blended(b), 4)
-                picks[mid] = {"pari": b["pari"], "marche": b["marche"], **base, "cote": b["cote"],
-                              "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
-                              "niveau": "Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne",
-                              "valide": b["valide"], "fige": bool(ko and frozen(m, ko)), "regle": b["basket"],
-                              **(NOT_RETAINED if forced else {})}
-                if forced and c < PICK_MIN_CHANCE:
-                    picks[mid]["niveau"] = "Confiance faible"
+            # Version 02 (owner 2026-11-02, bilan v01: the model's own basket choices 17 won out of 38, the M's
+            # "market first" ones 19 out of 25): follow the bookmakers. Among the game's team bets at 1.50-2.30, the
+            # one the market finds likeliest, preferring a market chance of BASKET_MARKET_MIN or more where the model
+            # does not contradict it (M's red light: model 6 points above or 10 points below); one choice per game,
+            # always counted (no more "Le modèle ne le retient pas"); a bet whose market chance fell MOVE_DROP or
+            # more since first seen gives way to the next one.
+            pool = [b for b in offers[mid] if BASKET_ODDS[0] <= b["cote"] <= BASKET_ODDS[1] and not b.get("_secours")
+                    and not b["basket"]["marche"].startswith("joueur_") and b.get("proba_marche") is not None]
+            seen = _morning_map(prev, pool)
+            green = [b for b in pool if b["proba_marche"] >= BASKET_MARKET_MIN
+                     and -0.10 < b["proba"] - b["proba_marche"] < 0.06]
+            b = None
+            for group in ([x for x in green if not _dropped(x, seen)], green,
+                          [x for x in pool if not _dropped(x, seen)], pool):
+                if group:
+                    b = max(group, key=lambda x: (x["proba_marche"], x["cote"]))
+                    break
+            if b:
+                c = round(b["proba_marche"], 4)
+                picks[mid] = _with_morning({"pari": b["pari"], "marche": b["marche"], **base, "cote": b["cote"],
+                                            "proba": b["proba"], "proba_marche": b["proba_marche"], "confiance": c,
+                                            "niveau": "Confiance élevée" if c >= PICK_HIGH else "Confiance moyenne",
+                                            "valide": b["valide"], "fige": bool(ko and frozen(m, ko)),
+                                            "regle": b["basket"], "suit_le_marche": True}, seen)
             else:
                 picks[mid] = {"pari": None, **base, "raison": NO_PICK}
             continue

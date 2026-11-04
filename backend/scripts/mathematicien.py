@@ -1,6 +1,7 @@
 """The "agent mathématicien": positions registry and internal report (docs/22-agent-mathematicien.md).
 
     python scripts/mathematicien.py registre --page PAGE --out OUT [--jour 2026-10-29]
+    python scripts/mathematicien.py registre-tennis --page PAGE --out OUT [--jour D]  # after each tennis pass
     python scripts/mathematicien.py importer --page PAGE --out OUT     # rebuilt history, flagged "recalcule"
     python scripts/mathematicien.py rapport --page PAGE [--out FILE]
 
@@ -49,7 +50,8 @@ def _write(out: str, docs: dict[str, dict]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("registre", "importer", "rapport", "realigner", "selection-passee"))
+    ap.add_argument("cmd", choices=("registre", "registre-tennis", "importer", "rapport", "realigner",
+                                       "selection-passee"))
     ap.add_argument("--page", required=True)
     ap.add_argument("--out")
     ap.add_argument("--jour")
@@ -67,6 +69,15 @@ def main() -> None:
                                                       tdocs.get(d), now, version),
                                         prons[d], now, bprons.get(d), tdocs.get(d))
                        for d in days if d in prons and not prons[d].get("recalcule")})
+    elif a.cmd == "registre-tennis":  # after a tennis pass (owner 2026-11-03: tennis day missing from the M's tab on a
+        # day with no afternoon football pass): the M's tennis records and the selection, from the page's
+        # registre/, pronostic/, basket_pronostic/ and tennis/ only (no football match needed)
+        days = [a.jour] if a.jour else sorted(_load(a.page, "tennis"))[-1:]
+        tdocs, bprons = _load(a.page, "tennis"), _load(a.page, "basket_pronostic")
+        _write(a.out, {d: R.selection_m(R.tennis_avis(regs.get(d) or {"jour": d, "fiches": {}}, tdocs[d], now,
+                                                      _code_version()),
+                                        prons.get(d) or {"jour": d}, now, bprons.get(d), tdocs[d])
+                       for d in days if d in tdocs})
     elif a.cmd == "realigner":  # a day rewritten on the owner's request: replaced records kept, flagged
         matchs, bprons = _load(a.page, "matchs"), _load(a.page, "basket_pronostic")
         _write(a.out, {a.jour: R.realign(regs.get(a.jour) or {}, prons[a.jour], matchs, now, _code_version(), a.motif,

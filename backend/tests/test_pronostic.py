@@ -550,3 +550,31 @@ def test_french_sites_list_counts_from_31_october_once_per_match_and_bet():
                                            "c": {**p("c", "Victoire c"), "non_retenu": True}}}
     assert [x["match_id"] for x in day_positions({**doc, "jour": "2026-10-30"})] == ["a"]
     assert [x["match_id"] for x in day_positions({**doc, "jour": "2026-10-31"})] == ["a", "b"]
+
+
+# Version 02 (owner 2026-11-02, bilan v01) ------------------------------------------------------------------------
+
+def _v02_picks(legs, previous=None):
+    from datetime import date
+    started = lambda l: False
+    return pronostic.build_picks(legs, {}, previous, NOW, date(2026, 10, 11), started, lambda l: False)[0]
+
+
+def test_v02_football_odds_capped_at_2():
+    picks = _v02_picks([leg("a-b", "Victoire a", 2.10, 0.52, 0.47), leg("a-b", "Plus de 2,5 buts", 1.80, 0.58, 0.55)])
+    assert picks["2026-10-11-a-b"]["pari"] == "Plus de 2,5 buts"
+    assert picks["2026-10-11-a-b"]["version"] == "v02"
+
+
+def test_v02_no_low_confidence_choice():
+    picks = _v02_picks([leg("a-b", "Victoire a", 1.95, 0.40, 0.48)])  # forced choice would be under 50 %
+    assert picks["2026-10-11-a-b"]["pari"] is None
+
+
+def test_v02_market_drop_gives_way():
+    first = _v02_picks([leg("a-b", "Victoire a", 1.70, 0.63, 0.59), leg("a-b", "Plus de 2,5 buts", 1.75, 0.60, 0.56)])
+    assert first["2026-10-11-a-b"]["pari"] == "Victoire a"
+    later = [leg("a-b", "Victoire a", 1.80, 0.63, 0.55), leg("a-b", "Plus de 2,5 buts", 1.75, 0.60, 0.56)]
+    again = _v02_picks(later, {"paris_retenus": first})
+    assert again["2026-10-11-a-b"]["pari"] == "Plus de 2,5 buts"
+    assert again["2026-10-11-a-b"]["marches_matin"]["Victoire a"] == 0.59

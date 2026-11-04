@@ -263,16 +263,28 @@ def test_singles_1_50_to_2_30_no_top_and_reliable_markets_first():
     offers = {
         "a": [_bet("Victoire H", 1.52, 0.70, 0.66)],  # 1.50 is enough now
         "b": [_bet("Victoire H", 2.45, 0.45, 0.42)],  # over 2.30: never
-        "c": [_bet("Victoire H", 1.80, 0.58, 0.56), total],  # the total is not 10 points surer than the winner
+        "c": [_bet("Victoire H", 1.80, 0.58, 0.56), total],  # version 02: the market's surest option wins
     }
     doc = basket.build_pronostic("2026-10-27", matchs, offers, None, now, "matin")
     picks = doc["paris_retenus"]
     assert picks["a"]["pari"] == "Victoire H" and picks["b"]["pari"] is None
-    assert picks["c"]["pari"] == "Victoire H"
+    assert picks["c"]["pari"].startswith("Plus de 220,5")
     assert doc["selections"] == [] and doc["combines"] == []
-    sure = {**total, "proba": 0.72, "proba_marche": 0.70}
-    doc = basket.build_pronostic("2026-10-27", matchs, {"c": [offers["c"][0], sure]}, None, now, "matin")
-    assert doc["paris_retenus"]["c"]["pari"].startswith("Plus de 220,5")
+
+
+def test_v02_basket_follows_market_no_sort():
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+    matchs = {"c": _mdoc(datetime(2026, 10, 28, 0, 0, tzinfo=timezone.utc))}
+    win = _bet("Victoire H", 1.55, 0.80, 0.63)  # model 17 points above the market: red for the M
+    total = _bet("Plus de 220,5 points dans le match", 1.62, 0.60, 0.61, False, "total", "over", 220.5)
+    pick = basket.build_pronostic("2026-10-27", matchs, {"c": [win, total]}, None, now, "matin")["paris_retenus"]["c"]
+    assert pick["pari"].startswith("Plus de 220,5") and pick["suit_le_marche"]
+    assert pick.get("statut") in (None, "retenu") and pick["version"] == "v02"
+    # the market drops 3 points since the morning: the other option takes over
+    prev = {"paris_retenus": {"c": pick}}
+    fell = {**total, "proba_marche": 0.57}
+    pick2 = basket.build_pronostic("2026-10-27", matchs, {"c": [win, fell]}, prev, now, "passage")["paris_retenus"]["c"]
+    assert pick2["pari"] == "Victoire H"
 
 
 # ---------------------------------------------------------------- agent_pass: the collections written
