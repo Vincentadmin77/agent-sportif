@@ -37,7 +37,12 @@ BASE = "https://api.oddspapi.io/v4"
 NAME = "oddspapi"
 LEDGER = Path(os.getenv("ODDSPAPI_LEDGER", "/mnt/project-files/agent-sportif/state/oddspapi_ledger.json"))
 CACHE = Path(os.getenv("ODDSPAPI_CACHE", "/mnt/project-files/agent-sportif/state/oddspapi"))
-DAILY_CAP = int(os.getenv("ODDSPAPI_DAILY_CAP", "20"))
+DAILY_CAP = int(os.getenv("ODDSPAPI_DAILY_CAP", "45"))
+# owner 2026-11-04: the French odds at every pass (morning, 3 h, 45 min) to follow their trend. The earlier passes
+# read only while more than EARLY_RESERVE requests are left today, so the last pass before kick-off keeps its own.
+EARLY = os.getenv("ODDSPAPI_EARLY", "1") != "0"
+EARLY_RESERVE = int(os.getenv("ODDSPAPI_EARLY_RESERVE", "15"))
+REASK = timedelta(minutes=60)  # a match read less than an hour ago is served from the cache
 MONTH_CAP = int(os.getenv("ODDSPAPI_MONTH_CAP", "225"))  # 250 free, 13 spent on the 2026-11-03 test, a margin kept
 # OddsPapi slug -> our French key. betclic.fr refused on the free plan (403 RESTRICTED_ACCESS for the whole request).
 FRENCH_BOOKS = {"winamax.fr": "winamax_fr", "pmu": "pmu_fr", "bet365.fr": "bet365_fr", "bwin.fr": "bwin_fr",
@@ -93,8 +98,15 @@ def budget_left(now: datetime) -> tuple[int, int]:
 
 
 def already_asked(ref: str, now: datetime) -> bool:
-    day = now.date().isoformat()
-    return any(r["kind"] == "odds" and r["ref"] == ref and r["at"][:10] == day for r in _ledger()["requests"])
+    """Read less than REASK ago (the same pass run twice, or two competitions' steps at once)."""
+    for r in _ledger()["requests"]:
+        if r["kind"] == "odds" and r["ref"] == ref:
+            try:
+                if now - datetime.fromisoformat(r["at"]) < REASK:
+                    return True
+            except ValueError:
+                continue
+    return False
 
 
 def day_fixtures(now: datetime) -> list[dict]:
@@ -215,7 +227,10 @@ def french_quotes(fixtures, competition: str, now: datetime, within: timedelta) 
     """French sites' quotes for the matches starting within `within` (the last pass), inside the budget."""
     if not enabled():
         return []
-    todo = [f for f in fixtures if f.status == "scheduled" and now < f.kickoff <= now + within]
+    last = [f for f in fixtures if f.status == "scheduled" and now < f.kickoff <= now + within]
+    early = [f for f in fixtures if EARLY and f.status == "scheduled" and f.kickoff > now + within
+             and f.kickoff <= now + timedelta(hours=20)] if EARLY else []
+    todo = last + sorted(early, key=lambda f: f.kickoff)
     if not todo:
         return []
     try:
@@ -238,7 +253,8 @@ def french_quotes(fixtures, competition: str, now: datetime, within: timedelta) 
                 continue
         else:
             day_left, month_left = budget_left(now)
-            if day_left <= 0 or month_left <= 0:
+            reserve = EARLY_RESERVE if f not in last else 0
+            if day_left <= reserve or month_left <= reserve:
                 print(f"OddsPapi budget spent (day {day_left}, month {month_left}): {f.home} - {f.away} skipped",
                       file=sys.stderr)
                 continue

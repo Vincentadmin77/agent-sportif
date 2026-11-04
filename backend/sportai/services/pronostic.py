@@ -502,20 +502,27 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
     # so the last run that has them is kept for them.
     goals_run: dict[str, int] = {}
     fr_day: dict[str, dict] = {}  # provider match id -> French sites' best odds by bet, over the day's passes
+    # owner 2026-11-04: the French and the analysed odds of every pass of the day side by side, to read the trend
+    fr_hist: dict[str, list] = {}  # provider match id -> [(run start, kick-off, cotes_fr)]
+    day_runs: dict[str, datetime] = {}  # run id -> start
     for run in runs:
         if (run.competition in EUROPEAN_CUPS and not ucl) or journee(_aware(run.started_at)) != day:
             continue
+        day_runs[run.id] = _aware(run.started_at)
         priced = set(db.scalars(select(CandidateRow.match_id).where(
             CandidateRow.run_id == run.id, CandidateRow.market.not_in(VALIDATED_MARKETS))))
         for f in run.fixtures or []:
             if f.get("cotes_fr"):  # every pass of the day: a later pass without a French price keeps the earlier one
                 fr_day.setdefault(f["match_id"], {}).update(f["cotes_fr"])
+                fr_hist.setdefault(f["match_id"], []).append((day_runs[run.id], f.get("kickoff"), f["cotes_fr"]))
             if not f.get("skipped_reason"):
                 latest[f["match_id"]] = (run, f)
                 if f["match_id"] in priced:
                     goals_run[f["match_id"]] = run.id
     legs, foreign = [], []
     fr_by_match: dict[str, dict] = {}  # page match id -> French sites' best odds by bet (cotes_fr)
+    provider_id: dict[str, str] = {}  # page match id -> provider match id
+    kickoffs: dict[str, str] = {}
     for match_id, (run, f) in latest.items():
         cfg = run.config or {}
         enabled = cfg.get("enabled_markets", ("1x2", "double_chance", "dnb"))
@@ -654,6 +661,7 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
                 legs.append(leg)
             else:
                 trials.append({**leg, "validation": NON_VALIDE})
+        provider_id[doc_id(ko, home, away)], kickoffs[match_id] = match_id, f.get("kickoff")
         if fr_day.get(match_id):
             fr_by_match[doc_id(ko, home, away)] = {**fr_day[match_id], **(f.get("cotes_fr") or {})}
         if french_only():  # French rule (owner 2026-10-28): the same analysis, the position at a French site's price
@@ -679,11 +687,18 @@ def legs_from_db(db: DB, day, ucl: bool = True, corrections: dict | None = None)
         legs += sorted(goal_trials, key=lambda l: -l["valeur"])[:GOAL_PER_MATCH]
         legs += [l for l in spares if PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])]
     legs += foreign
+    cand_hist = _odds_history(db, day_runs, set(provider_id.values()))
     for l in legs:
         # owner 2026-11-03 (admin only): beside each decision, the same bet at the best French site and which one,
         # so a choice priced abroad shows what it pays in France ("france": {"cote", "site"}, cote None if absent)
+        mid = provider_id.get(l.get("match_id"))
         if not l.get("_etranger") and l.get("match_id") in fr_by_match:
             l["france"] = french_match(l.get("_cle"), fr_by_match[l["match_id"]])
+            if l.get("_cle") and (h := french_history(l["_cle"], fr_hist.get(mid) or [])):
+                l["france"]["historique"] = h
+        if not l.get("_etranger") and l.get("_cle") and mid:
+            if h := _passes(cand_hist.get((mid, l["_cle"])) or [], kickoffs.get(mid)):
+                l["cotes_historique"] = h
         l.pop("_cle", None)
         # owner 2026-10-29: beside the odds, a dot coloured by the site's country (blue: France), never its name
         l["pays_bookmaker"] = bookmaker_country(l.get("bookmaker"))
@@ -698,6 +713,46 @@ FRENCH_SITE_NAMES = {"winamax_fr": "Winamax", "betclic_fr": "Betclic", "unibet_f
 # Bets the French feeds read (The Odds API region fr, OddsPapi): for any other bet (team goals, corners, cards,
 # half-time, scorers) a missing French price only means it was not read, not that France does not offer it.
 FRENCH_READ_MARKETS = ("1x2", "double_chance", "dnb", "btts", "totals")
+
+
+def passage_name(at: datetime, kickoff: str | None) -> str:
+    """matin, h3 or m45: which pass of the day a run was, from its start and the kick-off."""
+    try:
+        before = datetime.fromisoformat(str(kickoff)) - at
+    except ValueError:
+        return "matin"
+    return "m45" if before <= timedelta(minutes=75) else "h3" if before <= timedelta(hours=4) else "matin"
+
+
+def _passes(points: list[tuple[datetime, float, str | None]], kickoff: str | None) -> list[dict]:
+    """[{heure "HH:MM" Paris, passage, cote, site?}] in time order, one per pass (its last reading)."""
+    out: dict[str, dict] = {}
+    for at, cote, site in sorted(points, key=lambda x: x[0]):
+        name = passage_name(at, kickoff)
+        out.pop(name, None)  # keep the pass order of the latest reading
+        out[name] = {"heure": at.astimezone(LOCAL_TZ).strftime("%H:%M"), "passage": name, "cote": cote,
+                     **({"site": site} if site else {})}
+    return list(out.values())
+
+
+def french_history(key: str, hist: list) -> list[dict]:
+    """The French best price of one bet at each pass of the day (fr_hist rows)."""
+    pts = [(at, got[0], FRENCH_SITE_NAMES.get(got[1], str(got[1]).removesuffix("_fr").capitalize()))
+           for at, _ko, fr in hist if (got := fr.get(key))]
+    return _passes(pts, hist[0][1] if hist else None)
+
+
+def _odds_history(db: DB, day_runs: dict[str, datetime], match_ids: set[str]) -> dict[tuple, list]:
+    """(provider match id, bet key) -> [(run start, best analysed odds, None)] over the day's runs."""
+    out: dict[tuple, list] = {}
+    if not day_runs or not match_ids:
+        return out
+    rows = db.execute(select(CandidateRow.run_id, CandidateRow.match_id, CandidateRow.market, CandidateRow.selection,
+                             CandidateRow.line, CandidateRow.odds)
+                      .where(CandidateRow.run_id.in_(list(day_runs)), CandidateRow.match_id.in_(list(match_ids))))
+    for run_id, mid, market, sel, line, odds in rows:
+        out.setdefault((mid, MarketKey(market, sel, line).label()), []).append((day_runs[run_id], odds, None))
+    return out
 
 
 def french_match(key: str | None, fr: dict[str, list]) -> dict:
