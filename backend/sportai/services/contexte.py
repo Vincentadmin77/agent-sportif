@@ -22,6 +22,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import statistics
 import unicodedata
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
@@ -357,7 +358,32 @@ def series(fixtures: list[dict], team_id: int, team: str) -> dict:
     if c["plus_2_5"] <= lo:
         ph.append(f"{team} : moins de 2,5 buts dans {n - c['plus_2_5']} de ses {n} derniers matchs.")
     out["serie"] = "".join(reversed(run))
+    out["forme5"] = forme5(games[-5:])
     return out
+
+
+def forme5(games: list[tuple]) -> dict | None:
+    """Owner 2026-11-05: a label on each team from its last 5 matches (the current form first, never past seasons).
+    Display only: the 2026-11-05 backtest (scripts/backtest_instabilite.py) found that neither a poor nor an irregular
+    last 5 makes a favourite win less often than its odds say, so the label never filters a position by itself."""
+    if len(games) < 5:
+        return None
+    pts = [3 if m > t else 1 if m == t else 0 for _, _, m, t in games]
+    total, against = sum(pts), sum(t for _, _, _, t in games)
+    changes = sum(a != b for a, b in zip(pts, pts[1:]))
+    sd = float(statistics.pstdev(pts))
+    if total >= 12:
+        niveau = "grande forme"
+    elif total <= 4:
+        niveau = "en difficulté"
+    elif sd >= 1.3 and changes >= 3:
+        niveau = "instable"
+    else:
+        niveau = "régulière"
+    run = "".join("V" if x == 3 else "N" if x == 1 else "D" for x in pts)
+    return {"niveau": niveau, "points": total, "buts_encaisses": against, "serie": run,
+            "explication": f"{total} points sur 15 et {against} but{'s' if against > 1 else ''} encaissé{'s' if against > 1 else ''} "
+                           f"sur les 5 derniers matchs ({run}, le plus récent à droite)."}
 
 
 # ---------------------------------------------------------------- weather
@@ -730,8 +756,10 @@ def build_context(src: ContextSources, fx: dict, previous: dict | None = None,
     if last_home is not None and last_away is not None:
         ctx["series"] = {"domicile": series(last_home, home["id"], home["name"]),
                          "exterieur": series(last_away, away["id"], away["name"])}
+        ctx["instabilite"] = {k: v["forme5"] for k, v in ctx["series"].items() if v.get("forme5")} or None
     elif prev.get("series"):
         ctx["series"] = prev["series"]
+        ctx["instabilite"] = prev.get("instabilite")
     ctx["prochain_match"] = prev.get("prochain_match")
     if next_refresh:
         try:

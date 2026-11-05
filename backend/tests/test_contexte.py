@@ -213,3 +213,16 @@ def test_a_more_important_match_more_than_four_days_later_is_no_risk():
                                 LYON[0], tonight)
     info = cx.next_match({"id": 10, "name": "Lyon"}, {"id": 11, "name": "Lorient"}, tonight, nxt, 2, [])
     assert info["importance"] == 4 and info["jours"] == 5 and info["risque_rotation"] is None and not info["raisons"]
+
+
+def test_forme5_label_from_the_last_five_matches():
+    # owner 2026-11-05: a label per team from its last 5 matches; display only
+    g = lambda m, t: ("2026-10-01", True, m, t)  # noqa: E731
+    assert cx.forme5([g(2, 0)] * 4)  is None
+    assert cx.forme5([g(2, 0)] * 4 + [g(1, 1)])["niveau"] == "grande forme"
+    assert cx.forme5([g(0, 1)] * 4 + [g(1, 1)])["niveau"] == "en difficulté"
+    f = cx.forme5([g(2, 0), g(0, 3), g(2, 1), g(0, 2), g(1, 1)])
+    assert f["niveau"] == "instable" and f["points"] == 7 and f["buts_encaisses"] == 7 and f["serie"] == "VDVDN"
+    assert cx.forme5([g(1, 1), g(1, 1), g(2, 1), g(1, 1), g(1, 1)])["niveau"] == "régulière"
+    games = [_fx(i, "R", 0, home=1, hg=2, ag=1, date=f"2026-09-{i + 1:02d}") for i in range(10)]
+    assert cx.series(games, 1, "Nice")["forme5"]["niveau"] == "grande forme"
