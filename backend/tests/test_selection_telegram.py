@@ -29,3 +29,17 @@ def test_unstable_teams_are_skipped():
     assert not T._form_ok("a_o1.5", "", "V V D D N")
     assert not T._form_ok("hx_u3.5", "D D D V V", "")
     assert T._form_ok("btts", "", "")
+
+
+def test_settle_tennis_and_basket():
+    sets = [(6, 4), (3, 6), (7, 5)]
+    assert T._settle_tennis("t_w1", sets) == "gagne"
+    assert T._settle_tennis("t_set2", sets) == "gagne"
+    assert T._settle_tennis("t_s20", sets) == "perdu"
+    assert T._settle_tennis("t_o28.5", sets) == "gagne"   # 31 games
+    assert T._settle_tennis("t_h2+2.5", sets) == "gagne"  # j2 loses by 1 game
+    assert T._settle_tennis("t_h1-2.5", sets) == "perdu"
+    assert T._settle_basket("b_total_over_215.5", 110, 108) == "gagne"
+    assert T._settle_basket("b_handicap_home_-4.5", 110, 108) == "perdu"
+    assert T._settle_basket("b_handicap_away_-4.5", 110, 108) == "gagne"  # away +4.5
+    assert T._settle_basket("b_team_total_away_under_110.5", 110, 108) == "gagne"
