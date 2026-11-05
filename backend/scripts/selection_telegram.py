@@ -452,6 +452,8 @@ def passage(day: str, leagues: list[int], doc: dict, now: datetime, tennis_doc: 
 
 def regler(doc: dict, now: datetime) -> dict:
     for p in doc.get("positions") or []:
+        if now >= datetime.fromisoformat(p["coup_envoi"].replace("Z", "+00:00")) - FREEZE:
+            p["fige"] = True
         if p.get("resultat"):
             continue
         if p.get("sport") == "tennis":
