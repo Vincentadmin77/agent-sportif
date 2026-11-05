@@ -55,15 +55,47 @@ def test_budget_once_per_match_and_daily_cap(tmp_path, monkeypatch):
     assert first and calls == ["/fixtures", "/odds"]  # second match over the daily cap of 1
     again = oddspapi.french_quotes(fx, "UCL", NOW, timedelta(minutes=75))
     assert len(again) == len(first) and calls == ["/fixtures", "/odds"]  # cached, nothing spent
-    assert oddspapi.french_quotes(fx, "UCL", NOW - timedelta(hours=3), timedelta(minutes=75)) == []
+    oddspapi.french_quotes(fx, "UCL", NOW + timedelta(minutes=20), timedelta(minutes=75))
+    assert calls == ["/fixtures", "/odds"]  # read 20 min ago: cache; daily cap reached for the other
 
 
 def test_french_correspondence_beside_each_decision():
     from sportai.services.pronostic import french_match
 
-    fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"]}
+    fr = {"btts:yes": [1.5, "winamax_fr"], "1x2:home": [1.64, "bet365_fr"], "double_chance:1X": [1.2, "pmu_fr"]}
     assert french_match("btts:yes", fr) == {"cote": 1.5, "site": "Winamax"}
     assert french_match("1x2:home", fr) == {"cote": 1.64, "site": "Bet365"}
     assert french_match("totals:under@3.5", fr) == {"cote": None, "site": None}  # read, no French site
     assert french_match("corners:over@9.5", fr) == {"cote": None, "site": None, "non_lu": True}
     assert french_match(None, fr) == {"cote": None, "site": None, "non_lu": True}
+
+
+def test_not_read_yet_before_the_full_french_read():
+    from sportai.services.pronostic import french_match
+
+    morning = {"1x2:home": [1.64, "betclic_fr"], "totals:under@3.5": [1.5, "pmu_fr"]}  # The Odds API only
+    assert french_match("totals:under@4.5", morning) == {"cote": None, "site": None, "non_lu": True}
+    assert french_match("dnb:home", morning)["non_lu"] is True
+    assert french_match("totals:under@3.5", morning) == {"cote": 1.5, "site": "PMU"}
+
+
+def test_early_passes_read_while_the_last_pass_keeps_its_reserve(tmp_path, monkeypatch):
+    monkeypatch.setenv("ODDSPAPI_KEY", "x")
+    monkeypatch.setenv("ODDSPAPI", "1")
+    monkeypatch.setattr(oddspapi, "LEDGER", tmp_path / "ledger.json")
+    monkeypatch.setattr(oddspapi, "CACHE", tmp_path)
+    monkeypatch.setattr(oddspapi, "DAILY_CAP", 3)
+    monkeypatch.setattr(oddspapi, "EARLY_RESERVE", 1)
+    listed = [{"fixtureId": "a", "startTime": "2026-11-03T20:00:00.000Z", "participant1Name": "Bodoe/Glimt",
+               "participant2Name": "Lille OSC"}]
+    calls = []
+    monkeypatch.setattr(oddspapi, "_get", lambda path, **p: calls.append(path) or (listed if path == "/fixtures" else DATA))
+    fx = [Fixture("api-football", "1", "UCL", KO, "Bodo/Glimt", "Lille", "real")]
+    morning = KO - timedelta(hours=11)
+    assert oddspapi.french_quotes(fx, "UCL", morning, timedelta(minutes=75))  # early read: 3 left > reserve 1
+    assert oddspapi.french_quotes(fx, "UCL", morning + timedelta(minutes=30), timedelta(minutes=75))  # cache
+    assert calls.count("/odds") == 1
+    oddspapi.french_quotes(fx, "UCL", KO - timedelta(hours=3), timedelta(minutes=75))  # 2 left > 1: read again
+    assert calls.count("/odds") == 2
+    assert oddspapi.french_quotes(fx, "UCL", NOW, timedelta(minutes=75))  # last pass uses the reserve
+    assert calls.count("/odds") == 3
