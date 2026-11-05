@@ -22,6 +22,7 @@ import re
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from sportai.services import explication_m as EXPL
 from sportai.services import pronostic as P
 
 SETTLED = ("gagne", "perdu", "rembourse")
@@ -541,6 +542,19 @@ def _side(p: dict | None, keys: tuple = ("pari", "cote", "proba", "proba_marche"
     return {k: p.get(k) for k in keys} if p and p.get("pari") else None
 
 
+def _explain(a: dict, key: str, fn, *args) -> None:
+    """The M's « pourquoi » on its card (owner 2026-11-05 16:35Z); a text problem never stops the registry."""
+    c = a.get(key)
+    if not c or not c.get("pari"):
+        return
+    try:
+        txt = fn(c, *args)
+    except Exception:  # noqa: BLE001
+        txt = None
+    if txt:
+        c["explication"] = txt
+
+
 def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, sport: str = "foot") -> dict:
     av = reg.setdefault("avis", {})
     for mid, m in matchs.items():
@@ -568,6 +582,8 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
         if mf is not None:
             a["choix_m"] = _m_side(mf)
+            if sport == "foot":
+                _explain(a, "choix_m", EXPL.foot, m, a.get("officielle"))
         res_off = (off or {}).get("resultat") if (off or {}).get("resultat") in SETTLED else None
         if res_off and a.get("officielle"):
             a["officielle"]["resultat"] = res_off
@@ -739,6 +755,7 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
         mf = reg["fiches"].get(f"{reg['jour']}|basket-{mid}|M")
         if mf is not None:
             a["choix_m"] = _m_side(mf)
+            _explain(a, "choix_m", EXPL.basket, bm, a.get("officielle"))
         if p.get("resultat") in SETTLED and a.get("officielle"):
             a["officielle"]["resultat"] = p["resultat"]
         if (bm.get("statut") == "termine" or p.get("resultat") in SETTLED) and "bilan" not in a \
@@ -848,10 +865,12 @@ def tennis_avis(reg: dict, tdoc: dict | None, now: datetime, code_version: str =
         if off.get("resultat") in SETTLED and a.get("officielle"):
             a["officielle"]["resultat"] = off["resultat"]
         a["choix_m"] = _m_side(f)
+        _explain(a, "choix_m", EXPL.tennis, tm, a.get("officielle"))
         if d and d.get("position"):
             a["choix_m_direct"] = {"pari": d["position"], "cote": d.get("cote"), "proba_marche": d.get("proba_bookmakers"),
                                    "proba": d.get("proba_modele"), "feu": d.get("feu"), "heure": d.get("heure"),
                                    "score": d.get("score_au_moment"), "resultat": d.get("resultat")}
+            _explain(a, "choix_m_direct", lambda c, t, o: EXPL.tennis(c, t, o, live=c), tm, a.get("officielle"))
         if tm.get("statut_match") == "Finished" and "bilan" not in a \
                 and ((a.get("officielle") or {}).get("resultat") or (a.get("choix_m") or {}).get("resultat")):
             a["bilan"] = _who_was_right(a)
