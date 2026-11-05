@@ -32,6 +32,7 @@ import backtest_tennis as bt  # noqa: E402
 import fetch_tennis  # noqa: E402
 from sportai.engine.tennis import elo  # noqa: E402
 from sportai.engine.tennis.aces import AcesModel  # noqa: E402
+from sportai.engine.tennis.enquete import Enqueteur  # noqa: E402
 
 NON_RETENU = "Le modèle ne le retient pas"
 # Version 02 (owner 2026-11-02 12:23Z): tennis keeps its v01 choice rule, only the retained sort goes (every choice
@@ -147,6 +148,7 @@ def main() -> None:
             fetch_tennis.week(tour, monday, True, key, with_odds=tour in fetch_tennis.TOURS)
     history = bt.load()
     ratings, acesm = fit(history, a.date)
+    enq = Enqueteur(history, a.date)  # investigator report (form, head-to-head, surface record), information only
     surf = bt.surfaces()
     span = {"date_start": str(day), "date_stop": str(day + timedelta(days=1)), "timezone": "Europe/Paris"}
     # Choices already frozen in an earlier run of the day are kept as they are (only their result is filled in).
@@ -234,6 +236,7 @@ def main() -> None:
                 "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
                 "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
                 "marches_matin": seen,
+                "enquete": enq.rapport(m),
             })
     # A match seen earlier in the day but missing from today's fixtures answer (API gap, moved day) is kept as it was:
     # its positions must never disappear from the page.
