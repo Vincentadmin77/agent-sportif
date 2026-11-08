@@ -175,6 +175,11 @@ def main() -> None:
                 continue
             if str(raw.get("event_key")) in postponed:
                 continue
+            # A match cancelled before it starts (e.g. a player replaced at the Finals) carries no position, unless its
+            # choice was already frozen: that one stays and is settled as refunded.
+            prev_choice = (before.get(str(raw.get("event_key"))) or {}).get("choix") or {}
+            if raw.get("event_status") == "Cancelled" and not prev_choice.get("fige"):
+                continue
             m = bt.parse(raw, tour, surf, odds if isinstance(odds, dict) else {})
             r = ratings[tour]
             known = r.known(m.a, bt.MIN_MATCHES) and r.known(m.b, bt.MIN_MATCHES)
