@@ -180,8 +180,10 @@ def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
         doc[s] = {}
         for a, (mn, regle) in actors.items():
             pool = [c for c in cands[s][a] if c["cote"] >= mn]
-            ps = pick(pool, ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
-            doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
+            key0 = "test" if a == "test" else "finale"
+            ps = pick(pool, ((prev.get(s) or {}).get(key0) or {}).get("positions"), now, retro)
+            key = "test" if a == "test" else "finale"  # the page reads the kept list under « finale »
+            doc[s][key] = {"regle": regle, "acteur": a, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
     return doc
 
 
