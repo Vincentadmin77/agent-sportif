@@ -195,6 +195,10 @@ def _tennis_option(opt, pr, m, known, bt, label, settle) -> dict | None:
     return opt
 
 
+# Vincent 8/11 12:01Z: basket specialist (V2) removed. From this day on no basket picks; past days stay archived.
+BASKET_STOP = "2026-11-08"
+
+
 def bilan(days: dict[str, dict]) -> dict:
     out, tous = {}, {}
     for sport in ("foot", "basket", "tennis"):
@@ -219,8 +223,10 @@ def main() -> None:
     prev = past.get(day) or {}
     doc = {"jour": day, "agents": S.NAMES, "maj": now.isoformat(timespec="seconds"),
            "foot": foot(day, _load(a.page, "matchs"), prev.get("foot") or {}, now),
-           "basket": basket(day, _load(a.page, "basket_matchs"), prev.get("basket") or {}, now),
+           "basket": {} if day >= BASKET_STOP else basket(day, _load(a.page, "basket_matchs"), prev.get("basket") or {}, now),
            "tennis": prev.get("tennis") or {}}
+    if day >= BASKET_STOP:
+        doc["basket_arrete"] = "Spécialiste basket (V2) arrêté le 8/11 sur décision de Vincent ; historique conservé."
     if not a.no_tennis:
         try:
             doc["tennis"] = tennis(day, prev.get("tennis") or {}, now)
