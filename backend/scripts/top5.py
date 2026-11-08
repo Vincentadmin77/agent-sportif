@@ -101,6 +101,9 @@ def pick(cands: list[dict], prev: list[dict], now: datetime, retro: bool = False
     by_match = {c["match_id"]: c for c in cands}
     kept = []
     for p in prev or []:
+        t = _when(p.get("coup_envoi"))
+        if not p.get("fige") and t is not None and now >= t - FREEZE:
+            p = {**p, "fige": True}  # it was in the Top 5 when its window closed: it stays
         if p.get("fige"):
             fresh = by_match.get(p["match_id"])
             # a frozen position never changes; only its result is read back
