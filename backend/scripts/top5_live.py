@@ -312,6 +312,11 @@ def _important(old: dict, new: dict) -> bool:
     return sig(old) != sig(new)
 
 
+def _results(d: dict) -> list:
+    return [p.get("resultat") for s in ("foot", "tennis", "basket") for v in (d.get(s) or {}).values()
+            for p in v.get("positions") or []]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jour", required=True)
@@ -321,7 +326,9 @@ def main():
     a = ap.parse_args()
     d = json.loads(Path(a.top5).read_text())
     doc = d.get("data", d) if isinstance(d.get("data"), dict) else d
-    end = time.time() + a.boucle * 60
+    start = time.time()
+    end = start + a.boucle * 60
+    base = json.loads(json.dumps(doc))
     while True:
         old = json.loads(json.dumps(doc))
         try:
@@ -329,8 +336,11 @@ def main():
         except Exception as ex:  # noqa: BLE001
             print("update:", ex, flush=True)
         Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1))
-        imp = _important(old, doc)
+        # a result is written at once; a mere status change (match started) waits up to 15 minutes, gathered
+        imp = _results(old) != _results(doc) or (_important(base, doc) and time.time() - start >= 900) \
+            or (not a.boucle and _important(old, doc))
         if not a.boucle or imp or time.time() + LOOP_S > end:
+            imp = imp or _important(base, doc)
             print("changement" if imp else "rien de neuf", flush=True)
             return
         time.sleep(LOOP_S)
