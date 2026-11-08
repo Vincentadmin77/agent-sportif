@@ -67,7 +67,7 @@ def _tennis_facts(tm: dict, side: int) -> tuple[list[str], list[str]]:
     me, other = (tm.get("joueur_1"), tm.get("joueur_2")) if side == 1 else (tm.get("joueur_2"), tm.get("joueur_1"))
     fm, fo = e.get(f"forme_j{side}") or {}, e.get(f"forme_j{3 - side}") or {}
     sm, so = e.get(f"surface_j{side}") or {}, e.get(f"surface_j{3 - side}") or {}
-    strong, weak = [], []
+    strong, weak, neutral = [], [], []
     if fm.get("joues"):
         w = fm.get("victoires", 0)
         (strong if w >= 3 else weak).append(f"{me} a gagné {w} de ses {fm['joues']} derniers matchs")
@@ -82,14 +82,14 @@ def _tennis_facts(tm: dict, side: int) -> tuple[list[str], list[str]]:
             "grass": "gazon"}.get(str(sm.get("surface") or tm.get("surface") or "").lower(), sm.get("surface"))
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         line = f"sur {surf}, {me} gagne {a} % de ses matchs, {other} {b} %"
-        (strong if a > b + 2 else weak if b > a + 2 else strong).append(line)
+        (strong if a > b + 2 else weak if b > a + 2 else neutral).append(line)
     h = e.get("face_a_face") or {}
     if h.get("rencontres"):
         mine = h.get("victoires_j1", 0) if side == 1 else h.get("victoires_j2", 0)
         n = h["rencontres"]
         line = f"face à face : {mine} victoire{'s' if mine > 1 else ''} sur {n}"
-        (strong if mine * 2 > n else weak if mine * 2 < n else strong).append(line)
-    return strong, weak
+        (strong if mine * 2 > n else weak if mine * 2 < n else neutral).append(line)
+    return strong, weak, neutral
 
 
 def tennis(choice: dict, tm: dict, off: dict | None = None, live: dict | None = None) -> str | None:
@@ -99,11 +99,13 @@ def tennis(choice: dict, tm: dict, off: dict | None = None, live: dict | None = 
     side = _player_side(pari, tm.get("joueur_1") or "", tm.get("joueur_2") or "")
     parts = [_why_rule(live, choice.get("feu")), _market_line(choice.get("proba_marche"), choice.get("proba"), choice.get("cote"))]
     if side:
-        strong, weak = _tennis_facts(tm, side)
+        strong, weak, neutral = _tennis_facts(tm, side)
         if strong:
             parts.append("Points forts : " + " ; ".join(strong) + ".")
         if weak:
             parts.append("À surveiller : " + " ; ".join(weak) + ".")
+        if neutral:
+            parts.append("Repères : " + " ; ".join(neutral) + ".")
     elif isinstance(tm.get("jeux_attendus"), (int, float)):
         parts.append(f"Le modèle attend environ {str(tm['jeux_attendus']).replace('.', ',')} jeux dans le match.")
     parts.append(_official(off, pari))
