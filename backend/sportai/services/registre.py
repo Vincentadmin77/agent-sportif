@@ -727,7 +727,7 @@ def basket_official_records(reg: dict, bpron: dict, now: datetime, code_version:
 
 
 def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] | None = None,
-                code_version: str = "inconnue") -> dict:
+                code_version: str = "inconnue", mdirect: dict | None = None) -> dict:
     """The basketball games of the day in the same "avis" list (official position, the M's visa and the M's own
     choice; no Enquêteur yet), keyed basket-<id>."""
     bmatchs = {k: v for k, v in (bmatchs or {}).items() if v.get("jour") == reg.get("jour")}
@@ -761,8 +761,33 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
         if (bm.get("statut") == "termine" or p.get("resultat") in SETTLED) and "bilan" not in a \
                 and ((a.get("officielle") or {}).get("resultat") or (a.get("choix_m") or {}).get("resultat")):
             a["bilan"] = _who_was_right(a)
+        _basket_live_m(reg, a, key, ((mdirect or {}).get("matchs") or {}).get(str(mid)), ko_s, code_version)
         av[key] = a
     return reg
+
+
+def _basket_live_m(reg: dict, a: dict, key: str, d: dict | None, ko_s, code_version: str) -> None:
+    """The M's live basketball position (scripts/basket_direct.py, page basket_m_direct/<jour>), à blanc, like tennis."""
+    if not d or not d.get("position"):
+        return
+    day = reg["jour"]
+    did = f"{day}|{key}|direct|{d['position']}"
+    fd = reg.setdefault("fiches", {}).setdefault(did, {
+        "id": did, "jour": day, "sport": "basket", "agent": "le M (direct à blanc)", "decision": d.get("heure"),
+        "score_au_moment": d.get("score_au_moment"), "match_id": key, "match": a.get("match"),
+        "competition": a.get("competition"), "coup_envoi": ko_s, "pari": d["position"], "cote_prise": d.get("cote"),
+        "p_modele": None, "p_marche": d.get("proba_bookmakers"), "feu": None, "version_code": code_version,
+        "recalcule": False, "live_a_blanc": True, "choix_m": True, "direct": True})
+    if d.get("resultat") in SETTLED and fd.get("resultat") not in SETTLED:
+        fd["resultat"] = d["resultat"]
+        fd["gain_unite"] = _gain(fd)
+    a["choix_m_direct"] = {"pari": d["position"], "cote": d.get("cote"), "proba_marche": d.get("proba_bookmakers"),
+                           "proba": None, "feu": None, "heure": d.get("heure"),
+                           "score": f"{d.get('score_au_moment')} ({d.get('quart')})", "resultat": d.get("resultat")}
+    a["choix_m_direct"]["explication"] = (
+        f"Pourquoi : en direct, à {d.get('score_au_moment')} ({d.get('quart')}), c'est l'issue que le marché voyait la "
+        f"plus probable parmi les cotes de 1,50 à 2,30 (il en faut au moins 60 %). Le marché : "
+        f"{round((d.get('proba_bookmakers') or 0) * 100)} % de chances (cote {str(d.get('cote')).replace('.', ',')}).")
 
 
 def _tennis_ko(day: str, m: dict) -> str | None:

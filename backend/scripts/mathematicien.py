@@ -63,9 +63,10 @@ def main() -> None:
         matchs = _load(a.page, "matchs")
         days = [a.jour] if a.jour else [d for d, p in prons.items() if not p.get("recalcule")]
         bprons, bmatchs, version = _load(a.page, "basket_pronostic"), _load(a.page, "basket_matchs"), _code_version()
-        tdocs = _load(a.page, "tennis")
+        tdocs, mdir = _load(a.page, "tennis"), _load(a.page, "basket_m_direct")
         _write(a.out, {d: R.selection_m(R.tennis_avis(R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, version),
-                                                                    bprons.get(d) or {}, now, bmatchs, version),
+                                                                    bprons.get(d) or {}, now, bmatchs, version,
+                                                                    mdir.get(d)),
                                                       tdocs.get(d), now, version),
                                         prons[d], now, bprons.get(d), tdocs.get(d))
                        for d in days if d in prons and not prons[d].get("recalcule")})
