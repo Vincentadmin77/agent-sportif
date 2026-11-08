@@ -156,6 +156,35 @@ def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
     return doc
 
 
+# « Version finale » (owner 2026-11-08 14:09Z), à blanc: the one list kept per sport, plus the test beside it.
+# actor -> (minimum odds, rule shown). Same pick (highest confidence, one per match, frozen at kick-off -45 min).
+FINALE = {
+    "foot": {"modele": (1.70, "Le modèle : ses 5 positions de plus forte confiance du jour, seulement à une cote de 1,70 ou "
+                              "plus (moins de 5 s'il n'y en a pas assez)."),
+             "test": (0, REGLES["test"])},
+    "tennis": {"modele": (0, "Le modèle : ses 5 positions de plus forte confiance du jour, sans filtre de cote."),
+               "test": (0, REGLES["test"])},
+    "basket": {"m": (0, "Le M : ses 5 choix avant match où le marché voit le plus de chances, sans filtre de cote."),
+               "test": (0, REGLES["test"])},
+}
+
+
+def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
+    cands = candidates(reg, spe, test)
+    doc = {"jour": jour, "version_finale": True,
+           "regle": "Version finale à blanc : une seule liste par sport (foot : modèle, cote 1,70 ou plus ; tennis : "
+                    "modèle ; basket : M), 5 positions au plus par jour, une par match, figées 45 min avant le début. "
+                    "La sélection test est montrée à côté.",
+           "maj": now.isoformat(timespec="seconds")}
+    for s, actors in FINALE.items():
+        doc[s] = {}
+        for a, (mn, regle) in actors.items():
+            pool = [c for c in cands[s][a] if c["cote"] >= mn]
+            ps = pick(pool, ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
+            doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
+    return doc
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jour", required=True)
@@ -165,11 +194,14 @@ def main():
     ap.add_argument("--prev")
     ap.add_argument("--out", required=True)
     ap.add_argument("--retro", action="store_true")
+    ap.add_argument("--finale", action="store_true", help="the « Version finale » doc instead of the Top 5")
     a = ap.parse_args()
-    doc = build(a.jour, _load(a.registre), _load(a.specialistes), _load(a.test), _load(a.prev),
+    doc = (build_finale if a.finale else build)(a.jour, _load(a.registre), _load(a.specialistes), _load(a.test), _load(a.prev),
                 datetime.now(timezone.utc), a.retro)
     json.dump(doc, open(a.out, "w"), ensure_ascii=False, indent=1)
     for s in SPORTS:
+        if s not in doc:
+            continue
         print(s, {k: f"{len(v['positions'])}/{v['candidats']} {v['ratio']['gagnees']}-{v['ratio']['perdues']}"
                   for k, v in doc[s].items()})
 
