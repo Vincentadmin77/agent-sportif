@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -121,6 +122,21 @@ def label(key: tuple, m: bt.Match) -> str:
     return str(key)
 
 
+# Owner's model freeze (Vincent 2026-11-08 14:21Z: "le modèle, il faut qu'il arrête de modifier quoi que ce soit").
+# While this file exists, player ratings and ace rates stay those learnt from results up to its date: later results,
+# wins or losses, no longer move the model. Rules, weights and thresholds were already fixed. Delete it to unfreeze.
+GEL = Path(os.getenv("TENNIS_MODELE_GELE", "/mnt/project-files/agent-sportif/state/tennis_modele_gele.json"))
+
+
+def fit_date(day: str) -> str:
+    """The date the model learns up to: the day itself, or the freeze date when the model is frozen."""
+    try:
+        frozen = json.loads(GEL.read_text()).get("appris_jusqu_au")
+    except (OSError, ValueError):
+        return day
+    return min(day, frozen) if frozen else day
+
+
 def fit(history: list[bt.Match], before: str):
     ratings = {t: elo.SurfaceElo() for t in ("ATP", "WTA")}
     acesm = {t: AcesModel() for t in ("ATP", "WTA")}
@@ -147,7 +163,7 @@ def main() -> None:
         for tour, key in {**fetch_tennis.TOURS, **fetch_tennis.CHALLENGERS}.items():
             fetch_tennis.week(tour, monday, True, key, with_odds=tour in fetch_tennis.TOURS)
     history = bt.load()
-    ratings, acesm = fit(history, a.date)
+    ratings, acesm = fit(history, fit_date(a.date))
     enq = Enqueteur(history, a.date)  # investigator report (form, head-to-head, surface record), information only
     surf = bt.surfaces()
     span = {"date_start": str(day), "date_stop": str(day + timedelta(days=1)), "timezone": "Europe/Paris"}
