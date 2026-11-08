@@ -300,11 +300,16 @@ class GoalsBook:
     @classmethod
     def load(cls, now: datetime, path: Path | None = None) -> GoalsBook | None:
         """The saved book if it was built this betting day (08:00-02:00 Paris), else None (passes then use plain DC)."""
-        path = path or model_path()
+        from sportai.services.gel import frozen_goals_model
+
+        frozen = None if path else frozen_goals_model()
+        path = path or frozen or model_path()
         try:
             data = json.loads(path.read_text())
         except (OSError, ValueError):
             return None
+        if frozen is not None:  # model frozen by the owner (2026-11-08): the same fitted book every day
+            return cls(data) if data.get("model") == MODEL_LABEL else None
         if data.get("day") != f"{_journee(now):%Y-%m-%d}" or data.get("model") != MODEL_LABEL:
             return None
         return cls(data)

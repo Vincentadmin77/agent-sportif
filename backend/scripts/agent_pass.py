@@ -132,6 +132,15 @@ def _pronostic(db, page: str | None, docs: dict[str, dict], out: str, now: datet
 
         joueurs = {p.stem: json.loads(p.read_text()) for p in (folder / "joueur").glob("*.json") if p.stem != "etat"}
         revue = build_revue(matchs, days, joueurs, date.fromisoformat(day))
+        # Model frozen by the owner (2026-11-08 14:21Z: "il faut qu'il arrête de modifier quoi que ce soit"): the
+        # families' corrections stay those of 2026-11-08, the review no longer moves them.
+        from sportai.services.gel import frozen_corrections
+
+        gel = frozen_corrections()
+        if gel is not None:
+            revue["corrections_calculees"] = revue.get("corrections")
+            revue["corrections"] = gel
+            revue["gele"] = True
     except Exception as e:  # the review is a bonus: never lose the pass for it
         print(f"revue unavailable ({str(e)[:160]})", file=sys.stderr)
     legs = legs_from_db(db, date.fromisoformat(day), corrections=(revue or {}).get("corrections")) if db is not None else []
@@ -916,6 +925,11 @@ def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs
 
 
 def goals_refresh(now: datetime, max_requests: int, download: bool = True) -> None:
+    from sportai.services.gel import is_frozen
+
+    if is_frozen():  # model frozen (owner 2026-11-08): no refit, the passes keep the frozen goals model
+        print(json.dumps({"goals_refresh": "modèle gelé, pas de réapprentissage"}, ensure_ascii=False))
+        return
     from sportai.config import get_settings
     from sportai.services.goals_refresh import run_refresh
 
