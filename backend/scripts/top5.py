@@ -23,6 +23,8 @@ from datetime import datetime, timedelta, timezone
 N = 5
 FREEZE = timedelta(minutes=45)
 SPORTS = ("foot", "basket", "tennis")
+# actors removed by the owner, per sport (Vincent 2026-11-08 12:01Z: basket specialist V2 removed)
+RETIRES = {"basket": {"specialiste"}}
 REGLES = {
     "modele": "Ses 5 positions de plus forte confiance (modèle et marché à parts égales), une par match.",
     "m": "Ses 5 choix avant match où le marché voit le plus de chances, une par match.",
@@ -147,6 +149,8 @@ def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
     for s in SPORTS:
         doc[s] = {}
         for a, regle in REGLES.items():
+            if a in RETIRES.get(s, ()):
+                continue
             ps = pick(cands[s][a], ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
             doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(cands[s][a])}
     return doc
