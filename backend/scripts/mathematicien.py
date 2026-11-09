@@ -64,12 +64,15 @@ def main() -> None:
         days = [a.jour] if a.jour else [d for d, p in prons.items() if not p.get("recalcule")]
         bprons, bmatchs, version = _load(a.page, "basket_pronostic"), _load(a.page, "basket_matchs"), _code_version()
         tdocs, mdir = _load(a.page, "tennis"), _load(a.page, "basket_m_direct")
-        _write(a.out, {d: R.selection_m(R.tennis_avis(R.basket_avis(R.update(regs.get(d) or {}, prons[d], matchs, now, version),
+        # a day with no football pass (owner 2026-11-09: no foot on a Monday, so no pronostic/<jour>): the NBA and
+        # tennis records are still built, from an empty football day
+        pron = {d: prons.get(d) or {"jour": d} for d in days if d in prons or d in bprons or d in tdocs}
+        _write(a.out, {d: R.selection_m(R.tennis_avis(R.basket_avis(R.update(regs.get(d) or {}, pron[d], matchs, now, version),
                                                                     bprons.get(d) or {}, now, bmatchs, version,
                                                                     mdir.get(d)),
                                                       tdocs.get(d), now, version),
-                                        prons[d], now, bprons.get(d), tdocs.get(d))
-                       for d in days if d in prons and not prons[d].get("recalcule")})
+                                        pron[d], now, bprons.get(d), tdocs.get(d))
+                       for d in days if d in pron and not pron[d].get("recalcule")})
     elif a.cmd == "registre-tennis":  # after a tennis pass (owner 2026-11-03: tennis day missing from the M's tab on a
         # day with no afternoon football pass): the M's tennis records and the selection, from the page's
         # registre/, pronostic/, basket_pronostic/ and tennis/ only (no football match needed)
