@@ -20,6 +20,7 @@ sportai/connectors/api_football.py
 sportai/connectors/api_football_odds.py
 sportai/connectors/base.py
 sportai/connectors/http.py
+sportai/connectors/oddspapi.py
 sportai/connectors/openfootball.py
 sportai/connectors/simulation.py
 sportai/connectors/teams.py
@@ -57,6 +58,8 @@ sportai/services/calendrier.py
 sportai/services/comptages.py
 sportai/services/contexte.py
 sportai/services/dashboard.py
+sportai/services/explication_m.py
+sportai/services/gel.py
 sportai/services/goals_refresh.py
 sportai/services/joueur.py
 sportai/services/lineups.py
@@ -86,6 +89,7 @@ tests/test_contexte.py
 tests/test_cotes_francaises.py
 tests/test_counts.py
 tests/test_dashboard.py
+tests/test_explication_m.py
 tests/test_football_model.py
 tests/test_goals_model.py
 tests/test_goals_refresh.py
@@ -96,7 +100,9 @@ tests/test_lineups.py
 tests/test_live_model.py
 tests/test_live_page.py
 tests/test_mcp_server.py
+tests/test_merge_back.py
 tests/test_movement.py
+tests/test_oddspapi.py
 tests/test_pipeline.py
 tests/test_position.py
 tests/test_pronostic.py
@@ -106,6 +112,7 @@ tests/test_review_agent.py
 tests/test_revue.py
 tests/test_scorers.py
 tests/test_selection.py
+tests/test_selection_telegram.py
 tests/test_squad_news.py
 tests/test_super_lig.py
 tests/test_value.py
