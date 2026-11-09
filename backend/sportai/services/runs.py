@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session as DB
 
 from sportai.config import Settings
-from sportai.connectors.api_football import CALENDAR_YEAR as API_CALENDAR_YEAR
+from sportai.connectors.api_football import CALENDAR_YEAR as API_CALENDAR_YEAR, NATIONAL
 from sportai.connectors.api_football import ApiFootballProvider
 from sportai.connectors.api_football_odds import parse_odds as parse_api_football_odds
 from sportai.connectors.base import ProviderUnavailable
@@ -65,6 +65,8 @@ def save_selection_config(db: DB, values: dict, user_id: str) -> SelectionConfig
 
 
 def _history_seasons(now: datetime, competition: str = "") -> list[str]:
+    if competition in NATIONAL:  # a team plays ~10 official matches a year: four years (Euro 2024, its qualifiers)
+        return [str(now.year - k) for k in (3, 2, 1, 0)]
     if competition in CALENDAR_YEAR or competition in API_CALENDAR_YEAR:
         return [str(now.year - k) for k in (2, 1, 0)]
     y = now.year if now.month >= 7 else now.year - 1
@@ -72,7 +74,11 @@ def _history_seasons(now: datetime, competition: str = "") -> list[str]:
 
 
 UCL_DOMESTIC = ("FR1", "EN1", "ES1", "DE1", "IT1")
-DOMESTIC_CUPS = {"ENC": "EN1"}  # cup -> the league whose history rates its clubs
+DOMESTIC_CUPS = {"ENC": "EN1", "FRC": "FR1"}  # cup -> the league whose history rates its clubs
+# More history fitted with it (owner 2026-11-09): the Coupe de France's Ligue 2 and National clubs, tied to Ligue 1
+# by the cup's past rounds; the national teams of the Nations League by their World Cup, Euro and qualifiers.
+# Amateur clubs stay unrated (fewer than min_matches_per_team matches), so their ties get no position.
+EXTRA_HISTORY = {"FRC": ("FR2", "FR3", "FRC"), "UNL": ("WC", "WCQE", "EURO", "EUROQ")}
 # European cups analysed with the cross-league model (owner 2026-10-15: the Europa League too, same rules as the
 # Champions League). Its calibration was fitted on the Champions League only (scripts/backtest_ucl.py).
 EUROPEAN_CUPS = ("UCL", "UEL")
@@ -166,6 +172,12 @@ def execute_prematch(db: DB, settings: Settings, competition: str, triggered_by:
             # a domestic cup: its clubs are rated on their league's results (owner 2026-10-28: EFL Cup)
             history, used = load_history(db, DOMESTIC_CUPS.get(competition, competition), now, fixtures_p,
                                          backup if competition not in DOMESTIC_CUPS else None)
+            for extra in EXTRA_HISTORY.get(competition, ()):  # API-Football only; a missing season costs coverage
+                for season in _history_seasons(now, extra):
+                    try:
+                        history += fixtures_p.results(extra, season)
+                    except ProviderUnavailable as e:
+                        _mark(db, fixtures_p.name, f"{extra} {season}: {e}")
             if competition in EUROPEAN_CUPS:
                 # Clubs of different leagues are only comparable through a model fitted on all of them at once.
                 for dom in UCL_DOMESTIC:

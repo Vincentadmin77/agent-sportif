@@ -482,17 +482,19 @@ CONTINENTAL = {2: "Ligue des champions", 3: "Ligue Europa", 848: "Ligue Confére
 LEAGUE_NAMES = {61: "Ligue 1", 39: "Premier League", 140: "LaLiga", 78: "Bundesliga", 135: "Serie A",
                 71: "Brasileirão", 203: "Süper Lig", 66: "Coupe de France", 45: "FA Cup", 48: "Coupe de la Ligue anglaise",
                 143: "Coupe du Roi", 81: "Coupe d'Allemagne", 137: "Coupe d'Italie", 73: "Coupe du Brésil",
-                206: "Coupe de Turquie", 94: "Liga Portugal", 96: "Coupe du Portugal",
+                206: "Coupe de Turquie", 94: "Liga Portugal", 96: "Coupe du Portugal", 5: "Ligue des Nations",
                 **CONTINENTAL}
 # the season calendars kept by calendrier.py, used when API-Football does not answer
-CALENDAR_LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "TR1": 203, "ENC": 48, "PT1": 94, "UCL": 2, "UEL": 3}
+CALENDAR_LEAGUES = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "BR1": 71, "TR1": 203, "ENC": 48, "PT1": 94, "UCL": 2, "UEL": 3,
+                    "FRC": 66, "UNL": 5}
+NOT_LEAGUES = {66, 5}  # Coupe de France, Nations League: followed, never a championship
 KNOCKOUT = ("round of", "quarter", "semi", "final", "knockout", "play-off", "playoff", "8th", "16th", "1/8", "1/16")
 
 
 def is_league(league: dict) -> bool:
     """A championship rather than a cup: API-Football's fixtures carry no type, their rounds say it
     ("Regular Season - 12" against "Round of 32", "Quarter-finals")."""
-    if league.get("id") in CONTINENTAL:
+    if league.get("id") in CONTINENTAL or league.get("id") in NOT_LEAGUES:
         return False
     return (league.get("type") == "League" or league.get("id") in CALENDAR_LEAGUES.values()
             or (league.get("round") or "").lower().startswith("regular season"))

@@ -34,6 +34,8 @@ SPORT_KEYS = {
     "TR1": "soccer_turkey_super_league",
     "ENC": "soccer_england_efl_cup",
     "PT1": "soccer_portugal_primeira_liga",  # analysed since 2026-10-29 (owner)
+    "FRC": "soccer_france_coupe_de_france",  # analysed since 2026-11-09 (owner)
+    "UNL": "soccer_uefa_nations_league",  # analysed since 2026-11-09 (owner)
 }
 
 

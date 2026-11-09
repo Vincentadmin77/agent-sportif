@@ -26,6 +26,10 @@ LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2,
               # English League Cup (EFL Cup / Carabao Cup), analysed since 2026-10-28 (owner) with the Premier League's
               # history (services/runs.py DOMESTIC_CUPS)
               "ENC": 48,
+              # Coupe de France and UEFA Nations League, analysed since 2026-11-09 (owner). The cup's clubs are rated
+              # on Ligue 1, Ligue 2, National and the cup's own past rounds; the national teams on their official
+              # matches (services/runs.py EXTRA_HISTORY).
+              "FRC": 66, "UNL": 5, "FR2": 62, "FR3": 63, "WC": 1, "WCQE": 32, "EURO": 4, "EUROQ": 960,
               # Only used as training history of the Champions League model (services/runs.py UCL_EXTRA):
               # the other European cups and the leagues their clubs come from.
               "UEL": 3, "UECL": 848,
@@ -35,6 +39,8 @@ LEAGUE_IDS = {"FR1": 61, "EN1": 39, "ES1": 140, "DE1": 78, "IT1": 135, "UCL": 2,
               "SI1": 373}
 # Leagues playing calendar-year seasons (season "2026" = the 2026 championship), the others run autumn-spring.
 CALENDAR_YEAR = {"BR1", "NO1", "SE1", "KZ1"}
+# National-team competitions: API-Football season = the year the edition starts (Euro 2024, Nations League 2026).
+NATIONAL = {"UNL", "WC", "WCQE", "EURO", "EUROQ"}
 
 _STATUS = {
     "NS": "scheduled", "TBD": "scheduled", "1H": "live", "HT": "live", "2H": "live", "ET": "live",
