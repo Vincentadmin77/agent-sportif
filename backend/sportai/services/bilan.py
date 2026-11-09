@@ -264,12 +264,15 @@ def build_bilan(matchs: dict[str, dict], pronostics: dict[str, dict], settings: 
                               "valide": s["resultat"] == "gagne"})
         est = m.get("score_estime") or {}
         if est.get("resultat"):
-            items.append({"jour": m.get("jour"), "type": "Score estimé", "categorie": "score",
-                          "libelle": f"{match} : {est['score']} (réel {m.get('score')})", "cote": None,
-                          "proba": est.get("proba"), "match_id": key, "valide": est["resultat"] == "reussi",
-                          "explication": f"Score estimé {est['score']}, score final {m.get('score')} : issue "
-                                         + ("juste" if est["resultat"] == "reussi" else "fausse")
-                                         + (", score exact trouvé." if est.get("score_exact") else ".")})
+            item = {"jour": m.get("jour"), "type": "Score estimé", "categorie": "score",
+                    "libelle": f"{match} : {est['score']} (réel {m.get('score')})", "cote": None,
+                    "proba": est.get("proba"), "match_id": key, "valide": est["resultat"] == "reussi"}
+            # The bilan doc must stay under the page's 256 KB per document (crossed on 2026-11-09): the page
+            # rebuilds this sentence from the match itself, so it is kept only for an exact score (listed apart).
+            if est.get("score_exact"):
+                item["explication"] = (f"Score estimé {est['score']}, score final {m.get('score')} : issue juste, "
+                                       "score exact trouvé.")
+            items.append(item)
     items.sort(key=lambda i: (i["jour"] or "", i["type"]), reverse=True)
     bank, history = replay(pronostics, settings)
     bonus_bank, bonus_history = replay_bonus(pronostics, settings)
