@@ -22,7 +22,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -217,6 +217,15 @@ def _sets(e: dict) -> list[tuple[int, int]]:
     return out
 
 
+def _void_sure(p: dict) -> bool:
+    """A basketball game reported postponed/cancelled counts as refunded only 12 h after its tip-off."""
+    try:
+        ko = datetime.fromisoformat(str(p.get("coup_envoi")).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) >= ko + timedelta(hours=12)
+
+
 def update(doc: dict, jour: str, feeds: dict | None = None) -> bool:
     feeds = feeds if feeds is not None else {}
     changed = False
@@ -288,7 +297,9 @@ def update(doc: dict, jour: str, feeds: dict | None = None) -> bool:
                         p["resultat"] = r
                 elif st in ("Q1", "Q2", "Q3", "Q4", "OT", "BT", "HT") and h is not None:
                     p["statut"], p["score"] = "en_cours", f"{h}-{a} ({st})"
-                elif st in ("POST", "CANC", "ABD", "AWD"):
+                elif st in ("POST", "CANC", "ABD", "AWD") and _void_sure(p):
+                    # owner 2026-11-10: on the night of 9/11 the feed flagged played NBA games this way for a
+                    # while and the positions were wrongly marked refunded; now only 12 h after tip-off
                     p["statut"], p["resultat"] = "termine", "rembourse"
             if (p.get("statut"), p.get("score"), p.get("resultat")) != before:
                 changed = True
