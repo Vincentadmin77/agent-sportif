@@ -117,7 +117,11 @@ def run_once(a, history_surf) -> bool:
     changed = False
     lives = fetch_tennis.call("get_livescore", timezone="Europe/Paris").get("result") or []
     lives = {str(x["event_key"]): x for x in lives if x.get("event_type_type") in SINGLES}
-    odds = fetch_tennis.call("get_live_odds").get("result") or {}
+    try:  # live odds refused (plan without them) or down: no in-play position this pass, results still settle
+        odds = fetch_tennis.call("get_live_odds").get("result") or {}
+    except RuntimeError as e:
+        print("cotes en direct indisponibles:", e, flush=True)
+        odds = {}
     for key, live in lives.items():
         row = by_id.get(key)
         if not row or row.get("m_direct") or not row.get("joueurs_connus"):
