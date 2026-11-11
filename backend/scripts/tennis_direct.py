@@ -37,6 +37,12 @@ PARIS = ZoneInfo("Europe/Paris")
 LOOP_S = 300
 MAX_AGE = timedelta(minutes=5)
 SINGLES = ("Atp Singles", "Wta Singles")
+# Second odds source (owner 2026-11-11): The Odds API in-play odds, used when api-tennis gives none (Starter plan
+# without live odds). Only the big tournaments it lists (tennis_* keys), matched to the live rows by surnames.
+# Credits: /sports and /events are free; /odds costs regions x markets = 6, read at most once a pass per tournament
+# and only while one of its matches is live and still without an in-play position. Same rules, only the odds change.
+ODDS_API = "https://api.the-odds-api.com/v4/sports"
+OA_REGIONS, OA_MARKETS = "fr,eu", "h2h,totals,spreads"
 
 
 def live_markets(raw: dict, now: datetime) -> dict:
@@ -61,6 +67,85 @@ def live_markets(raw: dict, now: datetime) -> dict:
             out[("jeux", side, float(line))] = [v]
         elif name == "Match Handicap" and side in ("Home", "Away") and line and bt._half(line):
             out[("handicap_jeux", side, float(line))] = [v]  # live: each side quoted with its own line
+    return out
+
+
+def _oa(path: str, **params) -> list:
+    import os
+    import urllib.parse
+    import urllib.request
+
+    key = os.environ.get("THE_ODDS_API_KEY")
+    if not key:
+        return []
+    q = urllib.parse.urlencode({"apiKey": key, "oddsFormat": "decimal", **params})
+    with urllib.request.urlopen(f"{ODDS_API}{path}?{q}", timeout=15) as r:
+        left = r.headers.get("x-requests-remaining")
+        if path.endswith("/odds"):
+            print("The Odds API:", left, "crédits restants", flush=True)
+        return json.loads(r.read())
+
+
+def _last(name: str) -> str:
+    import unicodedata
+
+    n = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower().replace(".", " ").replace("-", " ")
+    return n.split()[-1] if n.split() else n
+
+
+def oa_markets(ev: dict, p1: str, now: datetime) -> dict:
+    """{key: [median odds]} from one Odds API event, Home = p1 (api-tennis first player), fresh quotes only."""
+    books = {}
+    for b in ev.get("bookmakers") or []:
+        for mkt in b.get("markets") or []:
+            try:
+                upd = datetime.fromisoformat(str(mkt.get("last_update") or b.get("last_update")).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if now - upd > MAX_AGE:
+                continue
+            for oc in mkt.get("outcomes") or []:
+                v, name, line = oc.get("price"), oc.get("name", ""), oc.get("point")
+                if not isinstance(v, (int, float)) or v <= 1.0:
+                    continue
+                side = "Home" if _last(name) == _last(p1) else "Away"
+                if mkt.get("key") == "h2h":
+                    k = ("vainqueur", side)
+                elif mkt.get("key") == "totals" and name in ("Over", "Under") and line is not None and bt._half(str(line)):
+                    k = ("jeux", name, float(line))
+                elif mkt.get("key") == "spreads" and line is not None and bt._half(str(line)):
+                    k = ("handicap_jeux", side, float(line))  # each player quoted with his own line, as api-tennis live
+                else:
+                    continue
+                books.setdefault(k, []).append(float(v))
+    import statistics
+
+    return {k: [round(statistics.median(v), 2)] for k, v in books.items()}
+
+
+def oa_live_odds(lives: dict, wanted: set, now: datetime) -> dict:
+    """{event_key: markets} from The Odds API for the live api-tennis rows in `wanted`."""
+    out = {}
+    want = {k: {_last(lives[k].get("event_first_player")), _last(lives[k].get("event_second_player"))} for k in wanted}
+    try:
+        sports = [s["key"] for s in _oa("", all="false") if str(s.get("key", "")).startswith("tennis_")]
+    except Exception as e:  # noqa: BLE001
+        print("The Odds API indisponible:", e, flush=True)
+        return out
+    for sk in sports:
+        try:
+            evs = _oa(f"/{sk}/events")
+            started = [e for e in evs if datetime.fromisoformat(e["commence_time"].replace("Z", "+00:00")) <= now]
+            names = [{_last(e.get("home_team")), _last(e.get("away_team"))} for e in started]
+            if not any(n in names for n in want.values()):
+                continue
+            for ev in _oa(f"/{sk}/odds", regions=OA_REGIONS, markets=OA_MARKETS):
+                n = {_last(ev.get("home_team")), _last(ev.get("away_team"))}
+                for k, w in want.items():
+                    if n == w:
+                        out[k] = oa_markets(ev, lives[k].get("event_first_player", ""), now)
+        except Exception as e:  # noqa: BLE001
+            print("The Odds API", sk, ":", e, flush=True)
     return out
 
 
@@ -122,6 +207,10 @@ def run_once(a, history_surf) -> bool:
     except RuntimeError as e:
         print("cotes en direct indisponibles:", e, flush=True)
         odds = {}
+    # Matches live, priced, still without an in-play position and without api-tennis odds: ask The Odds API.
+    wanted = {k for k, lv in lives.items() if k in by_id and not by_id[k].get("m_direct")
+              and by_id[k].get("joueurs_connus") and not odds.get(k) and (state(lv) or (0, 0, 0, 0))[3] >= 1}
+    oa = oa_live_odds(lives, wanted, now) if wanted else {}
     for key, live in lives.items():
         row = by_id.get(key)
         if not row or row.get("m_direct") or not row.get("joueurs_connus"):
@@ -135,7 +224,7 @@ def run_once(a, history_surf) -> bool:
         pm = row["proba_victoire_j1"]
         dist_g = elo.live_distribution(pm, best_of, tour, done, cur, a_serving)
         dist_w = elo.live_distribution(pm, best_of, tour, done, cur, a_serving, sharpen=False)
-        mk = live_markets(odds.get(key) or {}, now)
+        mk = live_markets(odds.get(key) or {}, now) or oa.get(key) or {}
         cands = []
         for k, books in mk.items():
             p, f = live_p(k, dist_g, dist_w), bt.fair(k, mk)
