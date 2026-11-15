@@ -872,7 +872,10 @@ def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs
             pos = position(current[key])
             if pos and pos != current[key].get("position"):
                 current[key] = docs[key] = {**current[key], "position": pos}
-        if key and short in ("NS", "TBD") and "forme" not in current[key]:  # form and meetings, once a day
+        # Owner 2026-11-15 (daily quota emptied two days running): a match the model does not rate (amateur cup
+        # clubs) only follows its score; no form, squads, live odds or line-ups requests for it.
+        rated = bool(key) and "proba_1x2" in current[key]
+        if key and rated and short in ("NS", "TBD") and "forme" not in current[key]:  # form and meetings, once a day
             try:
                 h, a = fx["teams"]["home"]["id"], fx["teams"]["away"]["id"]
                 current[key] = docs[key] = {
@@ -881,7 +884,7 @@ def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs
                               "exterieur": recent_form(api.team_last(a), a)}}
             except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
                 print(f"forme unavailable for {key} ({str(e)[:120]})", file=sys.stderr)
-        if key and short in ("NS", "TBD"):  # absentees and starting XIs, a few requests per match
+        if key and rated and short in ("NS", "TBD"):  # absentees and starting XIs, a few requests per match
             doc = dict(current[key])
             if _squad_news(api, fx, doc, fixtures, now):
                 current[key] = docs[key] = doc
@@ -890,9 +893,9 @@ def _live_foot(comps: list[str], page: str | None, out: str, now: datetime, docs
         if not key or current[key].get("statut") == "termine":
             continue
         snap, raw_stats = api.live_details(fx)
-        odds = None if fx["fixture"]["status"]["short"] in FINISHED else api.live_odds(fx["fixture"]["id"])
+        odds = None if not rated or fx["fixture"]["status"]["short"] in FINISHED else api.live_odds(fx["fixture"]["id"])
         lineups = None
-        if not (current[key].get("feuille_de_match") or {}).get("titulaires"):  # once per match: settles scorer bets
+        if rated and not (current[key].get("feuille_de_match") or {}).get("titulaires"):  # once per match: settles scorer bets
             try:
                 lineups = api.lineups(fx["fixture"]["id"], ttl=3600) or None
             except Exception as e:  # noqa: BLE001 - extra context, never break the live follow-up
