@@ -1,0 +1,9 @@
+[Unit]
+Description=Analytrack : regarde chaque nuit à 06:30 s'il y a une nouvelle version validée
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

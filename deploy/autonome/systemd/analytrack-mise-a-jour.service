@@ -1,0 +1,6 @@
+[Unit]
+Description=Analytrack : mise à jour du code depuis GitHub (seulement la branche validée)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /srv/analytrack/agent-sportif/deploy/autonome/mise-a-jour.sh

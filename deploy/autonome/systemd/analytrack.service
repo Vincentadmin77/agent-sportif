@@ -1,0 +1,18 @@
+[Unit]
+Description=Analytrack autonome : passages, direct, Top 5, publication du site (sans Claude)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=analytrack
+WorkingDirectory=/srv/analytrack/agent-sportif
+EnvironmentFile=/srv/analytrack/cles.env
+ExecStart=/srv/analytrack/venv/bin/python -m autonome.orchestre
+Restart=always
+RestartSec=20
+# une étape bloquée ne doit jamais bloquer le serveur
+MemoryMax=3G
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

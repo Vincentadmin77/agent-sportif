@@ -1,0 +1,13 @@
+# Clés des API (mêmes noms que dans l'environnement Claude). Ne jamais committer ce fichier rempli.
+API_FOOTBALL_KEY=
+THE_ODDS_API_KEY=
+API_TENNIS_KEY=
+DATA_MODE=real
+# Alertes téléphone du M (ntfy) : même sujet qu'aujourd'hui (state/alerte_m_topic.txt)
+# Voyant d'alerte admin si une étape tombe en panne (optionnel)
+NTFY_ADMIN_TOPIC=
+ANALYTRACK_BASE=/srv/analytrack/base
+ANALYTRACK_SITE=/srv/analytrack/site
+ANALYTRACK_TRAVAIL=/srv/analytrack/travail
+ANALYTRACK_FICHIERS=/mnt/project-files/agent-sportif
+TZ=Europe/Paris

@@ -1,0 +1,8 @@
+[Unit]
+Description=Analytrack : sauvegarde de la base et copie lisible par Claude
+
+[Service]
+Type=oneshot
+User=analytrack
+EnvironmentFile=/srv/analytrack/cles.env
+ExecStart=/bin/bash /srv/analytrack/agent-sportif/deploy/autonome/sauvegarde.sh

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Qui sommes-nous · Analytrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: même univers que la page de résultats (terrain de nuit, vert profond, or projecteur). Ouverture + feuille de match, puis un plan large par agent (photo Canva plein cadre, fiche au premier plan côté vide de l'image), puis la journée type. */
+:root{
+  --night:#050a24;
+  --pitch:#0c1a4a;
+  --card:rgba(10,20,60,.72);
+  --line:rgba(140,170,255,.16);
+  --fg:#eef2ff;
+  --muted:#9fb0d8;
+  --gold:#f5c542;
+  --gold-soft:rgba(245,197,66,.14);
+  --bad:#ff7b6b;
+  --veil:4,20,15;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-data:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+/* Version claire, suit le choix de la page de résultats (localStorage "theme" ou ?theme=light) */
+:root[data-theme="light"]{
+  --night:#f3f6f2;
+  --pitch:#ffffff;
+  --card:rgba(255,255,255,.88);
+  --line:rgba(16,36,28,.14);
+  --fg:#10241c;
+  --muted:#4d6359;
+  --gold:#8a6400;
+  --gold-soft:rgba(184,134,11,.12);
+  --bad:#c0392b;
+  --veil:243,246,242;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--night);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:16px}
+
+.ouverture{padding-block:40px 28px;display:grid;gap:14px}
+.surtitre{font-family:var(--f-display);font-weight:600;font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+h1{margin:0;font-family:var(--f-display);font-weight:700;text-transform:uppercase;font-size:clamp(40px,6.5vw,72px);line-height:.95;letter-spacing:.01em;text-wrap:balance;max-width:16ch}
+h1 span{color:var(--gold)}
+.chapo{margin:0;font-size:clamp(16px,1.8vw,18px);color:var(--muted);max-width:62ch}
+
+.feuille{margin-top:14px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--card)}
+.feuille-tete{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line);font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.feuille ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.feuille li{border-right:1px solid var(--line);min-width:0}
+.feuille li:last-child{border-right:0}
+.feuille a{display:grid;gap:3px;padding:14px 16px;text-decoration:none;color:inherit;height:100%}
+.feuille a:hover,.feuille a:focus-visible{background:var(--gold-soft);outline:none}
+.feuille .poste{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.feuille .nom{font-family:var(--f-display);font-weight:700;font-size:22px;text-transform:uppercase;line-height:1.05}
+.feuille .quand{font-family:var(--f-data);font-size:12px;color:var(--gold)}
+@media (max-width:820px){.feuille ol{grid-template-columns:1fr 1fr}.feuille li{border-bottom:1px solid var(--line)}.feuille li:nth-child(2n){border-right:0}}
+@media (max-width:420px){.feuille ol{grid-template-columns:1fr}.feuille li{border-right:0}}
+
+.emb{width:72px;height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
+.feuille ol{grid-template-columns:repeat(6,minmax(0,1fr))}
+.feuille a img{width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);margin-bottom:6px}
+@media (max-width:980px){.feuille ol{grid-template-columns:repeat(3,minmax(0,1fr))}.feuille li{border-bottom:1px solid var(--line)}.feuille li:nth-child(3n){border-right:0}}
+@media (max-width:520px){.feuille ol{grid-template-columns:1fr 1fr}.feuille li:nth-child(3n){border-right:1px solid var(--line)}.feuille li:nth-child(2n){border-right:0}}
+.agents{display:grid;gap:22px;padding-block:8px}
+.agent{position:relative;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);align-items:center;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--pitch);scroll-margin-top:16px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+.agent > img{width:100%;height:100%;min-height:480px;max-height:620px;object-fit:cover;object-position:center 20%;display:block}
+.agent.droite{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr)}
+.agent.droite > img{order:2}
+.fiche{position:relative;z-index:1;padding:32px 34px;display:grid;gap:12px}
+.role{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--gold)}
+.puce{font-family:var(--f-data);font-weight:400;font-size:12px;letter-spacing:0;text-transform:none;color:var(--fg);border:1px solid color-mix(in srgb,var(--gold) 50%,transparent);background:var(--gold-soft);padding:1px 8px;border-radius:999px}
+.fiche h2{margin:0;font-family:var(--f-display);font-weight:700;text-transform:uppercase;font-size:clamp(40px,5vw,58px);line-height:.95;letter-spacing:.01em}
+.accroche{margin:0;font-size:17px;font-weight:500}
+.fiche h3{margin:4px 0 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.fiche ul{margin:0;padding:0;list-style:none;display:grid;gap:7px}
+.fiche li{position:relative;padding-left:18px;font-size:14.5px}
+.fiche li::before{content:"";position:absolute;left:0;top:.6em;width:7px;height:7px;border-radius:50%;background:var(--gold)}
+.jamais{margin:2px 0 0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,123,107,.4);background:rgba(255,123,107,.1);font-size:14px}
+.jamais b{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--bad);margin-right:6px}
+
+@media (max-width:760px){
+  .agent,.agent.droite{grid-template-columns:1fr}
+  .agent > img, .agent.droite > img{order:0;min-height:0;max-height:none;height:auto;aspect-ratio:4/3;object-position:center 22%}
+  .fiche{padding:20px 18px 24px}
+}
+
+
+.journee{padding-block:36px 8px}
+.journee h2{margin:6px 0 18px;font-family:var(--f-display);font-weight:700;text-transform:uppercase;font-size:clamp(32px,4.5vw,46px);line-height:1}
+.etapes{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.etapes li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:4px;align-content:start;min-width:0}
+.etapes .h{font-family:var(--f-data);font-size:14px;color:var(--gold)}
+.etapes .qui{font-family:var(--f-display);font-weight:700;font-size:18px;text-transform:uppercase}
+.etapes p{margin:0;color:var(--muted);font-size:14px}
+@media (max-width:760px){.etapes{grid-template-columns:1fr 1fr}}
+@media (max-width:440px){.etapes{grid-template-columns:1fr}}
+
+footer{margin-top:32px;border-top:1px solid var(--line);padding-block:20px 32px;color:var(--muted);font-size:13px}
+footer strong{color:var(--fg)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+</style>
+<script>
+(function(){
+  function apply(t){document.documentElement.setAttribute('data-theme','dark');document.documentElement.style.colorScheme='dark';}
+  var t=null;
+  try{t=new URLSearchParams(location.search).get('theme');}catch(e){}
+  if(!t){try{t=localStorage.getItem('theme');}catch(e){}}
+  apply(t);
+  try{window.addEventListener('storage',function(e){if(e.key==='theme')apply(e.newValue);});}catch(e){}
+  window.addEventListener('message',function(e){if(e.data&&e.data.theme)apply(e.data.theme);});
+})();
+</script>
+</head>
+<body>
+
+
+<main>
+<section class="ouverture wrap">
+  <img class="emb" src="embleme.png" alt="Emblème Analytrack" width="96" height="120">
+  <div class="surtitre">Qui sommes-nous</div>
+  <h1>Une méthode, <span>pas une intuition.</span></h1>
+  <p class="chapo">Derrière chaque position, une équipe de six agents et un Boss. Chacun a son poste et ses règles, du premier coup d'œil le matin jusqu'à l'archive après le coup de sifflet. Football, basket et tennis passent tous par la même procédure.</p>
+
+  <div class="feuille">
+    <div class="feuille-tete"><span>Feuille de match</span><span>1 Boss · 6 agents</span></div>
+    <ol>
+      <li><a href="#enqueteur"><img src="agent-enqueteur.jpg" alt=""><span class="poste">Le terrain</span><span class="nom">L'Enquêteur</span><span class="quand">08:00 · H-3 · H-45</span></a></li>
+      <li><a href="#analyste"><img src="agent-analyste.jpg" alt=""><span class="poste">Les chiffres</span><span class="nom">L'Analyste</span><span class="quand">chaque match</span></a></li>
+      <li><a href="#m"><img src="agent-m.jpg" alt=""><span class="poste">Le contrôle</span><span class="nom">Le Mathématicien</span><span class="quand">Top 5 figé à H-45</span></a></li>
+      <li><a href="#tailleur"><img src="agent-tailleur.jpg" alt=""><span class="poste">Le Sur-mesure</span><span class="nom">Le Tailleur</span><span class="quand">figé à H-45</span></a></li>
+      <li><a href="#guetteuse"><img src="agent-guetteuse.jpg" alt=""><span class="poste">Le Direct</span><span class="nom">La Guetteuse</span><span class="quand">pendant les matchs</span></a></li>
+      <li><a href="#archiviste"><img src="agent-archiviste.jpg" alt=""><span class="poste">Les archives</span><span class="nom">L'Archiviste</span><span class="quand">après le sifflet</span></a></li>
+    </ol>
+  </div>
+</section>
+
+<div class="wrap agents">
+
+<section class="agent" id="boss" aria-labelledby="t-boss">
+  <img src="portrait-boss.jpg" alt="Le Boss, de dos, en long manteau, face aux écrans du QG Analytrack." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">La méthode <span class="puce">tous les jours</span></div>
+    <h2 id="t-boss">Le Boss</h2>
+    <p class="accroche">On ne le voit jamais de face. On voit seulement ses règles, et elles ne bougent pas.</p>
+    <h3>Ce qu'il fait</h3>
+    <ul>
+      <li>Il écrit les règles à l'avance : une position par match, des cotes encadrées, tout figé 45 minutes avant le coup d'envoi.</li>
+      <li>Il vérifie que chaque agent les applique, dans les trois sports, sans exception.</li>
+      <li>Il garde le cap : les chiffres décident, pas les émotions.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>il ne change une règle pour embellir un résultat.</p>
+  </div>
+</section>
+
+<section class="agent droite" id="enqueteur" aria-labelledby="t-enq">
+  <img src="portrait-enqueteur.jpg" alt="L'Enquêteur, casquette et veste de terrain, téléphone en main, dans les tribunes d'un stade." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Le terrain <span class="puce">08:00</span><span class="puce">H-3</span><span class="puce">H-45</span></div>
+    <h2 id="t-enq">L'Enquêteur</h2>
+    <p class="accroche">Avant les chiffres, il y a le terrain. Il va chercher ce qui s'y passe vraiment.</p>
+    <h3>Ce qu'il fait</h3>
+    <ul>
+      <li>Il relève la forme récente, les blessures, les absents et les compositions de chaque équipe ou de chaque joueur.</li>
+      <li>Il repasse 3 heures avant le match, puis 45 minutes avant, quand les compositions officielles tombent.</li>
+      <li>Ce qu'il trouve nourrit le « Pourquoi ce choix » affiché sous chaque position.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>il ne transmet une rumeur qu'il n'a pas pu vérifier.</p>
+  </div>
+</section>
+
+<section class="agent" id="analyste" aria-labelledby="t-ana">
+  <img src="portrait-analyste.jpg" alt="L'Analyste, pensif devant ses écrans de cartes de chaleur et de courbes." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Les chiffres <span class="puce">chaque match</span></div>
+    <h2 id="t-ana">L'Analyste</h2>
+    <p class="accroche">Il transforme tout ce qui a été relevé en une probabilité.</p>
+    <h3>Ce qu'il fait</h3>
+    <ul>
+      <li>Pour chaque match du jour, il calcule une position, sa probabilité et son niveau de confiance (<strong>élevée</strong> ou <strong>moyenne</strong>).</li>
+      <li>Il compare sa probabilité à celle du marché, tirée des cotes, et affiche les deux côte à côte.</li>
+      <li>Il fait le même travail pour le football, le basket et le tennis.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>il ne suit une équipe parce qu'elle est favorite ou parce que tout le monde en parle.</p>
+  </div>
+</section>
+
+<section class="agent droite" id="m" aria-labelledby="t-m">
+  <img src="portrait-m.jpg" alt="Le Mathématicien, devant un tableau couvert de formules." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Le contrôle <span class="puce">jusqu'à H-45</span></div>
+    <h2 id="t-m">Le Mathématicien</h2>
+    <p class="accroche">Il vérifie tout, jusqu'à la dernière minute utile, et garde seulement le plus solide.</p>
+    <h3>Ce qu'il fait</h3>
+    <ul>
+      <li>Il contrôle chaque position jusqu'à 45 minutes avant le match et écarte ce qui ne tient plus.</li>
+      <li>Il choisit les 5 positions les plus solides du jour, pour chaque sport : <strong>Le Top 5 Analytrack</strong>.</li>
+      <li>À H-45, il le fige. Plus rien ne bouge.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>il n'ajoute une position une fois la liste figée.</p>
+  </div>
+</section>
+
+<section class="agent" id="tailleur" aria-labelledby="t-tai">
+  <img src="portrait-tailleur.jpg" alt="Le Tailleur, mètre ruban autour du cou, découpe des patrons sur sa table." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Le Sur-mesure <span class="puce">figé à H-45</span></div>
+    <h2 id="t-tai">Le Tailleur</h2>
+    <p class="accroche">Il prend une position et l'ajuste au millimètre, match par match.</p>
+    <h3>Ce qu'il fait</h3>
+    <ul>
+      <li>Pour chaque match retenu, il construit la position la mieux adaptée, par exemple « Napoli ou nul et moins de 4,5 buts ».</li>
+      <li>Il vise plus sûr tout en gardant une cote intéressante : <strong>Le Sur-mesure Analytrack</strong>, 5 positions par jour au plus.</li>
+      <li>Sa liste a son propre ratio, affiché à part.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>il ne force une position quand rien ne tombe juste.</p>
+  </div>
+</section>
+
+<section class="agent droite" id="guetteuse" aria-labelledby="t-gue">
+  <img src="portrait-guetteuse.jpg" alt="La Guetteuse, oreillette en place, téléphone en main, sur le toit d'un stade éclairé." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Le Direct <span class="puce">pendant les matchs</span></div>
+    <h2 id="t-gue">La Guetteuse</h2>
+    <p class="accroche">Pendant les matchs, elle ne quitte pas le terrain des yeux.</p>
+    <h3>Ce qu'elle fait</h3>
+    <ul>
+      <li>Elle suit le score, la minute, les cartons et les sorties de joueurs, dans les trois sports.</li>
+      <li>Quand la cote devient intéressante, elle prend position : <strong>Le Direct Analytrack</strong>.</li>
+      <li>Vous recevez aussitôt une notification sur votre téléphone.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>elle ne modifie une position déjà prise.</p>
+  </div>
+</section>
+
+<section class="agent" id="archiviste" aria-labelledby="t-arc">
+  <img src="portrait-archiviste.jpg" alt="L'Archiviste range une boîte d'archives sur une étagère, lunettes au bout du nez." width="600" height="1072" loading="lazy">
+  <div class="fiche">
+    <div class="role">Les archives <span class="puce">après le coup de sifflet</span></div>
+    <h2 id="t-arc">L'Archiviste</h2>
+    <p class="accroche">« Nous, on n'efface rien. »</p>
+    <h3>Ce qu'elle fait</h3>
+    <ul>
+      <li>Au coup de sifflet final, elle range chaque position avec son résultat : validée ou non validée.</li>
+      <li>Elle tient l'Historique, les graphiques de réussite et les ratios de chaque liste.</li>
+      <li>Elle garde aussi votre carnet : les positions que vous avez choisies, mises à jour toutes seules.</li>
+    </ul>
+    <p class="jamais"><b>Jamais</b>elle n'efface un échec. Le vert et le rouge sont archivés ensemble.</p>
+  </div>
+</section>
+
+</div>
+
+<section class="journee wrap" aria-labelledby="t-jour">
+  <div class="surtitre">Comment ils travaillent ensemble</div>
+  <h2 id="t-jour">Une journée de match</h2>
+  <ol class="etapes">
+    <li><span class="h">08:00</span><span class="qui">L'Enquêteur et l'Analyste</span><p>Tous les matchs du jour sont relevés puis analysés : une position par match, avec sa probabilité.</p></li>
+    <li><span class="h">H-3</span><span class="qui">L'Enquêteur</span><p>Nouveau passage : les cotes ont bougé, les informations de dernière minute arrivent.</p></li>
+    <li><span class="h">H-45</span><span class="qui">Le Mathématicien et le Tailleur</span><p>Compositions officielles connues : Le Top 5 et Le Sur-mesure sont figés.</p></li>
+    <li><span class="h">Coup d'envoi</span><span class="qui">La Guetteuse</span><p>Suivi en direct. Une notification à chaque position prise pendant le match.</p></li>
+    <li><span class="h">Coup de sifflet</span><span class="qui">L'Archiviste</span><p>Résultats rangés, historique et ratios à jour, réussites comme échecs.</p></li>
+    <li><span class="h">Tous les jours</span><span class="qui">Le Boss</span><p>Les règles restent les mêmes. Une méthode, pas une intuition.</p></li>
+  </ol>
+</section>
+</main>
+
+<footer>
+  <div class="wrap"><strong>Jouer comporte des risques</strong> : endettement, isolement, dépendance. Pour être aidé, appelez le 09 74 75 13 13 (appel non surtaxé). Interdit aux moins de 18 ans.</div>
+</footer>
+
+</body>
+</html>
