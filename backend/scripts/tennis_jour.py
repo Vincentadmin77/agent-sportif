@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -32,8 +33,12 @@ import backtest_tennis as bt  # noqa: E402
 import fetch_tennis  # noqa: E402
 from sportai.engine.tennis import elo  # noqa: E402
 from sportai.engine.tennis.aces import AcesModel  # noqa: E402
+from sportai.engine.tennis.enquete import Enqueteur  # noqa: E402
 
 NON_RETENU = "Le modèle ne le retient pas"
+# Version 02 (owner 2026-11-02 12:23Z): tennis keeps its v01 choice rule, only the retained sort goes (every choice
+# counts). No gap filter, no odds-drop switch: "pour le tennis je le trouvais déjà parfait".
+V02_MAX_GAP, V02_DROP = float("inf"), float("inf")
 FREEZE_MIN = 45  # the choice is frozen 45 minutes before the start, as in football and basketball
 
 # Country of each bookmaker's licence, for the coloured dot on the page (no name shown).
@@ -117,6 +122,21 @@ def label(key: tuple, m: bt.Match) -> str:
     return str(key)
 
 
+# Owner's model freeze (Vincent 2026-11-08 14:21Z: "le modèle, il faut qu'il arrête de modifier quoi que ce soit").
+# While this file exists, player ratings and ace rates stay those learnt from results up to its date: later results,
+# wins or losses, no longer move the model. Rules, weights and thresholds were already fixed. Delete it to unfreeze.
+GEL = Path(os.getenv("TENNIS_MODELE_GELE", "/mnt/project-files/agent-sportif/state/tennis_modele_gele.json"))
+
+
+def fit_date(day: str) -> str:
+    """The date the model learns up to: the day itself, or the freeze date when the model is frozen."""
+    try:
+        frozen = json.loads(GEL.read_text()).get("appris_jusqu_au")
+    except (OSError, ValueError):
+        return day
+    return min(day, frozen) if frozen else day
+
+
 def fit(history: list[bt.Match], before: str):
     ratings = {t: elo.SurfaceElo() for t in ("ATP", "WTA")}
     acesm = {t: AcesModel() for t in ("ATP", "WTA")}
@@ -143,13 +163,20 @@ def main() -> None:
         for tour, key in {**fetch_tennis.TOURS, **fetch_tennis.CHALLENGERS}.items():
             fetch_tennis.week(tour, monday, True, key, with_odds=tour in fetch_tennis.TOURS)
     history = bt.load()
-    ratings, acesm = fit(history, a.date)
+    ratings, acesm = fit(history, fit_date(a.date))
+    enq = Enqueteur(history, a.date)  # investigator report (form, head-to-head, surface record), information only
     surf = bt.surfaces()
     span = {"date_start": str(day), "date_stop": str(day + timedelta(days=1)), "timezone": "Europe/Paris"}
     # Choices already frozen in an earlier run of the day are kept as they are (only their result is filled in).
     before = {}
     if a.out and Path(a.out).exists():
         before = {x["id"]: x for x in json.loads(Path(a.out).read_text()).get("matchs", [])}
+    # A match postponed from the previous day keeps the position it had there (one position per match): skip it here.
+    postponed = set()
+    if a.out:
+        prev = Path(a.out).with_name(f"{day - timedelta(days=1)}.json")
+        if prev.exists():
+            postponed = {x["id"] for x in json.loads(prev.read_text()).get("matchs", []) if x.get("choix") or x.get("m")}
     now_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y-%m-%d %H:%M")
     report = []
     for tour, key in fetch_tennis.TOURS.items():
@@ -162,6 +189,13 @@ def main() -> None:
                 continue
             if not raw.get("first_player_key") or not raw.get("second_player_key"):
                 continue
+            if str(raw.get("event_key")) in postponed:
+                continue
+            # A match cancelled before it starts (e.g. a player replaced at the Finals) carries no position, unless its
+            # choice was already frozen: that one stays and is settled as refunded.
+            prev_choice = (before.get(str(raw.get("event_key"))) or {}).get("choix") or {}
+            if raw.get("event_status") == "Cancelled" and not prev_choice.get("fige"):
+                continue
             m = bt.parse(raw, tour, surf, odds if isinstance(odds, dict) else {})
             r = ratings[tour]
             known = r.known(m.a, bt.MIN_MATCHES) and r.known(m.b, bt.MIN_MATCHES)
@@ -173,7 +207,14 @@ def main() -> None:
             pr = bt.Pricer(pm, m, ea, eb)
             mk = bt.markets(m.odds)
             cands = bt.candidates(pr, mk) if known else []
-            c = bt.choose(cands)
+            # Version 02 (owner 2026-11-02): every choice counts (the retained sort did no better). The gap filter and
+            # the odds-drop switch are off for tennis (V02_MAX_GAP / V02_DROP), the morning odds are still recorded.
+            seen = dict((before.get(m.key) or {}).get("marches_matin") or {})
+            for x in cands:
+                seen.setdefault("|".join(map(str, x["key"])), round(x["fair"], 4))
+            near = [x for x in cands if abs(x["p"] - x["fair"]) < V02_MAX_GAP]
+            steady = [x for x in near if x["fair"] > seen["|".join(map(str, x["key"]))] - V02_DROP]
+            c = bt.choose(steady) or bt.choose(near)
             choix = None
             start = datetime.strptime(when, "%Y-%m-%d %H:%M")
             frozen = now_paris >= (start - timedelta(minutes=FREEZE_MIN)).strftime("%Y-%m-%d %H:%M") or bool(
@@ -181,8 +222,10 @@ def main() -> None:
             old = (before.get(m.key) or {}).get("choix")
             old_m = (before.get(m.key) or {}).get("m")
             started = (raw.get("event_status") or "") not in ("", "Cancelled", "Walk Over")
-            if old and old.get("fige"):
-                choix = old
+            if old and (old.get("fige") or started):
+                # Frozen, or the last choice made before the start (no run between the freeze time and the start):
+                # a position never disappears once its match has begun.
+                choix = {**old, "fige": True}
             elif started:
                 pass  # no choice made once the match has begun (the odds would be live ones)
             elif c:
@@ -190,12 +233,13 @@ def main() -> None:
                          "cote": c["best"], "cote_mediane": c["median"], "proba_modele": round(c["p"], 3),
                          "proba_bookmakers": round(c["fair"], 3), "confiance": round(c["conf"], 3),
                          "niveau": "Confiance " + bt.level(c["conf"]),
-                         "statut": "retenu" if c["retenu"] else NON_RETENU,
+                         "statut": "retenu", "ancien_tri": "retenu" if c["retenu"] else NON_RETENU,
+                         "proba_bookmakers_matin": seen["|".join(map(str, c["key"]))], "version": "v02",
                          "pays_bookmaker": PAYS.get(best_book(m.odds, c["key"]), "autre"), "fige": frozen}
             if choix:
                 settle(choix, m)
-            if old_m and old_m.get("fige"):
-                choix_m = old_m
+            if old_m and (old_m.get("fige") or started):
+                choix_m = {**old_m, "fige": True}
             elif started:
                 choix_m = None
             else:
@@ -212,7 +256,13 @@ def main() -> None:
                 "aces_attendus": [round(ea, 1), round(eb, 1)] if ea is not None else None,
                 "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
                 "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
+                "marches_matin": seen,
+                "enquete": enq.rapport(m),
             })
+    # A match seen earlier in the day but missing from today's fixtures answer (API gap, moved day) is kept as it was:
+    # its positions must never disappear from the page.
+    seen = {x["id"] for x in report}
+    report += [x for k, x in before.items() if k not in seen]
     report.sort(key=lambda x: (x["heure_paris"] or "", x["circuit"]))
     out = {"date": a.date, "statut": "non validé", "genere": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "matchs": report}
