@@ -197,9 +197,13 @@ def main():
         key = f"{p['liste']}|{p['sport']}|{p['acteur']}|{p['match_id']}|{p['pari']}"
         old = prev["positions"].get(key)
         if old and old.get("cotes_fr"):
+            old["resultat"] = p.get("resultat")  # le résultat arrive après le relevé
             continue  # cote FR déjà relevée : on la garde (relevé figé, comme nos positions)
         ko = dt.datetime.fromisoformat(p["coup_envoi"].replace("Z", "+00:00"))
         rec = {k: p.get(k) for k in ("liste", "sport", "acteur", "match", "competition", "coup_envoi", "pari", "cote", "resultat")}
+        for k in ("winamax", "winamax_etat", "winamax_ecart_pct"):  # relevé Winamax (cotes_winamax.py) conservé
+            if old and old.get(k) is not None:
+                rec[k] = old[k]
         parsed = parse(p["sport"], p["pari"])
         sk = sport_key(p["sport"], p.get("competition"))
         if not parsed:
