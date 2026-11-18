@@ -25,6 +25,7 @@ is fixed, a later find of the same kind is a "bonus" ticket, shown apart (owner,
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 
@@ -199,8 +200,16 @@ def scorer_pick_ok(leg: dict) -> bool:
             and p >= implied + SCORER_MIN_EDGE and abs(p - implied) <= SCORER_MAX_GAP)
 
 
+def odd_even(leg: dict) -> bool:
+    """Owner 2026-11-18 14:15 Paris: no more "nombre de buts pair / impair" ("trop de chance plutôt qu'un vrai
+    calcul"; 2 won out of 3 since 12/11). Upcoming positions only, past ones stay as they were."""
+    return bool(re.search(r"\b(im)?pair\b", leg.get("pari", "").lower())) or "pair ou impair" in (leg.get("marche") or "")
+
+
 def pick_ok(leg: dict) -> bool:
     pm = leg.get("proba_marche")
+    if odd_even(leg):
+        return False
     if leg.get("buteur"):
         return pm is not None and scorer_pick_ok(leg)
     if pm is None or leg["cote"] < PICK_ODDS[0] or (PICK_ODDS[1] and leg["cote"] > PICK_ODDS[1]):
@@ -283,7 +292,7 @@ PRIORITY_KEYS = ("1x2", "double_chance", "dnb", "totals", "btts")
 def _forced(legs: list[dict]) -> dict | None:
     def allowed(l: dict) -> bool:
         p = l["pari"].lower() + " "
-        return (l.get("proba_marche") is not None and PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])
+        return (l.get("proba_marche") is not None and not odd_even(l) and PICK_ODDS[0] <= l["cote"] <= (PICK_ODDS[1] or l["cote"])
                 and not l.get("buteur") and "deux équipes marquent : non" not in p and "moins de 0,5 " not in p
                 and not (" : moins de " in l["pari"] and not (l.get("mi_temps") or l.get("comptage")))
                 and not (l.get("mi_temps") and blended(l) < HALF_MIN_CHANCE))
