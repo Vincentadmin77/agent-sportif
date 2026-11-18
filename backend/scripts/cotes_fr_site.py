@@ -10,5 +10,5 @@ for k, r in d["positions"].items():
     if r.get("cote_fr_moyenne"): v["m"] = r["cote_fr_moyenne"]
     if (r.get("cotes_fr") or {}).get("winamax_fr"): v["w"] = r["cotes_fr"]["winamax_fr"]
     if f"{mid}|{pari}" not in pos or v["e"] == "ok": pos[f"{mid}|{pari}"] = v
-json.dump({"jour": d["jour"], "maj": d["maj"], "pos": pos}, open(sys.argv[3], "w"), ensure_ascii=False)
+json.dump({"jour": d["jour"], "maj": d.get("maj_winamax") if (d.get("maj_winamax") or "") > (d.get("maj") or "") else d.get("maj"), "pos": pos}, open(sys.argv[3], "w"), ensure_ascii=False)
 print(len(pos), "positions")
