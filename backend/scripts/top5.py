@@ -141,8 +141,8 @@ ODDS_SPORT_FROM = "2026-11-19"
 _JOUR = {"j": ""}
 
 
-def _in_range(sport: str, c: dict) -> bool:
-    if _JOUR["j"] < ODDS_SPORT_FROM:
+def _in_range(sport: str, c: dict, actor: str = "") -> bool:
+    if _JOUR["j"] < ODDS_SPORT_FROM or actor == "test":  # the basket Sur-mesure keeps its own rule (owner 19/11 08:19, plan B)
         return True
     lo, hi = ODDS_SPORT.get(sport, (0, 99))
     return lo <= c["cote"] <= hi
@@ -166,9 +166,9 @@ def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
         for a, regle in REGLES.items():
             if a in RETIRES.get(s, ()):
                 continue
-            pool = [c for c in cands[s][a] if _in_range(s, c)]
+            pool = [c for c in cands[s][a] if _in_range(s, c, a)]
             ps = pick(pool, ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
-            if s in ODDS_SPORT and jour >= ODDS_SPORT_FROM:
+            if s in ODDS_SPORT and jour >= ODDS_SPORT_FROM and a != "test":
                 regle = regle.rstrip(".") + ", cote de 1,70 à 2,00."
             doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
     return doc
@@ -201,7 +201,7 @@ def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
         for a, (mn, regle) in actors.items():
             if s == "basket" and a == "m" and jour < ODDS_SPORT_FROM:
                 regle = "Le M : ses 5 choix avant match où le marché voit le plus de chances, sans filtre de cote."
-            pool = [c for c in cands[s][a] if c["cote"] >= mn and _in_range(s, c)]
+            pool = [c for c in cands[s][a] if c["cote"] >= mn and _in_range(s, c, a)]
             key0 = "test" if a == "test" else "finale"
             ps = pick(pool, ((prev.get(s) or {}).get(key0) or {}).get("positions"), now, retro)
             key = "test" if a == "test" else "finale"  # the page reads the kept list under « finale »
