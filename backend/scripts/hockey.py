@@ -61,7 +61,7 @@ UTC = dt.timezone.utc
 REGLES = {
     "modele": "Une position par match : le modèle de buts et le marché d'accord, cote étrangère 1,70-2,00, jouée chez Winamax.",
     "m": "Une position par match : le choix où le marché voit le plus de chances, cote étrangère 1,70-2,00, jouée chez Winamax.",
-    "test": "Une position par match, handicap ou total de buts du match, cote étrangère 1,70-2,00, jouée chez Winamax.",
+    "test": "Une position par match, équipe ou nul ou buts d'une équipe (temps réglementaire), cote Winamax 1,50-1,80.",
     "surmesure": "Favori à petite cote + nombre de buts du même match, cote du combiné 1,60-2,00.",
 }
 TOP_REGLES = {
@@ -335,7 +335,10 @@ def pick(actor: str, cands: list[dict]) -> dict | None:
         best = max(ok, key=lambda c: c["proba_marche"], default=None)
         return best and {**best, "confiance": best["proba_marche"]}
     if actor == "test":
-        ok = [c for c in cands if _etr(c) and c["famille"] in ("handicap", "total")]
+        # différent du Mathématicien (Vincent 19/11) : marchés que les sites étrangers ne cotent pas,
+        # « équipe ou nul » et total d'une équipe (60 min), cote Winamax 1,50-1,80 seulement
+        ok = [c for c in cands if c.get("cote_etrangere") is None and 1.50 <= c["cote"] <= 1.80
+              and c["famille"] in ("equipe_ou_nul", "total_equipe")]
         best = max(ok, key=lambda c: c["proba_marche"], default=None)
         return best and {**best, "confiance": best["proba_marche"]}
     if actor == "surmesure":
