@@ -183,6 +183,7 @@ def test_the_m_says_why_it_passes_with_its_best_option():
 
 
 def test_the_m_chooses_on_every_nba_game_then_settles_it():
+    # basket M since 2026-11-19: odds 1.70-2.00 (football's principle), the market's most likely line, never red
     bm = {"jour": "2026-10-29", "domicile": "C", "exterieur": "D", "coup_envoi": "2026-10-29T23:00:00Z",
           "competition": "NBA", "statut": "a_venir", "score": None,
           "cotes_cloture": {"lignes": [
@@ -191,16 +192,22 @@ def test_the_m_chooses_on_every_nba_game_then_settles_it():
               {"marche": "total", "selection": "over", "ligne": 234.5, "cote": 1.72, "proba": 0.41, "proba_marche": 0.53}]}}
     reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(18), {"7": bm})
     a = reg["avis"]["basket-7"]
-    assert a["choix_m"]["pari"] is None and "C +7,5 points (handicap) à 1,71" in a["choix_m"]["raison"]
-    assert a["choix_m"]["feu"] == "orange" and a["choix_m"]["choix_55"]["pari"] == "C +7,5 points (handicap)"
-    assert a["sans_position"]
-    bm["cotes_cloture"]["lignes"][1]["proba_marche"] = 0.61
-    reg = R.basket_avis(reg, {}, at(20), {"7": bm})
-    assert reg["avis"]["basket-7"]["choix_m"]["pari"] == "C +7,5 points (handicap)"
-    assert reg["avis"]["basket-7"]["choix_m"]["feu"] == "vert"
+    assert a["choix_m"]["pari"] == "C +7,5 points (handicap)" and a["choix_m"]["cote"] == 1.71
+    bm["cotes_cloture"]["lignes"][1]["proba_marche"] = 0.48  # under 50 %: the M passes, the total is red
+    reg2 = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(18), {"7": bm})
+    assert reg2["avis"]["basket-7"]["choix_m"]["pari"] is None and "feu rouge" in reg2["avis"]["basket-7"]["choix_m"]["raison"]
     reg = R.basket_avis(reg, {}, datetime(2026, 10, 30, 3, tzinfo=timezone.utc),
                         {"7": {**bm, "statut": "termine", "score": "110-115"}})
     assert reg["avis"]["basket-7"]["choix_m"]["resultat"] == "gagne" and "Choix du M validé" in reg["avis"]["basket-7"]["bilan"]
+
+
+def test_the_basket_m_takes_the_best_price_only_near_the_median():
+    line = {"marche": "total", "selection": "under", "ligne": 230.5, "cote": 1.66, "cote_max": 1.74,
+            "proba": 0.57, "proba_marche": 0.58}
+    bm = {"domicile": "C", "exterieur": "D", "cotes_cloture": {"lignes": [line]}}
+    assert R.basket_m_choice(bm)["cote_prise"] == 1.74
+    line["cote_max"] = 1.95  # a lone stale quote, 17 % above the median: not a price, 1.66 is out of range
+    assert R.basket_m_choice(bm)["pari"] is None
 
 
 def test_a_match_added_after_kick_off_still_gets_the_opinions_and_counts_for_the_m():
@@ -213,7 +220,7 @@ def test_a_match_added_after_kick_off_still_gets_the_opinions_and_counts_for_the
     assert f["enregistre_apres_coup_envoi"] and R.report([reg])["le_m_a_blanc"]["global"]["positions"] == 1
 
 
-def test_the_nba_55_choice_is_settled_and_counted_apart():
+def test_the_basket_m_choice_at_1_80_is_settled_and_counted():
     bm = {"jour": "2026-10-29", "domicile": "C", "exterieur": "D", "coup_envoi": "2026-10-29T23:00:00Z",
           "passages": {"m45": "2026-10-29T22:15:00+00:00"}, "statut": "a_venir",
           "cotes_cloture": {"lignes": [{"marche": "total", "selection": "under", "ligne": 230.5, "cote": 1.8,
@@ -221,9 +228,9 @@ def test_the_nba_55_choice_is_settled_and_counted_apart():
     reg = R.basket_avis({"jour": "2026-10-29", "fiches": {}}, {}, at(22), {"7": bm})
     reg = R.basket_avis(reg, {}, datetime(2026, 10, 30, 3, tzinfo=timezone.utc),
                         {"7": {**bm, "statut": "termine", "score": "110-115"}})
-    assert reg["avis"]["basket-7"]["choix_m"]["choix_55"]["resultat"] == "gagne"
+    assert reg["avis"]["basket-7"]["choix_m"]["resultat"] == "gagne"
     rep = R.report([reg], min_group=1)
-    assert rep["le_m_nba_55"]["global"]["validees"] == 1 and rep["le_m_a_blanc"]["global"]["positions"] == 0
+    assert rep["le_m_a_blanc"]["global"]["validees"] == 1
 
 
 def test_a_stale_register_takes_the_position_that_froze_before_tip_off():

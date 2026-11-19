@@ -128,7 +128,10 @@ def foot(choice: dict, m: dict, off: dict | None = None) -> str | None:
     side = _team_side(pari, home, away)
     ctx = m.get("contexte") or {}
     series = ctx.get("series") or {}
-    parts = [_why_rule(None, choice.get("feu")), _market_line(choice.get("proba_marche"), choice.get("proba"), choice.get("cote"))]
+    lit = {"vert": ", et le feu du M est au vert", "orange": ", avec un feu orange (le M reste prudent)"}.get(choice.get("feu") or "", "")
+    why = ("Pourquoi : parmi les cotes de 1,70 à 2,00 du match, c'est l'issue que le marché voit la plus probable"
+           f"{lit}.")
+    parts = [why, _market_line(choice.get("proba_marche"), choice.get("proba"), choice.get("cote"))]
     strong, weak, neutral = [], [], []
     if side:
         me, other = (home, away) if side == "domicile" else (away, home)
@@ -186,7 +189,10 @@ def basket(choice: dict, bm: dict, off: dict | None = None) -> str | None:
     home, away = bm.get("domicile") or "", bm.get("exterieur") or ""
     side = _team_side(pari, home, away)
     pts = bm.get("points") or {}
-    parts = [_why_rule(None, choice.get("feu")), _market_line(choice.get("proba_marche"), choice.get("proba"), choice.get("cote"))]
+    lit = {"vert": ", et le feu du M est au vert", "orange": ", avec un feu orange (le M reste prudent)"}.get(choice.get("feu") or "", "")
+    why = ("Pourquoi : parmi les cotes de 1,70 à 2,00 du match, c'est l'issue que le marché voit la plus probable"
+           f"{lit}.")
+    parts = [why, _market_line(choice.get("proba_marche"), choice.get("proba"), choice.get("cote"))]
     strong = []
     if side and isinstance(pts.get("ecart_prevu"), (int, float)):
         e = pts["ecart_prevu"] if side == "domicile" else -pts["ecart_prevu"]

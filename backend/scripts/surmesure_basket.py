@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BASKET = "https://v1.basketball.api-sports.io/"
 MAX_PLACES = 5
-ODDS_MIN, ODDS_MAX = 1.60, 2.00
+ODDS_MIN, ODDS_MAX = 1.70, 2.00  # 1.70: owner 2026-11-19, foot principle (was 1.60)
 FAV_MAX = 1.45          # « petite cote »
 FAV_CHANCE = 0.68       # « favori net » for the market
 MIN_LEG = 0.55          # each total leg at least this sure
@@ -48,7 +48,7 @@ PLAYER_MARKETS = ("player_points_rebounds", "player_rebounds_assists", "player_p
                   "player_points_rebounds_assists")
 REGLE = ("Sur-mesure basket, à blanc, à côté de la sélection test : quand un favori net a une petite cote (1,45 au "
          "plus, au moins 68 % de chances pour le marché), on l'associe sur le même match à un total de points. "
-         "Cote totale de 1,60 à 2,00, au moins 50 % de chances pour le marché, une position par match, 5 au plus, "
+         "Cote totale de 1,70 à 2,00, au moins 50 % de chances pour le marché, une position par match, 5 au plus, "
          "les plus sûres d'abord, figées 45 min avant le début. Combinés joueurs seulement avec une cote française.")
 
 

@@ -450,7 +450,7 @@ def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict |
     # to measure the model against the market over the coming weeks
     doc["cotes_cloture"] = {"maj": now.isoformat(), "lignes": [
         {"marche": r["marche_cle"], "selection": r["selection"], "ligne": r["ligne"], "cote": r["cote_mediane"],
-         "proba_marche": r["proba_marche"], "proba": r["proba"]} for r in rows]}
+         "cote_max": r["cote"], "proba_marche": r["proba_marche"], "proba": r["proba"]} for r in rows]}
     return doc, bets(comp, rows, home, away)
 
 

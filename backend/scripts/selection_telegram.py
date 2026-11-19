@@ -40,8 +40,8 @@ REGLE_SPORT = {
                "jeux, total de jeux) : au plus 5 positions, une par match, cote 1,50-2,00, au moins 55 % de chance "
                "selon le marché, vainqueur et sets d'abord, les plus sûres d'abord. À blanc, ratio à part."),
     "basket": ("Même méthode à part, sur les axes du basket (total de points, handicap de points, points d'une "
-               "équipe) : au plus 5 positions, une par match, cote 1,50-2,00, au moins 55 % de chance selon le "
-               "marché, les plus sûres d'abord. À blanc, ratio à part."),
+               "équipe) : au plus 5 positions, une par match, cote 1,70-2,00 (depuis le 19/11), au moins 55 % de chance "
+               "selon le marché, les plus sûres d'abord. À blanc, ratio à part."),
 }
 REGLE = ("Méthode à part (ni le modèle, ni le M) : au plus 5 positions par soir sur les matchs les plus cohérents, "
          "d'abord des combinés sur un même match (équipe ou nul + buts, équipe + buts) à au moins 50 % de chance "
@@ -186,7 +186,7 @@ def _is_combo(cle: str) -> bool:
 # ---- tennis and basket (owner 2026-11-05 07:17Z: the test selection per sport, like the M's) ----------------------
 TENNIS = "https://api.api-tennis.com/tennis/"
 BASKET = "https://v1.basketball.api-sports.io/"
-ODDS_MIN_SPORT = {"foot": 1.60, "tennis": 1.50, "basket": 1.50}
+ODDS_MIN_SPORT = {"foot": 1.60, "tennis": 1.50, "basket": 1.70}  # basket 1.70: owner 2026-11-19, foot principle
 FIRST = {"tennis": ("t_w", "t_s", "t_set")}  # tennis: winner and sets first (owner's 4/11 tipster example)
 OUTLIER = 1.08  # best odds kept only within 8 % of the median of the sites (a lone stale quote is not a price)
 

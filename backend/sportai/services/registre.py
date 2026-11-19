@@ -631,16 +631,34 @@ def _who_was_right(a: dict) -> str:
 NBA_SECOND_TIER = 0.55
 
 
+# Basketball M (owner 2026-11-19 « même principe que le foot », cotes trop souvent proches de 1,50): odds 1.70 to 2.00,
+# the line the market sees as the most likely among them, one per game. Tested on 19 NBA seasons (2007-2026, closing
+# odds) and on our own 160 NBA games (28/10-18/11): no rule beats the market in the NBA, the success rate follows the
+# market's chance (about 55 % at 1.70-1.80); at 1.50 the lists sat on their threshold (62 % for 66 % needed).
+BASKET_M_ODDS = (1.70, 2.00)
+BASKET_M_MIN_MARKET = 0.50
+BASKET_BEST_MAX = 1.08  # the best price is kept only within 8 % of the sites' median (a lone stale quote is not a price)
+
+
+def _basket_price(r: dict) -> float | None:
+    med, best = r.get("cote"), r.get("cote_max")
+    if not isinstance(med, (int, float)):
+        return None
+    if isinstance(best, (int, float)) and med <= best <= med * BASKET_BEST_MAX:
+        return round(best, 2)
+    return med
+
+
 def basket_m_options(bm: dict) -> list[dict]:
-    """The basketball game's winner / handicap / total lines at odds 1.50-2.30 with the market's chance, most likely
-    first (the lines the passes priced on French books: no player bet)."""
+    """The basketball game's winner / handicap / total lines at odds 1.70-2.00 with the market's chance, most likely
+    first (the lines the passes priced: no player bet)."""
     from sportai.services.basket import label
 
     out = []
     for r in (bm.get("cotes_cloture") or {}).get("lignes") or []:
-        cote, pm = r.get("cote"), r.get("proba_marche")
+        cote, pm = _basket_price(r), r.get("proba_marche")
         if r.get("marche") in ("winner", "handicap", "total") and isinstance(cote, (int, float)) \
-                and isinstance(pm, (int, float)) and M_ODDS[0] <= cote <= M_ODDS[1]:
+                and isinstance(pm, (int, float)) and BASKET_M_ODDS[0] <= cote <= BASKET_M_ODDS[1]:
             out.append({"pari": label(r["marche"], r["selection"], r.get("ligne"), bm.get("domicile") or "",
                                       bm.get("exterieur") or ""),
                         "marche": r["marche"], "selection": r["selection"], "ligne": r.get("ligne"),
@@ -649,18 +667,20 @@ def basket_m_options(bm: dict) -> list[dict]:
 
 
 def basket_m_choice(bm: dict) -> dict:
-    """The M's position on a basketball game (same rule as football: market >= 60 %, 1.50-2.30), or why it passes."""
+    """The M's position on a basketball game: odds 1.70-2.00 (football's principle), the most likely line for the
+    market (at least 50 %), never one its light shows red; or why it passes."""
     opts = basket_m_options(bm)
-    ok = [o for o in opts if o["p_marche"] >= M_MIN_MARKET and not _red(o.get("p_modele"), o["p_marche"])]
+    ok = [o for o in opts if o["p_marche"] >= BASKET_M_MIN_MARKET and not _red(o.get("p_modele"), o["p_marche"])]
     if ok:
         return ok[0]
     best = {k: opts[0][k] for k in ("pari", "cote_prise", "p_marche", "p_modele")} if opts else None
-    reason = (_pass_reason(best) if best else
-              "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,50 et 2,30.")
-    # the French books give one handicap and one total per game, set near 50/50: the 55 % choice is noted apart
-    # (owner 2026-10-28 20:56 "il ne voit pas assez de propositions"), to judge that threshold on ~100 games
-    extra = {"choix_55": dict(opts[0])} if opts and opts[0]["p_marche"] >= NBA_SECOND_TIER else {}
-    return {"pari": None, "raison": reason, "meilleure_option": best, **extra}
+    if not best:
+        reason = "Je passe : aucune cote de vainqueur, handicap ou total de points entre 1,70 et 2,00."
+    else:
+        head = re.sub(r"(\d)\.(\d)", r"\1,\2", f"Je passe : la meilleure option, {best['pari']} à {best['cote_prise']:.2f}")
+        reason = (f"{head}, n'est vue qu'à {_pc(best['p_marche'])} par les bookmakers (il faut 50 %)."
+                  if best["p_marche"] < BASKET_M_MIN_MARKET else f"{head}, a un feu rouge (le modèle n'y croit pas).")
+    return {"pari": None, "raison": reason, "meilleure_option": best}
 
 
 def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_version: str) -> dict:
@@ -676,7 +696,7 @@ def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_ve
                 "decision": now.isoformat(), "match_id": f"basket-{mid}",
                 "match": f"{bm.get('domicile')} - {bm.get('exterieur')}", "competition": bm.get("competition"),
                 "coup_envoi": bm.get("coup_envoi"), "recalcule": False, "choix_m": True,
-                "version_regles": f"M>={M_MIN_MARKET}", "version_code": code_version,
+                "version_regles": "M basket 1,70-2,00 (19/11)", "version_code": code_version,
                 "fige": late or bool((bm.get("passages") or {}).get("m45")),
                 **({"enregistre_apres_coup_envoi": True} if late else {}), **basket_m_choice(bm)}
         f = reg["fiches"][rid]

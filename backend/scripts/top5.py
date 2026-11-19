@@ -134,6 +134,20 @@ def pick(cands: list[dict], prev: list[dict], now: datetime, retro: bool = False
     return sorted(kept, key=lambda c: c.get("coup_envoi") or "")
 
 
+# owner 2026-11-19 (« même principe que le foot », basket cotes trop souvent proches de 1,50): every basket list keeps
+# only odds 1.70 to 2.00 from that day on; frozen positions of earlier days are never rewritten.
+ODDS_SPORT = {"basket": (1.70, 2.00)}
+ODDS_SPORT_FROM = "2026-11-19"
+_JOUR = {"j": ""}
+
+
+def _in_range(sport: str, c: dict) -> bool:
+    if _JOUR["j"] < ODDS_SPORT_FROM:
+        return True
+    lo, hi = ODDS_SPORT.get(sport, (0, 99))
+    return lo <= c["cote"] <= hi
+
+
 def ratio(ps: list[dict]) -> dict:
     g = sum(p.get("resultat") == "gagne" for p in ps)
     l = sum(p.get("resultat") == "perdu" for p in ps)
@@ -142,6 +156,7 @@ def ratio(ps: list[dict]) -> dict:
 
 
 def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
+    _JOUR["j"] = jour
     cands = candidates(reg, spe, test)
     doc = {"jour": jour, "regle": "Chaque acteur garde ses 5 positions de plus forte confiance du jour, par sport, "
                                   "une par match, figées 45 min avant le coup d'envoi.",
@@ -151,8 +166,11 @@ def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
         for a, regle in REGLES.items():
             if a in RETIRES.get(s, ()):
                 continue
-            ps = pick(cands[s][a], ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
-            doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(cands[s][a])}
+            pool = [c for c in cands[s][a] if _in_range(s, c)]
+            ps = pick(pool, ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
+            if s in ODDS_SPORT and jour >= ODDS_SPORT_FROM:
+                regle = regle.rstrip(".") + ", cote de 1,70 à 2,00."
+            doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
     return doc
 
 
@@ -164,22 +182,26 @@ FINALE = {
              "test": (0, REGLES["test"])},
     "tennis": {"modele": (0, "Le modèle : ses 5 positions de plus forte confiance du jour, sans filtre de cote."),
                "test": (0, REGLES["test"])},
-    "basket": {"m": (0, "Le M : ses 5 choix avant match où le marché voit le plus de chances, sans filtre de cote."),
+    "basket": {"m": (0, "Le M : ses 5 choix avant match où le marché voit le plus de chances, seulement à une cote de "
+                        "1,70 à 2,00 (moins de 5 s'il n'y en a pas assez)."),
                "test": (0, REGLES["test"])},
 }
 
 
 def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
+    _JOUR["j"] = jour
     cands = candidates(reg, spe, test)
     doc = {"jour": jour, "version_finale": True,
            "regle": "Version finale à blanc : une seule liste par sport (foot : modèle, cote 1,70 ou plus ; tennis : "
-                    "modèle ; basket : M), 5 positions au plus par jour, une par match, figées 45 min avant le début. "
+                    "modèle ; basket : M" + (", cote 1,70 à 2,00" if jour >= ODDS_SPORT_FROM else "") + "), 5 positions au plus par jour, une par match, figées 45 min avant le début. "
                     "La sélection test est montrée à côté.",
            "maj": now.isoformat(timespec="seconds")}
     for s, actors in FINALE.items():
         doc[s] = {}
         for a, (mn, regle) in actors.items():
-            pool = [c for c in cands[s][a] if c["cote"] >= mn]
+            if s == "basket" and a == "m" and jour < ODDS_SPORT_FROM:
+                regle = "Le M : ses 5 choix avant match où le marché voit le plus de chances, sans filtre de cote."
+            pool = [c for c in cands[s][a] if c["cote"] >= mn and _in_range(s, c)]
             key0 = "test" if a == "test" else "finale"
             ps = pick(pool, ((prev.get(s) or {}).get(key0) or {}).get("positions"), now, retro)
             key = "test" if a == "test" else "finale"  # the page reads the kept list under « finale »
