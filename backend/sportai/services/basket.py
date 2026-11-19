@@ -572,6 +572,7 @@ def follow(game: dict, doc: dict, now: datetime) -> dict | None:
     hp, ap = game["scores"]["home"]["total"], game["scores"]["away"]["total"]
     if hp is None or ap is None:
         return None
+    new.pop("reporte", None)  # 19/11: a brief SUSP left Denver-Boston (played, 105-101) "reporte", its bet refunded
     new["score"] = f"{int(hp)}-{int(ap)}"
     new["score_quarts"] = quarters(game)
     if short in FINISHED:

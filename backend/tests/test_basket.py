@@ -447,3 +447,11 @@ def test_player_bets_kept_in_range_and_settled_from_the_box_score(monkeypatch):
     assert basket.settle_pick(pick, done)["resultat"] == "gagne"
     monkeypatch.setattr(basket, "_box", lambda gid, m: None)
     assert "resultat" not in basket.settle_pick(pick, done)  # box score not fetched yet: settled later
+
+
+def test_suspended_then_played_game_is_not_left_postponed():
+    now = datetime(2026, 11, 19, 5, 0, tzinfo=timezone.utc)
+    doc = {"statut": "en_direct", "score": "50-48", "reporte": True}
+    game = {"status": {"short": "FT"}, "scores": {"home": {"total": 105}, "away": {"total": 101}}}
+    new = basket.follow(game, doc, now)
+    assert new["statut"] == "termine" and "reporte" not in new
