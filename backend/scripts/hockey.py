@@ -47,16 +47,21 @@ CNT_ALL = f"{BASE}/cotes-fr/oddspapi/compteur.json"
 CNT_HK = f"{BASE}/hockey/oddspapi_compteur.json"
 PLAFOND_HK = 1000
 FREEZE = dt.timedelta(minutes=45)
-ODDS_REFRESH = dt.timedelta(hours=3)
+ODDS_REFRESH = dt.timedelta(hours=3)  # cotes étrangères
+WINAMAX_REFRESH = dt.timedelta(hours=8)  # Winamax : 1er relevé + relevé avant le gel (budget 1 000 / mois)
 COTE_MIN, COTE_MAX = 1.50, 2.30
+# Vincent 19/11 : les acteurs ciblent 1,70-2,00 sur les cotes étrangères (The Odds API, région eu) ;
+# la cote jouée et affichée reste celle de Winamax, sur la même ligne.
+ETR_MIN, ETR_MAX = 1.70, 2.00
+ODDS_API = "https://api.the-odds-api.com/v4/sports/icehockey_nhl/odds/"
 N_TOP = 5
 SAISON = "2026-2027"
 UTC = dt.timezone.utc
 
 REGLES = {
-    "modele": "Une position par match : le modèle de buts et le marché d'accord, cote 1,50-2,30.",
-    "m": "Une position par match : le choix où le marché voit le plus de chances, cote 1,50-2,30.",
-    "test": "Une position par match, jamais de victoire sèche : équipe ou nul, handicap ou total de buts du match, cote 1,50-2,00.",
+    "modele": "Une position par match : le modèle de buts et le marché d'accord, cote étrangère 1,70-2,00, jouée chez Winamax.",
+    "m": "Une position par match : le choix où le marché voit le plus de chances, cote étrangère 1,70-2,00, jouée chez Winamax.",
+    "test": "Une position par match, handicap ou total de buts du match, cote étrangère 1,70-2,00, jouée chez Winamax.",
     "surmesure": "Favori à petite cote + nombre de buts du même match, cote du combiné 1,60-2,00.",
 }
 TOP_REGLES = {
@@ -208,6 +213,69 @@ def winamax_lines(raw: dict) -> list[dict]:
     return out
 
 
+# ---------- cotes étrangères (The Odds API) ----------
+def foreign_odds(jour: str, need_fresh: bool) -> dict:
+    """Cache hockey/oddsapi/<jour>.json, 1 appel pour toute la nuit (totaux + handicaps, région eu : 2 crédits)."""
+    d = f"{BASE}/hockey/oddsapi"
+    os.makedirs(d, exist_ok=True)
+    fn = f"{d}/{jour}.json"
+    old = json.load(open(fn)) if os.path.exists(fn) else None
+    if old:
+        age = now() - when(old["releve_a"])
+        if age < (dt.timedelta(minutes=30) if need_fresh else ODDS_REFRESH):
+            return old
+    try:
+        q = urllib.parse.urlencode({"apiKey": os.environ["THE_ODDS_API_KEY"], "regions": "eu",
+                                    "markets": "totals,spreads", "oddsFormat": "decimal"})
+        data = json.load(urllib.request.urlopen(f"{ODDS_API}?{q}", timeout=60))
+        new = {"releve_a": iso(now()), "matchs": data}
+        json.dump(new, open(fn, "w"))
+        return new
+    except Exception:  # noqa: BLE001
+        return old or {"releve_a": None, "matchs": []}
+
+
+def foreign_lines(fo: dict, dom: str, ext: str) -> list[dict]:
+    """Lignes étrangères au format de winamax_lines : cote médiane des sites (2 au moins)."""
+    import statistics
+    g = next((x for x in fo.get("matchs", []) if same(x["home_team"], dom) and same(x["away_team"], ext)), None)
+    if not g:
+        return []
+    acc = {}
+    for b in g.get("bookmakers", []):
+        if b["key"] in ("betfair_ex_eu", "matchbook"):
+            continue
+        for mk in b.get("markets", []):
+            if mk["key"] == "totals":
+                for o in mk["outcomes"]:
+                    acc.setdefault(("totals", float(o["point"])), {}).setdefault(o["name"], []).append(o["price"])
+            elif mk["key"] == "spreads":
+                pts = {o["name"]: float(o["point"]) for o in mk["outcomes"]}
+                h = pts.get(g["home_team"])
+                if h is None:
+                    continue
+                for o in mk["outcomes"]:
+                    k = "1" if o["name"] == g["home_team"] else "2"
+                    acc.setdefault(("spreads", h), {}).setdefault(k, []).append(o["price"])
+    out = []
+    for (ty, h), oc in acc.items():
+        if len(oc) == 2 and all(len(v) >= 2 for v in oc.values()):
+            out.append({"period": "result", "type": ty, "hcp": h,
+                        "outcomes": {k: statistics.median(v) for k, v in oc.items()}, "sites": min(len(v) for v in oc.values())})
+    return out
+
+
+def with_foreign(win_cands: list[dict], etr_cands: list[dict]) -> list[dict]:
+    """Candidats étrangers jouables chez Winamax : cote = Winamax, cote_etrangere et chance = sites étrangers."""
+    wmap = {c["pari"]: c for c in win_cands}
+    out = []
+    for c in etr_cands:
+        w = wmap.get(c["pari"])
+        if w:
+            out.append({**c, "cote": w["cote"], "cote_etrangere": c["cote"], "proba_marche_winamax": w["proba_marche"]})
+    return out
+
+
 # ---------- candidats ----------
 def candidates(match: dict, lines: list[dict], pr: dict | None) -> list[dict]:
     dom, ext = match["domicile"], match["exterieur"]
@@ -252,21 +320,26 @@ def candidates(match: dict, lines: list[dict], pr: dict | None) -> list[dict]:
     return out
 
 
+def _etr(c):
+    return c.get("cote_etrangere") is not None and ETR_MIN <= c["cote_etrangere"] <= ETR_MAX
+
+
 def pick(actor: str, cands: list[dict]) -> dict | None:
     if actor == "modele":
-        ok = [c for c in cands if COTE_MIN <= c["cote"] <= COTE_MAX and c["proba"] is not None
+        ok = [c for c in cands if _etr(c) and c["proba"] is not None
               and c["proba"] >= c["proba_marche"] - 0.005 and abs(c["proba"] - c["proba_marche"]) <= 0.10]
         best = max(ok, key=lambda c: (c["proba"] + c["proba_marche"]) / 2, default=None)
         return best and {**best, "confiance": round((best["proba"] + best["proba_marche"]) / 2, 4)}
     if actor == "m":
-        ok = [c for c in cands if COTE_MIN <= c["cote"] <= COTE_MAX]
+        ok = [c for c in cands if _etr(c)]
         best = max(ok, key=lambda c: c["proba_marche"], default=None)
         return best and {**best, "confiance": best["proba_marche"]}
     if actor == "test":
-        ok = [c for c in cands if 1.50 <= c["cote"] <= 2.00 and c["famille"] in ("equipe_ou_nul", "handicap", "total")]
+        ok = [c for c in cands if _etr(c) and c["famille"] in ("handicap", "total")]
         best = max(ok, key=lambda c: c["proba_marche"], default=None)
         return best and {**best, "confiance": best["proba_marche"]}
     if actor == "surmesure":
+        cands = [c for c in cands if c.get("cote_etrangere") is None]  # combinés : cotes Winamax
         favs = [c for c in cands if c["famille"] in ("vainqueur", "equipe_ou_nul", "handicap") and c["cote"] <= 1.45 and c["proba_marche"] >= 0.68]
         tots = [c for c in cands if c["famille"] == "total" and c["proba_marche"] >= 0.55]
         combos = []
@@ -380,7 +453,7 @@ def build_top5(doc):
                 continue
             pool.append({"match_id": mid, "match": doc["matchs"][mid]["match"], "competition": "NHL",
                          "coup_envoi": doc["matchs"][mid]["coup_envoi"], **{k: p.get(k) for k in
-                         ("pari", "cote", "confiance", "resultat", "fige", "statut", "score")}})
+                         ("pari", "cote", "cote_etrangere", "confiance", "resultat", "fige", "statut", "score")}})
         pool.sort(key=lambda p: -p["confiance"])
         frozen_pool = [p for p in pool if p.get("fige")]
         free = [p for p in pool if not p.get("fige")]
@@ -421,6 +494,10 @@ def passage(a):
                     if f.get("tournamentId") == NHL]
         json.dump(fixtures, open(fx_fn, "w"))
     erreurs = []
+    near_any = any(not g["reporte"] and FREEZE < when(g["date"]) - t <= dt.timedelta(minutes=a.figer_dans) for g in day)
+    fo = foreign_odds(a.jour, near_any) if any(when(g["date"]) - t > FREEZE for g in day) else {"matchs": []}
+    doc["cotes_etrangeres_releve_a"] = fo.get("releve_a")
+    erreurs = []
     for g in day:
         mid = f"hockey-{g['id']}"
         ko = when(g["date"])
@@ -448,7 +525,7 @@ def passage(a):
             od = json.load(open(o_fn))
             age = t - when(od["releve_a"])
             near = ko - t <= dt.timedelta(minutes=a.figer_dans)
-            need = age > ODDS_REFRESH or (near and age > dt.timedelta(minutes=30))
+            need = age > WINAMAX_REFRESH or (near and age > dt.timedelta(minutes=30))
         if need:
             try:
                 time.sleep(1.2)
@@ -473,8 +550,11 @@ def passage(a):
         one = next((L for L in lines if L["period"] == "fulltime" and L["type"] == "1x2"), None)
         if one:
             m["cotes_1n2"] = {"domicile": one["outcomes"].get("1"), "nul": one["outcomes"].get("X"), "exterieur": one["outcomes"].get("2")}
-        cands = candidates(m, lines, pr)
+        wc = candidates(m, lines, pr)
+        flines = foreign_lines(fo, g["dom"], g["ext"])
+        cands = wc + with_foreign(wc, candidates(m, flines, pr))
         m["nb_marches"] = len(lines)
+        m["nb_lignes_etrangeres"] = len(flines)
         for actor, blk in doc["acteurs"].items():
             cur = blk["positions"].get(mid)
             if cur and cur.get("fige"):
