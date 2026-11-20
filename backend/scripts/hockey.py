@@ -11,8 +11,8 @@ Acteurs (chacun garde ses 5 meilleures positions du jour dans son Top 5) :
 - m (le Mathématicien) : son choix avant match où le marché voit le plus de chances ;
 - test (le Sur-mesure Analytrack) : style tipster, jamais de victoire sèche : « équipe ou nul » (couverture des deux
   issues chez Winamax), handicap, totaux ; cote 1,50-2,00, plus forte chance du marché ;
-- surmesure (le Sur-mesure en test) : favori à petite cote (<= 1,45, chance >= 68 %) + total du même match,
-  cote du combiné 1,60-2,00 = produit des deux cotes, chance >= 50 %.
+- surmesure (le Sur-mesure en test) : favori à petite cote (vainqueur ou « équipe ou nul », <= 1,45, chance >= 68 %)
+  + total du même match, cote du combiné 1,60-2,00 = produit des deux cotes, chance >= 45 % (Vincent 20/11).
 Le Direct hockey viendra ensuite (cotes en direct à trouver).
 
 La journée hockey est la soirée américaine : les matchs de la nuit (Paris) comptent pour la veille.
@@ -343,14 +343,15 @@ def pick(actor: str, cands: list[dict]) -> dict | None:
         return best and {**best, "confiance": best["proba_marche"]}
     if actor == "surmesure":
         cands = [c for c in cands if c.get("cote_etrangere") is None]  # combinés : cotes Winamax
-        favs = [c for c in cands if c["famille"] in ("vainqueur", "equipe_ou_nul", "handicap") and c["cote"] <= 1.45 and c["proba_marche"] >= 0.68]
+        # Vincent 20/11 : favori = vainqueur ou « équipe ou nul » seulement, combiné accepté dès 45 % de chances
+        favs = [c for c in cands if c["famille"] in ("vainqueur", "equipe_ou_nul") and c["cote"] <= 1.45 and c["proba_marche"] >= 0.68]
         tots = [c for c in cands if c["famille"] == "total" and c["proba_marche"] >= 0.55]
         combos = []
         for f in favs:
             for t in tots:
                 cote = f["cote"] * t["cote"]
                 ch = f["proba_marche"] * t["proba_marche"]
-                if 1.60 <= cote <= 2.00 and ch >= 0.50:
+                if 1.60 <= cote <= 2.00 and ch >= 0.45:
                     combos.append({"pari": f"{f['pari']} et {t['pari'][0].lower()}{t['pari'][1:]}", "marche": "combine_meme_match",
                                    "cote": round(cote, 2), "proba_marche": round(ch, 4), "proba": None, "famille": "combine",
                                    "regle": {"jambes": [f, t], "cote_type": "produit des deux cotes"}, "confiance": round(ch, 4)})
