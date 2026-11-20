@@ -129,6 +129,8 @@ def parse(sport, pari, home, away):
     m = re.fullmatch(r"(.+) gagne (\d) sets? à (\d)", p)
     if m and side(m[1]):
         a, b = m[2], m[3]
+        if (a, b) == ("2", "0"):  # gagner 2-0 = handicap sets -1,5 (marché proposé en France)
+            return "spreads", (-1.5 if side(m[1]) == 1 else 1.5), str(side(m[1]))
         return "correctscore", 0.0, f"{a}:{b}" if side(m[1]) == 1 else f"{b}:{a}"
     return None
 
