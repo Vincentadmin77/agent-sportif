@@ -123,7 +123,7 @@ class HockeyModel:
             tot[i + j] = tot.get(i + j, 0) + v
             diff[i - j] = diff.get(i - j, 0) + v
         return {"lam": (a, b), "reg_1x2": (p1, px, p2), "vainqueur": (p1 + px * ot_home, p2 + px * (1 - ot_home)),
-                "total": tot, "ecart": diff, "pa": pa, "pb": pb}
+                "total": tot, "ecart": diff, "pa": pa, "pb": pb, "final": final}
 
 
 def p_over(pr: dict, line: float) -> float:

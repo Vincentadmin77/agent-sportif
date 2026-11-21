@@ -413,6 +413,24 @@ def score_final(g):
     return {"domicile": bd, "exterieur": be, "reg_domicile": rd, "reg_exterieur": re_, "apres": apres}
 
 
+def score_estime(pr, fige=False):
+    """Score estimé (Vincent 21/11) : score final le plus probable (prolongation comprise) chez le vainqueur attendu."""
+    vd, ve = pr["vainqueur"]
+    side = 1 if vd >= ve else -1
+    (i, j), v = max(((k, v) for k, v in pr["final"].items() if (k[0] - k[1]) * side > 0), key=lambda kv: kv[1])
+    return {"domicile": i, "exterieur": j, "proba": round(v, 4), "proba_issue": round(max(vd, ve), 4),
+            "issue": "domicile" if side == 1 else "exterieur", "fige": bool(fige)}
+
+
+def settle_score_estime(m):
+    se, f = m.get("score_estime"), m.get("score_final")
+    if not se or not f or m.get("statut") != "termine":
+        return
+    gagnant = "domicile" if f["domicile"] > f["exterieur"] else "exterieur"
+    se["resultat"] = "reussi" if gagnant == se["issue"] else "rate"
+    se["score_exact"] = (f["domicile"], f["exterieur"]) == (se["domicile"], se["exterieur"])
+
+
 def refresh_status(doc, games_by_id):
     for mid, m in doc["matchs"].items():
         g = games_by_id.get(m["espn_id"])
@@ -431,6 +449,8 @@ def refresh_status(doc, games_by_id):
 
 
 def apply_results(doc):
+    for m in doc["matchs"].values():
+        settle_score_estime(m)
     for actor, block in doc["acteurs"].items():
         for mid, p in block["positions"].items():
             if not p.get("pari"):
@@ -550,6 +570,8 @@ def passage(a):
             m["modele"] = {"buts_attendus": {"domicile": round(a_, 2), "exterieur": round(b_, 2)},
                            "proba_60min": {"domicile": round(p1, 3), "nul": round(px, 3), "exterieur": round(p2, 3)},
                            "proba_vainqueur": {"domicile": round(pr["vainqueur"][0], 3), "exterieur": round(pr["vainqueur"][1], 3)}}
+            if not m.get("score_estime", {}).get("fige"):
+                m["score_estime"] = score_estime(pr, when(m["coup_envoi"]) - now() <= dt.timedelta(minutes=50))
         m["cotes_releve_a"] = od["releve_a"]
         one = next((L for L in lines if L["period"] == "fulltime" and L["type"] == "1x2"), None)
         if one:
