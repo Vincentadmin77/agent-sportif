@@ -299,8 +299,10 @@ def main() -> None:
         try:
             if run_once(a, surf) or a.once:
                 return
-        except Exception as e:  # a network or API hiccup must not stop the loop
+        except (Exception, MemoryError) as e:  # a network or API hiccup must not stop the loop
             print("erreur, nouvel essai au prochain tour:", type(e).__name__, e, flush=True)
+            import traceback
+            traceback.print_exc()
         end = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=PARIS) + timedelta(days=1, hours=2, minutes=30)
         if datetime.now(PARIS) > end:
             print("fin de journée", flush=True)
