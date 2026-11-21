@@ -105,6 +105,29 @@ def settle(choix: dict, m: bt.Match) -> None:
             choix["resultat"] = "gagne" if w else "perdu"
 
 
+def score_estime(pm: float, best_of: int, frozen: bool, old: dict | None, started: bool) -> dict:
+    """Trial (site, owner 2026-11-21): the most likely score in sets, read from the frozen model's own set-score
+    distribution (elo.set_scores). Display only, never a position; kept as it was once frozen or started."""
+    if old and (old.get("fige") or started):
+        return {**old, "fige": True}
+    probs = elo.set_scores(pm, best_of)
+    best = max(probs, key=probs.get)
+    a, b = (int(x) for x in best.split("-"))
+    return {"domicile": a, "exterieur": b, "issue": "domicile" if a > b else "exterieur",
+            "proba": round(probs[best], 3), "fige": frozen or started}
+
+
+def settle_score(se: dict, m: bt.Match) -> None:
+    """reussi/rate on the winner, score_exact on the sets; a match not played gets "annule"."""
+    if m.status in ("Walk Over", "Cancelled"):
+        se["resultat"] = "annule"
+    elif m.status in ("Finished", "Retired") and m.a_won is not None:
+        se["resultat"] = "reussi" if (se["issue"] == "domicile") == m.a_won else "rate"
+        played = [(x, y) for x, y in m.sets if x or y]
+        won = (sum(x > y for x, y in played), sum(y > x for x, y in played))
+        se["score_exact"] = m.status == "Finished" and won == (se["domicile"], se["exterieur"])
+
+
 def label(key: tuple, m: bt.Match) -> str:
     who = {"Home": m.name_a, "Away": m.name_b}
     mk = key[0]
@@ -246,6 +269,9 @@ def main() -> None:
                 choix_m = choix_du_m(cands, m, frozen)
             if choix_m:
                 settle(choix_m, m)
+            se = score_estime(pm, m.best_of, frozen, (before.get(m.key) or {}).get("score_estime"), started)
+            if "resultat" not in se:
+                settle_score(se, m)
             report.append({
                 "id": m.key, "circuit": tour, "heure_paris": raw.get("event_time"), "tournoi": m.tournament,
                 "tour": raw.get("tournament_round"), "surface": m.surface, "sets_gagnants": m.best_of // 2 + 1,
@@ -256,6 +282,7 @@ def main() -> None:
                 "aces_attendus": [round(ea, 1), round(eb, 1)] if ea is not None else None,
                 "choix": choix, "m": choix_m, "nb_marches_cotes": len(mk),
                 "m_direct": (before.get(m.key) or {}).get("m_direct"),  # written by tennis_direct.py, kept
+                "score_estime": se,
                 "marches_matin": seen,
                 "enquete": enq.rapport(m),
             })

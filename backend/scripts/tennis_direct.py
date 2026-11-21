@@ -251,7 +251,7 @@ def run_once(a, history_surf) -> bool:
             print("alerte M:", e, flush=True)
     # Results of the day's positions (official choice, Le M before the match, Le M in play) as soon as a match ends.
     fields = ("choix", "m", "m_direct")
-    open_ = [m for m in data["matchs"] if any(m.get(f) and "resultat" not in m[f] for f in fields)]
+    open_ = [m for m in data["matchs"] if any(m.get(f) and "resultat" not in m[f] for f in fields + ("score_estime",))]
     if open_:
         surf = history_surf
         day = datetime.strptime(data["date"], "%Y-%m-%d").date()
@@ -271,6 +271,13 @@ def run_once(a, history_surf) -> bool:
                             row["score"] = (raw.get("event_final_result") or "").replace(" ", "")
                             row["statut_match"] = raw.get("event_status")
                             changed = True
+                se = row.get("score_estime")
+                if se and "resultat" not in se:  # trial score in sets (display only)
+                    tj.settle_score(se, match)
+                    if "resultat" in se:
+                        row["score"] = (raw.get("event_final_result") or "").replace(" ", "")
+                        row["statut_match"] = raw.get("event_status")
+                        changed = True
     if changed:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=1))
     return changed
