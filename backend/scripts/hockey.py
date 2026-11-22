@@ -226,7 +226,7 @@ def foreign_odds(jour: str, need_fresh: bool) -> dict:
             return old
     try:
         q = urllib.parse.urlencode({"apiKey": os.environ["THE_ODDS_API_KEY"], "regions": "eu",
-                                    "markets": "totals,spreads", "oddsFormat": "decimal"})
+                                    "markets": "totals,spreads,h2h", "oddsFormat": "decimal"})
         data = json.load(urllib.request.urlopen(f"{ODDS_API}?{q}", timeout=60))
         new = {"releve_a": iso(now()), "matchs": data}
         json.dump(new, open(fn, "w"))
@@ -263,6 +263,25 @@ def foreign_lines(fo: dict, dom: str, ext: str) -> list[dict]:
             out.append({"period": "result", "type": ty, "hcp": h,
                         "outcomes": {k: statistics.median(v) for k, v in oc.items()}, "sites": min(len(v) for v in oc.values())})
     return out
+
+
+def foreign_h2h(fo: dict, dom: str, ext: str) -> dict | None:
+    """Cote vainqueur prolongation et tirs au but compris (h2h NHL) : médiane des sites, 2 au moins par équipe."""
+    import statistics
+    g = next((x for x in fo.get("matchs", []) if same(x["home_team"], dom) and same(x["away_team"], ext)), None)
+    if not g:
+        return None
+    acc = {"domicile": [], "exterieur": []}
+    for b in g.get("bookmakers", []):
+        if b["key"] in ("betfair_ex_eu", "matchbook"):
+            continue
+        for mk in b.get("markets", []):
+            if mk["key"] == "h2h" and len(mk["outcomes"]) == 2:
+                for o in mk["outcomes"]:
+                    acc["domicile" if o["name"] == g["home_team"] else "exterieur"].append(o["price"])
+    if all(len(v) >= 2 for v in acc.values()):
+        return {k: round(statistics.median(v), 2) for k, v in acc.items()}
+    return None
 
 
 def with_foreign(win_cands: list[dict], etr_cands: list[dict]) -> list[dict]:
@@ -572,6 +591,9 @@ def passage(a):
                            "proba_vainqueur": {"domicile": round(pr["vainqueur"][0], 3), "exterieur": round(pr["vainqueur"][1], 3)}}
             if not m.get("score_estime", {}).get("fige"):
                 m["score_estime"] = score_estime(pr, when(m["coup_envoi"]) - now() <= dt.timedelta(minutes=50))
+                h2h = foreign_h2h(fo, g["dom"], g["ext"])  # Vincent 22/11 : cote du vainqueur estimé, prolongation comprise
+                if h2h and h2h.get(m["score_estime"]["issue"]):
+                    m["score_estime"]["cote"] = h2h[m["score_estime"]["issue"]]
         m["cotes_releve_a"] = od["releve_a"]
         one = next((L for L in lines if L["period"] == "fulltime" and L["type"] == "1x2"), None)
         if one:
