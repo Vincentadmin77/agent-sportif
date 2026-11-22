@@ -149,7 +149,7 @@ def test_build_doc_follows_the_page_format():
     assert doc["jour"] == "2026-10-27" and doc["statut"] == "a_venir" and doc["score"] is None
     assert doc["coup_envoi"] == "2026-10-27T23:30:00Z"
     assert doc["passages"] == {"h3": now.isoformat(), "analyse": now.isoformat()}
-    assert doc["score_estime"] == {"domicile": 118, "exterieur": 100}  # 118.5 rounds half to even
+    assert doc["score_estime"] == {"domicile": 118, "exterieur": 100, "cote": 1.15}  # 118.5 rounds half to even
     assert doc["proba_1x2"]["domicile"] > 0.9
     assert abs(doc["proba_1x2"]["domicile"] + doc["proba_1x2"]["exterieur"] - 1) < 1e-3
     assert doc["cotes_1x2"] == {"domicile": 1.15, "exterieur": 5.88}  # median of the books, not the best
