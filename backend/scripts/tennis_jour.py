@@ -105,16 +105,32 @@ def settle(choix: dict, m: bt.Match) -> None:
             choix["resultat"] = "gagne" if w else "perdu"
 
 
-def score_estime(pm: float, best_of: int, frozen: bool, old: dict | None, started: bool) -> dict:
+def cote_vainqueur(mk: dict, issue: str) -> float | None:
+    """Best pre-match price of the estimated winner (same reading as a position's "cote"); no site name."""
+    books = mk.get(("vainqueur", "Home" if issue == "domicile" else "Away")) or []
+    return max(books) if books else None
+
+
+def score_estime(pm: float, best_of: int, frozen: bool, old: dict | None, started: bool, mk: dict | None = None) -> dict:
     """Trial (site, owner 2026-11-21): the most likely score in sets, read from the frozen model's own set-score
-    distribution (elo.set_scores). Display only, never a position; kept as it was once frozen or started."""
+    distribution (elo.set_scores). Display only, never a position; kept as it was once frozen or started.
+    "cote" (owner 2026-11-22): the estimated winner's pre-match price, frozen with the score."""
     if old and (old.get("fige") or started):
-        return {**old, "fige": True}
+        se = {**old, "fige": True}
+        if se.get("cote") is None and mk:  # filled once for a score frozen before the price existed (pre-match odds)
+            c = cote_vainqueur(mk, se["issue"])
+            if c:
+                se["cote"] = c
+        return se
     probs = elo.set_scores(pm, best_of)
     best = max(probs, key=probs.get)
     a, b = (int(x) for x in best.split("-"))
-    return {"domicile": a, "exterieur": b, "issue": "domicile" if a > b else "exterieur",
-            "proba": round(probs[best], 3), "fige": frozen or started}
+    issue = "domicile" if a > b else "exterieur"
+    se = {"domicile": a, "exterieur": b, "issue": issue, "proba": round(probs[best], 3), "fige": frozen or started}
+    c = cote_vainqueur(mk or {}, issue)
+    if c:
+        se["cote"] = c
+    return se
 
 
 def settle_score(se: dict, m: bt.Match) -> None:
@@ -269,7 +285,7 @@ def main() -> None:
                 choix_m = choix_du_m(cands, m, frozen)
             if choix_m:
                 settle(choix_m, m)
-            se = score_estime(pm, m.best_of, frozen, (before.get(m.key) or {}).get("score_estime"), started)
+            se = score_estime(pm, m.best_of, frozen, (before.get(m.key) or {}).get("score_estime"), started, mk)
             if "resultat" not in se:
                 settle_score(se, m)
             report.append({
