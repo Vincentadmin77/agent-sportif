@@ -220,6 +220,8 @@ def run_once(a, history_surf) -> bool:
             continue  # never before the first game is over
         done, cur, a_serving, played = st
         best_of = row["sets_gagnants"] * 2 - 1
+        if max(sum(x > y for x, y in done), sum(y > x for x, y in done)) >= row["sets_gagnants"]:
+            continue  # match already won but still listed live: nothing to price (pricing it never ended, 22/11)
         tour = row["circuit"]
         pm = row["proba_victoire_j1"]
         dist_g = elo.live_distribution(pm, best_of, tour, done, cur, a_serving)
