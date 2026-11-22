@@ -446,6 +446,9 @@ def build_doc(comp: str, game: dict, pred: Prediction | None, odds_entry: dict |
     win = {r["selection"]: r["cote_mediane"] for r in rows if r["marche_cle"] == "winner"}
     if {"home", "away"} <= win.keys():
         doc["cotes_1x2"] = {"domicile": win["home"], "exterieur": win["away"]}
+    if doc.get("cotes_1x2"):  # 22/11 (owner): the price of the estimated winner (overtime included), shown by the site
+        side = "domicile" if hp > ap else "exterieur"
+        doc["score_estime"]["cote"] = doc["cotes_1x2"][side]
     # house closing odds: rewritten at every pass before tip-off, so the last one (45 min before) is the closing line,
     # to measure the model against the market over the coming weeks
     doc["cotes_cloture"] = {"maj": now.isoformat(), "lignes": [
