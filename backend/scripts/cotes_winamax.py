@@ -55,10 +55,11 @@ def get(budget, path, **q):
     for _ in range(3):
         budget.add()
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; releve-cotes/1.0)"})
+            with urllib.request.urlopen(req, timeout=60) as r:
                 d = json.load(r)
         except urllib.error.HTTPError as e:
-            if e.code == 429:
+            if e.code in (429, 403):
                 time.sleep(3)
                 continue
             raise
