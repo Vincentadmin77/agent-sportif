@@ -59,8 +59,8 @@ def get(budget, path, **q):
             with urllib.request.urlopen(req, timeout=60) as r:
                 d = json.load(r)
         except urllib.error.HTTPError as e:
-            if e.code in (429, 403):
-                time.sleep(3)
+            if e.code == 429:
+                time.sleep(10)
                 continue
             raise
         if isinstance(d, dict) and (d.get("error") or {}).get("code") == "RATE_LIMITED":
@@ -186,15 +186,20 @@ def main():
                     erreurs.append(str(e)); fixtures[sport] = []
         home, _, away = p["match"].partition(" - ")
         ko = dt.datetime.fromisoformat(p["coup_envoi"].replace("Z", "+00:00"))
-        fx, swap = None, False
+        # le match le plus proche de notre heure, pas encore commencé (statusId 0), de préférence
+        cands = []
         for f in fixtures[sport]:
             ft = dt.datetime.fromisoformat(f["startTime"].replace("Z", "+00:00"))
-            if abs((ft - ko).total_seconds()) > 3 * 3600:
+            gap = abs((ft - ko).total_seconds())
+            if gap > 3 * 3600:
                 continue
-            if same_name(home, f["participant1Name"]) and same_name(away, f["participant2Name"]):
-                fx = f; break
-            if same_name(home, f["participant2Name"]) and same_name(away, f["participant1Name"]):
-                fx, swap = f, True; break
+            noms = f"{f.get('participant1Name','')} {f.get('participant2Name','')} {f.get('tournamentName','')}"
+            if re.search(r"\bSRL\b|esoccer|ebasketball|cyber", noms, re.I):
+                continue  # ligues simulées (e-sport), pas le vrai match
+            if (same_name(home, f["participant1Name"]) and same_name(away, f["participant2Name"])) or \
+               (same_name(home, f["participant2Name"]) and same_name(away, f["participant1Name"])):
+                cands.append((f.get("statusId", 0) != 0, not f.get("hasOdds", True), gap, f))
+        fx = min(cands, key=lambda c: c[:3])[3] if cands else None
         if not fx:
             rec["winamax_etat"] = "match introuvable"
             continue
@@ -204,7 +209,7 @@ def main():
             rec["winamax_etat"] = "marché non lu"
             continue
         if fx["fixtureId"] not in odds:
-            time.sleep(1.2)  # OddsPapi limite les requêtes rapprochées
+            time.sleep(2.5)  # OddsPapi limite les requêtes rapprochées
             try:
                 d = get(budget, "/odds", fixtureId=fx["fixtureId"], bookmakers=BOOK)
                 odds[fx["fixtureId"]] = ((d.get("bookmakerOdds") or {}).get(BOOK) or {}).get("markets") or {}

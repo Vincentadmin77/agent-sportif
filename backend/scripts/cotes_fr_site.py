@@ -9,6 +9,8 @@ for k, r in d["positions"].items():
     v = {"e": code.get(r.get("etat"), "ni")}
     if r.get("cote_fr_moyenne"): v["m"] = r["cote_fr_moyenne"]
     if (r.get("cotes_fr") or {}).get("winamax_fr"): v["w"] = r["cotes_fr"]["winamax_fr"]
-    if f"{mid}|{pari}" not in pos or v["e"] == "ok": pos[f"{mid}|{pari}"] = v
+    if (r.get("winamax") or {}).get("cote"):  # relevé Winamax direct (prioritaire)
+        v["w"] = r["winamax"]["cote"]; v["e"] = "ok"; v.setdefault("m", v["w"])
+    if f"{mid}|{pari}" not in pos or "w" in v or (v["e"] == "ok" and "w" not in pos[f"{mid}|{pari}"]): pos[f"{mid}|{pari}"] = v
 json.dump({"jour": d["jour"], "maj": d.get("maj_winamax") if (d.get("maj_winamax") or "") > (d.get("maj") or "") else d.get("maj"), "pos": pos}, open(sys.argv[3], "w"), ensure_ascii=False)
 print(len(pos), "positions")
