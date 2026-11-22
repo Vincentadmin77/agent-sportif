@@ -283,6 +283,9 @@ def run_once(a, history_surf) -> bool:
     return changed
 
 
+_RESERVE = bytearray(200_000_000)  # released on a MemoryError to log where it happened
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", required=True)
@@ -300,9 +303,14 @@ def main() -> None:
             if run_once(a, surf) or a.once:
                 return
         except (Exception, MemoryError) as e:  # a network or API hiccup must not stop the loop
+            global _RESERVE
+            _RESERVE = None  # frees room so the traceback of a MemoryError can be printed
             print("erreur, nouvel essai au prochain tour:", type(e).__name__, e, flush=True)
             import traceback
-            traceback.print_exc()
+            traceback.print_exc(limit=12)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            _RESERVE = bytearray(200_000_000)
         end = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=PARIS) + timedelta(days=1, hours=2, minutes=30)
         if datetime.now(PARIS) > end:
             print("fin de journée", flush=True)
