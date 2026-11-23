@@ -556,6 +556,8 @@ def passage(a):
                 p = blk["positions"].get(mid)
                 if p and p.get("pari"):
                     p["fige"] = True
+            if m.get("score_estime"):
+                m["score_estime"]["fige"] = True  # score estimé figé avec les positions
             continue  # trop tard pour changer : positions figées telles quelles
         fx = next((f for f in fixtures if same(f["participant1Name"], g["dom"]) and same(f["participant2Name"], g["ext"])), None)
         if not fx:
