@@ -31,6 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 TENNIS = "https://api.api-tennis.com/tennis/"
 MAX_PLACES = 5
+# Vincent 2026-11-26 : en tennis on ne garde que le Mathématicien. Le Sur-mesure en test tennis ne choisit plus
+# rien à partir de ce jour ; « regler » continue pour les positions déjà figées. Le passé reste intact.
+ARRET = "2026-11-26"
 ODDS_MIN, ODDS_MAX = 1.60, 2.00
 FAV_MAX, FAV_CHANCE = 1.45, 0.68
 MIN_CHANCE = 0.50
@@ -200,6 +203,11 @@ def passage(day: str, tennis_doc: dict, doc: dict, now: datetime, exiger_fr: boo
     for p in kept:
         p["fige"] = True
     taken = {p["match_id"] for p in kept}
+    if day >= ARRET:
+        doc["arrete"] = "Arrêté le 26/11/2026 : en tennis, seul le Mathématicien est gardé."
+        doc["positions"] = kept
+        doc["maj"] = now.isoformat(timespec="minutes")
+        return _ratio(doc)
     odds = _api(method="get_odds", date_start=day, date_stop=day).get("result") or {}
     fr = french_quotes(now)
     pool, scanned = [], []

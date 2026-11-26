@@ -32,8 +32,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 API = "https://v3.football.api-sports.io/"
 MAX_PLACES = 5
 # Vincent 2026-11-26 : en foot on ne garde que le spécialiste. Plus de Sur-mesure foot à partir de ce jour
-# (le passé reste dans la base, jamais réécrit). Basket et tennis continuent.
+# (le passé reste dans la base, jamais réécrit). Même jour, en tennis seul le Mathématicien est gardé : plus de
+# Sur-mesure tennis. Seul le basket continue ici (le Sur-mesure Analytrack basket).
 ARRET_FOOT = "2026-11-26"
+ARRET_TENNIS = "2026-11-26"
 ODDS_MIN, ODDS_MAX = 1.60, 2.00
 MIN_CHANCE = 0.55  # both teams score, first-half goals, draw no bet
 MIN_CHANCE_COMBO = 0.50  # same-match combos (team or draw + goals, team + goals)
@@ -445,7 +447,7 @@ def passage(day: str, leagues: list[int], doc: dict, now: datetime, tennis_doc: 
                             f"(cote {_fmt(round(b['cote'], 2))}). Forme sur 5 matchs (du plus récent) : "
                             f"{x['home']} {fh or '?'}, {x['away']} {fa or '?'}.{how}"),
             "resultat": None, "fige": False, "choisi_a": now.isoformat(timespec="minutes")})
-    fresh += passage_tennis(day, tennis_doc, kept, now) if tennis_doc else []
+    fresh += passage_tennis(day, tennis_doc, kept, now) if tennis_doc and day < ARRET_TENNIS else []
     fresh += passage_basket(day, basket_doc, kept, now) if basket_doc else []
     doc["positions"] = kept + fresh
     doc["matchs_etudies"] = sorted(set(doc.get("matchs_etudies") or []) | set(scanned))

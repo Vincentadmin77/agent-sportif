@@ -18,7 +18,7 @@ def test_top5_keeps_only_foot_specialist_from_26_11():
     d = top5.build("2026-11-26", {}, {}, {}, {}, NOW)
     assert set(d["foot"]) == {"specialiste"}
     assert "basket" not in d
-    assert set(d["tennis"]) == {"modele", "m", "specialiste", "test"}
+    assert "tennis" not in d
     before = top5.build("2026-11-25", {}, {}, {}, {}, NOW)
     assert set(before["foot"]) == {"modele", "m", "specialiste", "test"}
 
@@ -27,7 +27,7 @@ def test_finale_keeps_only_basket_surmesure_from_26_11():
     d = top5.build_finale("2026-11-26", {}, {}, {}, {}, NOW)
     assert "foot" not in d
     assert set(d["basket"]) == {"test"}
-    assert set(d["tennis"]) == {"finale", "test"}
+    assert "tennis" not in d
 
 
 def test_live_notes_stop_for_foot():
