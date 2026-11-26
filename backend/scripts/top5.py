@@ -25,6 +25,12 @@ FREEZE = timedelta(minutes=45)
 SPORTS = ("foot", "basket", "tennis")
 # actors removed by the owner, per sport (Vincent 2026-11-08 12:01Z: basket specialist V2 removed)
 RETIRES = {"basket": {"specialiste"}}
+# Vincent 2026-11-26 : un seul acteur par sport. Foot = le spécialiste seul ; basket = le Sur-mesure Analytrack seul
+# (la liste « test » de la Version finale). Plus de nouvelles listes pour les autres à partir de ce jour ; le passé
+# reste dans la base, jamais réécrit. Tennis pas encore décidé : inchangé.
+ARRET_DU = "2026-11-26"
+GARDES_TOP5 = {"foot": {"specialiste"}, "basket": set()}  # Top 5 par acteur encore construits, par sport arrêté
+GARDES_FINALE = {"foot": set(), "basket": {"test"}}      # listes de la Version finale encore construites
 REGLES = {
     "modele": "Ses 5 positions de plus forte confiance (modèle et marché à parts égales), une par match.",
     "m": "Ses 5 choix avant match où le marché voit le plus de chances, une par match.",
@@ -166,11 +172,15 @@ def build(jour, reg, spe, test, prev, now, retro=False) -> dict:
         for a, regle in REGLES.items():
             if a in RETIRES.get(s, ()):
                 continue
+            if jour >= ARRET_DU and s in GARDES_TOP5 and a not in GARDES_TOP5[s]:
+                continue
             pool = [c for c in cands[s][a] if _in_range(s, c, a)]
             ps = pick(pool, ((prev.get(s) or {}).get(a) or {}).get("positions"), now, retro)
             if s in ODDS_SPORT and jour >= ODDS_SPORT_FROM and a != "test":
                 regle = regle.rstrip(".") + ", cote de 1,70 à 2,00."
             doc[s][a] = {"regle": regle, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
+        if not doc[s]:
+            del doc[s]
     return doc
 
 
@@ -199,6 +209,8 @@ def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
     for s, actors in FINALE.items():
         doc[s] = {}
         for a, (mn, regle) in actors.items():
+            if jour >= ARRET_DU and s in GARDES_FINALE and a not in GARDES_FINALE[s]:
+                continue
             if s == "basket" and a == "m" and jour < ODDS_SPORT_FROM:
                 regle = "Le M : ses 5 choix avant match où le marché voit le plus de chances, sans filtre de cote."
             pool = [c for c in cands[s][a] if c["cote"] >= mn and _in_range(s, c, a)]
@@ -206,6 +218,12 @@ def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
             ps = pick(pool, ((prev.get(s) or {}).get(key0) or {}).get("positions"), now, retro)
             key = "test" if a == "test" else "finale"  # the page reads the kept list under « finale »
             doc[s][key] = {"regle": regle, "acteur": a, "positions": ps, "ratio": ratio(ps), "candidats": len(pool)}
+        if not doc[s]:
+            del doc[s]
+    if jour >= ARRET_DU:
+        doc["regle"] = ("Un seul acteur par sport depuis le 26/11 : en basket, le Sur-mesure Analytrack (5 positions au "
+                        "plus, une par match, figées 45 min avant le début) ; en tennis, inchangé. En foot, seul le "
+                        "spécialiste est gardé (il n'est pas dans cette liste).")
     return doc
 
 

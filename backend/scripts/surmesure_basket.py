@@ -37,6 +37,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BASKET = "https://v1.basketball.api-sports.io/"
 MAX_PLACES = 5
+# Vincent 2026-11-26 : en basket on ne garde que le Sur-mesure Analytrack. Le Sur-mesure en test basket ne choisit
+# plus rien à partir de ce jour ; « regler » continue pour les positions déjà figées. Le passé reste intact.
+ARRET = "2026-11-26"
 ODDS_MIN, ODDS_MAX = 1.70, 2.00  # 1.70: owner 2026-11-19, foot principle (was 1.60)
 FAV_MAX = 1.45          # « petite cote »
 FAV_CHANCE = 0.68       # « favori net » for the market
@@ -148,6 +151,9 @@ def passage(day: str, basket_doc: dict, doc: dict, now: datetime) -> dict:
         p["fige"] = True
     taken = {p["match_id"] for p in kept}
     games, pool, scanned = list((basket_doc.get("paris_retenus") or {}).values()), [], []
+    if day >= ARRET:
+        doc["arrete"] = "Arrêté le 26/11/2026 : en basket, seul le Sur-mesure Analytrack est gardé."
+        games = []
     for g in games:
         mid, ko = str(g["match_id"]), g["coup_envoi"].replace("Z", "+00:00")
         if mid in taken or now >= datetime.fromisoformat(ko) - FREEZE:
