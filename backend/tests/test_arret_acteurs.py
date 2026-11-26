@@ -30,6 +30,8 @@ def test_finale_keeps_only_basket_surmesure_from_26_11():
     assert "tennis" not in d
 
 
-def test_live_notes_stop_for_foot():
-    doc = {"live_a_blanc": [{"pari": "x"}]}
-    assert R.capture_live(doc, [], 10, NOW) == [{"pari": "x"}]
+def test_m_selection_drops_foot_and_basket_from_26_11():
+    reg = {"jour": "2026-11-26", "fiches": {}, "selection_m": [
+        {"sport": "foot", "match_id": 1, "pari": "a", "coup_envoi": "2026-11-26T20:00:00Z"}]}
+    out = R.selection_m(reg, {"jour": "2026-11-26"}, NOW)
+    assert out["selection_m"] == [] and not out.get("selection_m_retires")
