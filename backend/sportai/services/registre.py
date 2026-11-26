@@ -325,6 +325,8 @@ def _in_his_match(row: dict) -> bool:
 def capture_live(doc: dict, rows: list[dict], minute: float, now: datetime) -> list[dict]:
     """The doc's "live_a_blanc" list after one live cycle: each target noted once, the first time it is worth it."""
     noted = list(doc.get("live_a_blanc") or [])
+    if now.astimezone(timezone.utc).date().isoformat() >= ARRET_DU:  # Le Direct foot stopped (owner 2026-11-26)
+        return noted
     if minute > LIVE_MAX_MINUTE:
         return noted
     seen, tg = {n["pari"] for n in noted}, targets(doc)
@@ -1069,6 +1071,13 @@ def _pick_result(c: dict, reg: dict, pron: dict, bpron: dict | None, tdoc: dict 
     return None
 
 
+# Vincent 2026-11-26: one actor per sport. In foot only the specialist is kept, in basket only the Sur-mesure
+# Analytrack: the M no longer picks foot or basket positions for its selection, and the foot live notes (Le Direct)
+# stop. Tennis unchanged. Past days are never rewritten.
+ARRET_DU = "2026-11-26"
+SPORTS_ARRETES = ("foot", "basket")
+
+
 def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None, tdoc: dict | None = None) -> dict:
     """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
     cands = selection_candidates(reg, pron, bpron, tdoc)
@@ -1081,6 +1090,10 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
         ko = _aware(str(c.get("coup_envoi") or "").replace("Z", "+00:00"))
         return bool(ko and now >= ko)
 
+    jour = str(reg.get("jour") or pron.get("jour") or "")
+    if jour >= ARRET_DU:  # foot and basket stopped (owner 2026-11-26): only already-started picks stay
+        cands = [c for c in cands if c["sport"] not in SPORTS_ARRETES]
+        prev = [c for c in prev if c["sport"] not in SPORTS_ARRETES or started(c)]
     kept = [c for c in prev if started(c)]
     if not kept:  # a lost copy of the day (rewritten without its selection): replay the picks frozen at each kick-off
         kept = [{**c, "rejoue": True} for c in _replay_locked(cands, now, v03, v04)]
