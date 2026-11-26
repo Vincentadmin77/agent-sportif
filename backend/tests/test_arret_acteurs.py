@@ -18,7 +18,7 @@ def test_top5_keeps_only_foot_specialist_from_26_11():
     d = top5.build("2026-11-26", {}, {}, {}, {}, NOW)
     assert set(d["foot"]) == {"specialiste"}
     assert "basket" not in d
-    assert "tennis" not in d
+    assert set(d["tennis"]) == {"m"}
     before = top5.build("2026-11-25", {}, {}, {}, {}, NOW)
     assert set(before["foot"]) == {"modele", "m", "specialiste", "test"}
 
