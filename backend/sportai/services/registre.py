@@ -448,7 +448,19 @@ def _m_pass(m: dict) -> dict:
     return {"pari": None, "raison": _pass_reason(best), "meilleure_option": best}
 
 
+def _m_stopped(reg: dict, sport: str) -> bool:
+    """From 26/11 the M no longer chooses in foot or basket (owner): its day's choices are dropped."""
+    if str(reg.get("jour") or "") < ARRET_DU:
+        return False
+    for rid in [k for k, f in (reg.get("fiches") or {}).items()
+                if k.endswith("|M") and (f.get("sport") or ("basket" if "|basket-" in k else "foot")) == sport]:
+        del reg["fiches"][rid]
+    return True
+
+
 def m_records(reg: dict, matchs: dict[str, dict], now: datetime, code_version: str) -> dict:
+    if _m_stopped(reg, "foot"):
+        return reg
     for mid, m in matchs.items():
         if m.get("jour") != reg.get("jour"):
             continue
@@ -580,6 +592,8 @@ def avis_records(reg: dict, pron: dict, matchs: dict[str, dict], now: datetime, 
         elif ko and now >= ko:
             _resync_frozen(a, off)
         mf = reg["fiches"].get(f"{reg['jour']}|{mid}|M")
+        if mf is None and str(reg.get("jour") or "") >= ARRET_DU:
+            a.pop("choix_m", None)
         if mf is not None:
             a["choix_m"] = _m_side(mf)
             if sport == "foot":
@@ -684,6 +698,8 @@ def basket_m_choice(bm: dict) -> dict:
 
 
 def basket_m_records(reg: dict, bmatchs: dict[str, dict], now: datetime, code_version: str) -> dict:
+    if _m_stopped(reg, "basket"):
+        return reg
     for mid, bm in bmatchs.items():
         if bm.get("jour") != reg.get("jour"):
             continue
@@ -773,6 +789,8 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
         else:
             _resync_frozen(a, p)
         mf = reg["fiches"].get(f"{reg['jour']}|basket-{mid}|M")
+        if mf is None and str(reg.get("jour") or "") >= ARRET_DU:
+            a.pop("choix_m", None)
         if mf is not None:
             a["choix_m"] = _m_side(mf)
             _explain(a, "choix_m", EXPL.basket, bm, a.get("officielle"))

@@ -35,3 +35,12 @@ def test_m_selection_drops_foot_and_basket_from_26_11():
         {"sport": "foot", "match_id": 1, "pari": "a", "coup_envoi": "2026-11-26T20:00:00Z"}]}
     out = R.selection_m(reg, {"jour": "2026-11-26"}, NOW)
     assert out["selection_m"] == [] and not out.get("selection_m_retires")
+
+
+def test_m_no_longer_chooses_foot_or_basket_from_26_11():
+    reg = {"jour": "2026-11-26", "fiches": {"2026-11-26|1|M": {"sport": "foot"},
+                                             "2026-11-26|basket-2|M": {"sport": "basket"},
+                                             "2026-11-26|t-3|M": {"sport": "tennis"}}}
+    R.m_records(reg, {"9": {"jour": "2026-11-26"}}, NOW, "x")
+    R.basket_m_records(reg, {}, NOW, "x")
+    assert list(reg["fiches"]) == ["2026-11-26|t-3|M"]
