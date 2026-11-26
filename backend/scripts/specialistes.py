@@ -1,7 +1,7 @@
 """The three sport specialists, à blanc (docs/25-specialistes.md): one choice per match, own ratio per sport, never
 published, never in the official or the M's ratio.
 
-    python scripts/specialistes.py --page PAGE --out OUT [--jour 2026-10-31] [--no-tennis]
+    python scripts/specialistes.py --page PAGE --out OUT [--jour 2026-10-31] [--no-tennis] [--foot-seul]
 
 PAGE holds the page's collections as ArtifactData `list` saves them: matchs/ and basket_matchs/ (the day's documents),
 specialistes/ (the earlier days, for the running ratio). Football and basketball read the match documents the
@@ -199,13 +199,15 @@ def _tennis_option(opt, pr, m, known, bt, label, settle) -> dict | None:
 BASKET_STOP = "2026-11-08"
 
 
-def bilan(days: dict[str, dict]) -> dict:
+def bilan(days: dict[str, dict], sports=("foot", "basket", "tennis")) -> dict:
     out, tous = {}, {}
-    for sport in ("foot", "basket", "tennis"):
+    for sport in sports:
         rows = [c for d in days.values() for c in (d.get(sport) or {}).values()]
         out[sport] = S.ratio(rows)
         tous[sport] = S.ratio_tous(rows)
-    return {"ratio": out, "ratio_tous": tous, "jours": sorted(days), "note": "À blanc : jamais publié, hors ratio officiel et hors ratio du M."}
+    note = ("Le spécialiste foot (seul spécialiste gardé depuis le 26/11)." if sports == ("foot",)
+            else "À blanc : jamais publié, hors ratio officiel et hors ratio du M.")
+    return {"ratio": out, "ratio_tous": tous, "jours": sorted(days), "note": note}
 
 
 def main() -> None:
@@ -214,6 +216,8 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--jour")
     ap.add_argument("--no-tennis", action="store_true")
+    ap.add_argument("--foot-seul", action="store_true",
+                    help="Vincent 26/11: only the foot specialist is kept; basket/tennis stopped and their history erased")
     a = ap.parse_args()
     now = datetime.now(timezone.utc)
     paris = now.astimezone(PARIS)
@@ -232,14 +236,20 @@ def main() -> None:
             doc["tennis"] = tennis(day, prev.get("tennis") or {}, now)
         except Exception as e:  # noqa: BLE001 - the other two sports are still written
             doc["erreur_tennis"] = str(e)[:300]
-    doc["ratio"] = {s: S.ratio(list(doc[s].values())) for s in ("foot", "basket", "tennis")}
-    doc["ratio_tous"] = {s: S.ratio_tous(list(doc[s].values())) for s in ("foot", "basket", "tennis")}
+    sports = ("foot", "basket", "tennis")
+    if a.foot_seul:
+        sports = ("foot",)
+        doc.update(agents={"foot": S.NAMES["foot"]}, basket={}, tennis={})
+        doc.pop("basket_arrete", None)
+        doc.pop("erreur_tennis", None)
+    doc["ratio"] = {s: S.ratio(list(doc[s].values())) for s in sports}
+    doc["ratio_tous"] = {s: S.ratio_tous(list(doc[s].values())) for s in sports}
     past[day] = doc
     o = Path(a.out) / "specialistes"
     o.mkdir(parents=True, exist_ok=True)
     (o / f"{day}.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
-    (o / "bilan.json").write_text(json.dumps(bilan(past), ensure_ascii=False, indent=1))
-    for s in ("foot", "basket", "tennis"):
+    (o / "bilan.json").write_text(json.dumps(bilan(past, sports), ensure_ascii=False, indent=1))
+    for s in sports:
         picks = [f"{c['match']}: {c['pari']} @ {c['cote_prise']}{' (figé)' if c.get('fige') else ''}{' [non retenu]' if c.get('retenu') is False else ''}"
                  for c in doc[s].values() if c.get("pari")]
         print(f"{s}: {len(doc[s])} matchs, {len(picks)} positions, ratio {doc['ratio'][s]}, tous {doc['ratio_tous'][s]}")
