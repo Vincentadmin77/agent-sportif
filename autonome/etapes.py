@@ -475,7 +475,8 @@ def specialistes(store: Store, t: datetime | None = None) -> list[str]:
                            "basket_matchs": lambda d: str(d.get("jour")) == jour, "specialistes": None})
         out = dossier("spec")
         lancer([str(SCRIPTS / "specialistes.py"), "--page", str(page), "--out", str(out), "--jour", jour,
-                *(["--no-tennis"] if jour >= SPECIALISTE_TENNIS_ARRETE_DU else [])], timeout=1800)
+                *(["--no-tennis"] if jour >= SPECIALISTE_TENNIS_ARRETE_DU else []),
+                *(["--foot-seul"] if jour >= UN_ACTEUR_DU else [])], timeout=1800)
         for f in sorted((out / "specialistes").glob("*.json")):
             if f.stem in (jour, "bilan"):
                 ecrits.extend(_depuis(store, "specialistes", f.stem, f, "specialistes"))
