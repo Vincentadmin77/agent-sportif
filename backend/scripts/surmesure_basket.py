@@ -37,7 +37,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BASKET = "https://v1.basketball.api-sports.io/"
 MAX_PLACES = 5
-ODDS_MIN, ODDS_MAX = 1.60, 2.00
+# Vincent 2026-11-26 : en basket on ne garde que le Sur-mesure Analytrack. Le Sur-mesure en test basket ne choisit
+# plus rien à partir de ce jour ; « regler » continue pour les positions déjà figées. Le passé reste intact.
+ARRET = "2026-11-26"
+ODDS_MIN, ODDS_MAX = 1.70, 2.00  # 1.70: owner 2026-11-19, foot principle (was 1.60)
 FAV_MAX = 1.45          # « petite cote »
 FAV_CHANCE = 0.68       # « favori net » for the market
 MIN_LEG = 0.55          # each total leg at least this sure
@@ -48,7 +51,7 @@ PLAYER_MARKETS = ("player_points_rebounds", "player_rebounds_assists", "player_p
                   "player_points_rebounds_assists")
 REGLE = ("Sur-mesure basket, à blanc, à côté de la sélection test : quand un favori net a une petite cote (1,45 au "
          "plus, au moins 68 % de chances pour le marché), on l'associe sur le même match à un total de points. "
-         "Cote totale de 1,60 à 2,00, au moins 50 % de chances pour le marché, une position par match, 5 au plus, "
+         "Cote totale de 1,70 à 2,00, au moins 50 % de chances pour le marché, une position par match, 5 au plus, "
          "les plus sûres d'abord, figées 45 min avant le début. Combinés joueurs seulement avec une cote française.")
 
 
@@ -148,6 +151,9 @@ def passage(day: str, basket_doc: dict, doc: dict, now: datetime) -> dict:
         p["fige"] = True
     taken = {p["match_id"] for p in kept}
     games, pool, scanned = list((basket_doc.get("paris_retenus") or {}).values()), [], []
+    if day >= ARRET:
+        doc["arrete"] = "Arrêté le 26/11/2026 : en basket, seul le Sur-mesure Analytrack est gardé."
+        games = []
     for g in games:
         mid, ko = str(g["match_id"]), g["coup_envoi"].replace("Z", "+00:00")
         if mid in taken or now >= datetime.fromisoformat(ko) - FREEZE:

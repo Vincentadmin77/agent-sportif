@@ -1069,6 +1069,13 @@ def _pick_result(c: dict, reg: dict, pron: dict, bpron: dict | None, tdoc: dict 
     return None
 
 
+# Vincent 2026-11-26: one actor per sport. Foot = the specialist, basket = the Sur-mesure Analytrack, tennis = the
+# Mathématicien (its selection_m). The M no longer picks foot or basket positions for its selection. « Le Direct »
+# stays apart and keeps running in every sport (Vincent 2026-11-26 09:18Z). Past days are never rewritten.
+ARRET_DU = "2026-11-26"
+SPORTS_ARRETES = ("foot", "basket")
+
+
 def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None, tdoc: dict | None = None) -> dict:
     """registre/<jour>.selection_m: the day's selection of the M, frozen pick by pick at kick-off, then settled."""
     cands = selection_candidates(reg, pron, bpron, tdoc)
@@ -1081,6 +1088,10 @@ def selection_m(reg: dict, pron: dict, now: datetime, bpron: dict | None = None,
         ko = _aware(str(c.get("coup_envoi") or "").replace("Z", "+00:00"))
         return bool(ko and now >= ko)
 
+    jour = str(reg.get("jour") or pron.get("jour") or "")
+    if jour >= ARRET_DU:  # foot and basket stopped (owner 2026-11-26): only already-started picks stay
+        cands = [c for c in cands if c["sport"] not in SPORTS_ARRETES]
+        prev = [c for c in prev if c["sport"] not in SPORTS_ARRETES or started(c)]
     kept = [c for c in prev if started(c)]
     if not kept:  # a lost copy of the day (rewritten without its selection): replay the picks frozen at each kick-off
         kept = [{**c, "rejoue": True} for c in _replay_locked(cands, now, v03, v04)]

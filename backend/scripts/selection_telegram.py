@@ -31,6 +31,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 API = "https://v3.football.api-sports.io/"
 MAX_PLACES = 5
+# Vincent 2026-11-26 : en foot on ne garde que le spécialiste. Plus de Sur-mesure foot à partir de ce jour
+# (le passé reste dans la base, jamais réécrit). Même jour, en tennis seul le Mathématicien est gardé : plus de
+# Sur-mesure tennis. Seul le basket continue ici (le Sur-mesure Analytrack basket).
+ARRET_FOOT = "2026-11-26"
+ARRET_TENNIS = "2026-11-26"
 ODDS_MIN, ODDS_MAX = 1.60, 2.00
 MIN_CHANCE = 0.55  # both teams score, first-half goals, draw no bet
 MIN_CHANCE_COMBO = 0.50  # same-match combos (team or draw + goals, team + goals)
@@ -397,6 +402,8 @@ def passage(day: str, leagues: list[int], doc: dict, now: datetime, tennis_doc: 
     taken = {p["match_id"] for p in kept}
     kept_foot = [p for p in kept if p.get("sport", "foot") == "foot"]
     pool, scanned = [], []
+    if day >= ARRET_FOOT:
+        leagues = []
     for lg in leagues:
         season = int(day[:4]) if int(day[5:7]) >= 7 else int(day[:4]) - 1
         for fx in _get("fixtures", league=lg, season=season, date=day, timezone="Europe/Paris").get("response") or []:
@@ -440,7 +447,7 @@ def passage(day: str, leagues: list[int], doc: dict, now: datetime, tennis_doc: 
                             f"(cote {_fmt(round(b['cote'], 2))}). Forme sur 5 matchs (du plus récent) : "
                             f"{x['home']} {fh or '?'}, {x['away']} {fa or '?'}.{how}"),
             "resultat": None, "fige": False, "choisi_a": now.isoformat(timespec="minutes")})
-    fresh += passage_tennis(day, tennis_doc, kept, now) if tennis_doc else []
+    fresh += passage_tennis(day, tennis_doc, kept, now) if tennis_doc and day < ARRET_TENNIS else []
     fresh += passage_basket(day, basket_doc, kept, now) if basket_doc else []
     doc["positions"] = kept + fresh
     doc["matchs_etudies"] = sorted(set(doc.get("matchs_etudies") or []) | set(scanned))
@@ -523,7 +530,7 @@ def main() -> None:
             if f and Path(f).exists():
                 d = json.loads(Path(f).read_text())
                 side[k + "_doc"] = d.get("data", d)
-        doc = passage(a.jour, [int(x) for x in a.ligues.split(",")], doc, now, **side)
+        doc = passage(a.jour, [int(x) for x in a.ligues.split(",") if x.strip()], doc, now, **side)
     else:
         doc = regler(doc, now)
     Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1))

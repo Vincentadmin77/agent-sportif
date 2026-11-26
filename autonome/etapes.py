@@ -33,6 +33,11 @@ FOOT_AUTORISES = ["FR1", "EN1", "ES1", "DE1", "IT1", "BR1", "UCL", "UEL", "TR1",
 TOUJOURS_FOOT = ["FRC", "UNL"]  # Vincent 09/11 : toujours ajoutés
 BASKET = ["NBA", "WNBA"]  # Vincent 27/10 : toujours ajoutés
 LIGUES_TEST = "61,39,140,78,135,71,2,3,203,94,45,5,66"  # sélection test (13/11 : + Ligue des Nations, Coupe de France)
+# Vincent 26/11 : un seul acteur par sport. Foot = le spécialiste (V1), basket = le Sur-mesure Analytrack (sélection
+# test basket), tennis = le Mathématicien. Les autres listes sont arrêtées ; les scripts le font d'eux-mêmes à partir
+# du 26/11, ces réglages évitent en plus les appels inutiles. Le passé n'est jamais réécrit.
+UN_ACTEUR_DU = "2026-11-26"
+SPECIALISTE_TENNIS_ARRETE_DU = "2026-11-27"  # le 26/11 se termine normalement
 SEUIL_CREDITS = 100
 
 
@@ -366,7 +371,8 @@ def passage_m(store: Store, t: datetime | None = None) -> list[str]:
     test = fichier_doc(store, "selection_telegram", D)
     if h in (9, 13, 17, 19, 22):
         f1, f2 = w / "f1.json", w / "f2.json"
-        args = [str(SCRIPTS / "selection_telegram.py"), "passage", "--jour", D, "--ligues", LIGUES_TEST,
+        args = [str(SCRIPTS / "selection_telegram.py"), "passage", "--jour", D, "--ligues",
+                "" if D >= UN_ACTEUR_DU else LIGUES_TEST,
                 "--tennis", _f(store, "tennis", D, w), "--basket", _f(store, "basket_pronostic", D, w), "--out", str(f1)]
         if test:
             args[4:4] = ["--doc", str(test)]
@@ -382,7 +388,7 @@ def passage_m(store: Store, t: datetime | None = None) -> list[str]:
     test = fichier_doc(store, "selection_telegram", D)
     # S) Sur-mesure en test, basket et tennis
     sm = w / "sm.json"
-    if jour_construit:
+    if jour_construit and D < UN_ACTEUR_DU:
         args = [str(SCRIPTS / "surmesure_basket.py"), "passage", "--jour", D, "--basket",
                 _f(store, "basket_pronostic", D, w), "--out", str(sm)]
         if fichier_doc(store, "surmesure_basket", D):
@@ -393,7 +399,14 @@ def passage_m(store: Store, t: datetime | None = None) -> list[str]:
                 "--out", str(sm)])
     ecrits += _depuis(store, "surmesure_basket", D, sm, "m-surmesure")
     _copie(sm, "surmesure-basket", D)
-    if jour_construit:
+    if jour_construit and D >= UN_ACTEUR_DU:  # Sur-mesure en test tennis arrêté : on règle seulement le figé
+        for jt in (D, Y):
+            if fichier_doc(store, "surmesure_tennis", jt):
+                st = w / f"st-{jt}.json"
+                lancer([str(SCRIPTS / "surmesure_tennis.py"), "regler", "--doc", str(store.chemin("surmesure_tennis", jt)),
+                        "--out", str(st)])
+                ecrits += _depuis(store, "surmesure_tennis", jt, st, "m-surmesure")
+    elif jour_construit:
         st = w / "st.json"
         args = [str(SCRIPTS / "surmesure_tennis.py"), "passage", "--jour", D, "--tennis", _f(store, "tennis", D, w),
                 "--out", str(st)]
@@ -461,7 +474,8 @@ def specialistes(store: Store, t: datetime | None = None) -> list[str]:
         page = vue(store, {"matchs": lambda d: str(d.get("jour")) == jour,
                            "basket_matchs": lambda d: str(d.get("jour")) == jour, "specialistes": None})
         out = dossier("spec")
-        lancer([str(SCRIPTS / "specialistes.py"), "--page", str(page), "--out", str(out), "--jour", jour], timeout=1800)
+        lancer([str(SCRIPTS / "specialistes.py"), "--page", str(page), "--out", str(out), "--jour", jour,
+                *(["--no-tennis"] if jour >= SPECIALISTE_TENNIS_ARRETE_DU else [])], timeout=1800)
         for f in sorted((out / "specialistes").glob("*.json")):
             if f.stem in (jour, "bilan"):
                 ecrits.extend(_depuis(store, "specialistes", f.stem, f, "specialistes"))
