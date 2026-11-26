@@ -790,7 +790,7 @@ def basket_avis(reg: dict, bpron: dict, now: datetime, bmatchs: dict[str, dict] 
 
 def _basket_live_m(reg: dict, a: dict, key: str, d: dict | None, ko_s, code_version: str) -> None:
     """The M's live basketball position (scripts/basket_direct.py, page basket_m_direct/<jour>), à blanc, like tennis."""
-    if not d or not d.get("position"):
+    if not d or not d.get("position") or str(reg.get("jour")) >= ARRET_DU:  # Le Direct basket stopped (2026-11-26)
         return
     day = reg["jour"]
     did = f"{day}|{key}|direct|{d['position']}"
@@ -886,7 +886,7 @@ def tennis_avis(reg: dict, tdoc: dict | None, now: datetime, code_version: str =
                 f["resultat"] = r
                 f["gain_unite"] = _gain(f)
         d = tm.get("m_direct")  # the M's live position, à blanc, noted once by the tennis live loop
-        if d and d.get("position"):
+        if d and d.get("position") and str(day) < ARRET_DU:  # Le Direct tennis stopped (owner 2026-11-26)
             did = f"{day}|{key}|direct|{d['position']}"
             fd = fiches.setdefault(did, {
                 "id": did, "jour": day, "sport": "tennis", "agent": "le M (direct à blanc)", "decision": d.get("heure"),
@@ -1091,9 +1091,9 @@ def _pick_result(c: dict, reg: dict, pron: dict, bpron: dict | None, tdoc: dict 
     return None
 
 
-# Vincent 2026-11-26: one actor per sport. In foot only the specialist is kept, in basket only the Sur-mesure
-# Analytrack: the M no longer picks foot or basket positions for its selection, and the foot live notes (Le Direct)
-# stop. Tennis unchanged. Past days are never rewritten.
+# Vincent 2026-11-26: one actor per sport. Foot = the specialist, basket = the Sur-mesure Analytrack, tennis = the
+# Mathématicien (its selection_m). The M no longer picks foot or basket positions for its selection, and every
+# « Direct » (foot live notes, basket and tennis live M) stops. Past days are never rewritten.
 ARRET_DU = "2026-11-26"
 SPORTS_ARRETES = ("foot", "basket")
 

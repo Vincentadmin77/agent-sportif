@@ -26,11 +26,11 @@ SPORTS = ("foot", "basket", "tennis")
 # actors removed by the owner, per sport (Vincent 2026-11-08 12:01Z: basket specialist V2 removed)
 RETIRES = {"basket": {"specialiste"}}
 # Vincent 2026-11-26 : un seul acteur par sport. Foot = le spécialiste seul ; basket = le Sur-mesure Analytrack seul
-# (la liste « test » de la Version finale). Plus de nouvelles listes pour les autres à partir de ce jour ; le passé
-# reste dans la base, jamais réécrit. Tennis pas encore décidé : inchangé.
+# (la liste « test » de la Version finale) ; tennis = le Mathématicien seul (sa sélection est dans registre, pas
+# ici). Plus de nouvelles listes pour les autres à partir de ce jour ; le passé reste dans la base, jamais réécrit.
 ARRET_DU = "2026-11-26"
-GARDES_TOP5 = {"foot": {"specialiste"}, "basket": set()}  # Top 5 par acteur encore construits, par sport arrêté
-GARDES_FINALE = {"foot": set(), "basket": {"test"}}      # listes de la Version finale encore construites
+GARDES_TOP5 = {"foot": {"specialiste"}, "basket": set(), "tennis": set()}  # Top 5 par acteur encore construits, par sport arrêté
+GARDES_FINALE = {"foot": set(), "basket": {"test"}, "tennis": set()}      # listes de la Version finale encore construites
 REGLES = {
     "modele": "Ses 5 positions de plus forte confiance (modèle et marché à parts égales), une par match.",
     "m": "Ses 5 choix avant match où le marché voit le plus de chances, une par match.",
@@ -221,9 +221,9 @@ def build_finale(jour, reg, spe, test, prev, now, retro=False) -> dict:
         if not doc[s]:
             del doc[s]
     if jour >= ARRET_DU:
-        doc["regle"] = ("Un seul acteur par sport depuis le 26/11 : en basket, le Sur-mesure Analytrack (5 positions au "
-                        "plus, une par match, figées 45 min avant le début) ; en tennis, inchangé. En foot, seul le "
-                        "spécialiste est gardé (il n'est pas dans cette liste).")
+        doc["regle"] = ("Un seul acteur par sport depuis le 26/11 : ici seulement le basket, le Sur-mesure Analytrack "
+                        "(5 positions au plus, une par match, figées 45 min avant le début). En foot c'est le "
+                        "spécialiste, en tennis le Mathématicien (hors de cette liste).")
     return doc
 
 
