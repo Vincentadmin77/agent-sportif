@@ -219,3 +219,21 @@ def test_six_usual_starters_on_the_bench_is_a_b_team():
     assert [o["pari"] for o in opts] == ["Lille (remboursé si nul)"]
     assert opts[0]["chance"] == round(S.foot_options(six)[0]["chance"] - S.ROTATION_PENALTY, 4)
     assert "équipe 2 : 6 titulaires laissés au banc" in S.foot_choice(six, None, w)["raison"]
+
+
+def test_only_benched_starters_who_matter_count():
+    rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60}]
+    m = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D"])
+    xi = m["compositions"]["domicile"]["titulaires"]
+    fiche = {n: {"poste": "milieu", "min": 900, "note": 7.0} for n in "ABCD"}
+    fiche.update({n: {"poste": "milieu", "min": 800, "note": 6.9} for n in xi[:7]})
+    fiche.update({n: {"poste": "milieu", "min": 100, "note": 6.9} for n in xi[7:]})  # 4 newcomers of the same level
+    w = S.weakened(m, None, {"domicile": {"fiche": fiche}})
+    assert w["domicile"]["banc_compte"] == []
+    assert S.foot_options(m, None, w) == S.foot_options(m)  # replaced at the same level: no penalty
+    w = S.weakened(m, {"domicile": ["A", "B", "C", "D"], "exterieur": []}, {"domicile": {"fiche": fiche}})
+    assert len(w["domicile"]["banc_compte"]) == 4  # key players always count
+    for n in xi[7:]:
+        fiche[n]["note"] = 6.3  # clearly weaker replacements count too
+    w = S.weakened(m, None, {"domicile": {"fiche": fiche}})
+    assert len(w["domicile"]["banc_compte"]) == 4
