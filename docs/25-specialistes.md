@@ -85,5 +85,10 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
 - Tous les marchés (Vincent 27/11, « tout brancher ») : adversaire d'une équipe très diminuée +3 pts (victoire,
   remboursé, double chance) ; deux attaques sans 2 attaquants habituels : plus de 2,5/3,5 −3, moins +3 ; aucun
   gardien habituel titulaire : l'inverse, et « les deux marquent : oui » +3.
+- Rotation et calendrier (Vincent 27/11 « tu dois t'adapter au marché », test-rotation-nombre.md) : la rotation
+  seule (titulaires sur le banc) ne baisse plus l'équipe, car le favori qui fait tourner gagne plus souvent que
+  prévu (3-4 : +3,6/+4,4 ; 6+ : +8,7/+6,9). Le favori en équipe type (≤2 habituels au banc), en championnat,
+  2 à 4 jours avant un match de Ligue des champions : −3 pts sur victoire, double chance et remboursé
+  (DC −4,3/−3,9 sur les deux périodes). Phrase « avant la Ligue des champions ».
 - Affichage : `affaiblissement[côté].postes` = {joueur: « gardien » | « défense » | « milieu » | « attaque »} pour
   les clés hors du onze, les absents du groupe et les habituels sur le banc (postes de `/players`). Ne change aucun choix.
