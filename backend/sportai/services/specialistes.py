@@ -162,8 +162,12 @@ def key_players(players: list[dict], team_id: int | None) -> list[str]:
     return [names[pid] for pid in sorted(regs, key=lambda pid: -score(pid))[:WEAK_KEY_COUNT]]
 
 
+POSTES = {"Goalkeeper": "gardien", "Defender": "défense", "Midfielder": "milieu", "Attacker": "attaque"}
+
+
 def regular_roles(players: list[dict], team_id: int | None) -> dict:
-    """{"att": regular starting attackers, "gk": regular starting goalkeepers} (API-Football short names)."""
+    """{"att": regular starting attackers, "gk": regular starting goalkeepers} (API-Football short names),
+    plus "postes": {name: "gardien" | "défense" | "milieu" | "attaque"} of the whole squad (display only)."""
     starts, apps, pos, names = {}, {}, {}, {}
     for item in players or []:
         pid = (item.get("player") or {}).get("id")
@@ -181,7 +185,8 @@ def regular_roles(players: list[dict], team_id: int | None) -> dict:
     played = max(apps.values(), default=0)
     regs = [pid for pid, n in starts.items() if played and n / played >= REGULAR_SHARE]
     return {"att": [names[p] for p in regs if pos.get(p) == "Attacker"],
-            "gk": [names[p] for p in regs if pos.get(p) == "Goalkeeper"]}
+            "gk": [names[p] for p in regs if pos.get(p) == "Goalkeeper"],
+            "postes": {names[p]: POSTES[v] for p, v in pos.items() if v in POSTES}}
 
 
 def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> dict | None:
@@ -202,7 +207,9 @@ def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> di
         level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT
                  else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
         r = (roles or {}).get(side) or {}
-        out[side] = {"niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc,
+        postes = r.get("postes") or {}
+        out[side] = {"postes": {n: postes[n] for n in dict.fromkeys(cles + hors + banc) if n in postes},
+                     "niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc,
                      "attaquants_absents": [a for a in r.get("att") or [] if a not in xi],
                      # a keeper is missing only when none of the regular ones starts (two can share the post)
                      "gardien_absent": [] if any(g in xi for g in r.get("gk") or []) else list(r.get("gk") or [])}
