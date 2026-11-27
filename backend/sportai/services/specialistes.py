@@ -80,7 +80,8 @@ REGULAR_SHARE = 0.5
 #   UCL_PENALTY. Not in European games (not tested there).
 UCL_PENALTY = 0.03
 UCL_BENCH_MAX = 2
-# Owner 2026-11-27 12:48-12:49Z, usual starters left on the bench by choice: 1 to 3 = resting players, no penalty;
+# Owner 2026-11-27 12:48-12:50Z, usual starters left on the bench by choice, counting only those who matter
+# (bench_that_matters: key players, or replaced by a clearly weaker player): 1 to 3 = resting players, no penalty;
 # 4 or 5 = its straight win loses ROTATION_PENALTY; 6 or more = « équipe 2 », treated like a very weakened side
 # (no straight win, double chance / draw no bet at -3 pts).
 ROTATION_PENALTY_BENCH = 4
@@ -182,7 +183,7 @@ POSTES = {"Goalkeeper": "gardien", "Defender": "défense", "Midfielder": "milieu
 def regular_roles(players: list[dict], team_id: int | None) -> dict:
     """{"att": regular starting attackers, "gk": regular starting goalkeepers} (API-Football short names),
     plus "postes": {name: "gardien" | "défense" | "milieu" | "attaque"} of the whole squad (display only)."""
-    starts, apps, pos, names = {}, {}, {}, {}
+    starts, apps, pos, names, mins, rat = {}, {}, {}, {}, {}, {}
     for item in players or []:
         pid = (item.get("player") or {}).get("id")
         if pid is None:
@@ -194,13 +195,51 @@ def regular_roles(players: list[dict], team_id: int | None) -> dict:
             g = st.get("games") or {}
             starts[pid] = starts.get(pid, 0) + (g.get("lineups") or 0)
             apps[pid] = apps.get(pid, 0) + (g.get("appearences") or 0)
+            mins[pid] = mins.get(pid, 0) + (g.get("minutes") or 0)
             if g.get("position") and pid not in pos:
                 pos[pid] = g["position"]
+            try:
+                r, n = float(g.get("rating")), g.get("appearences") or 0
+            except (TypeError, ValueError):
+                r, n = None, 0
+            if r and n:
+                a_, w_ = rat.get(pid, (0.0, 0))
+                rat[pid] = (a_ + r * n, w_ + n)
     played = max(apps.values(), default=0)
     regs = [pid for pid, n in starts.items() if played and n / played >= REGULAR_SHARE]
     return {"att": [names[p] for p in regs if pos.get(p) == "Attacker"],
             "gk": [names[p] for p in regs if pos.get(p) == "Goalkeeper"],
-            "postes": {names[p]: POSTES[v] for p, v in pos.items() if v in POSTES}}
+            "postes": {names[p]: POSTES[v] for p, v in pos.items() if v in POSTES},
+            # display and bench count: line, season rating (None under 3 games) and minutes of every squad player
+            "fiche": {names[p]: {"poste": POSTES.get(pos.get(p)), "min": mins.get(p, 0),
+                                 "note": round(rat[p][0] / rat[p][1], 2) if p in rat and rat[p][1] >= 3 else None}
+                      for p in names}}
+
+
+BENCH_GAP = 0.4  # a benched starter counts when his replacement is rated this much lower (red on the pitch)
+
+
+def bench_that_matters(banc: list, xi: set, keys: list, fiche: dict | None) -> list:
+    """Owner 2026-11-27 12:49Z: of the usual starters left on the bench, only those who matter count towards the
+    rotation thresholds: a key player, or one whose replacement in the XI (a newcomer of the same line, best rated
+    first) is clearly weaker (BENCH_GAP or no rating). One replaced by a player of his level does not count.
+    Without the squad data, every benched usual starter counts."""
+    if not fiche:
+        return list(banc)
+    usual = set(sorted(fiche, key=lambda n: -(fiche[n].get("min") or 0))[:11])
+    note = lambda n: (fiche.get(n) or {}).get("note")
+    newcomers = sorted((n for n in xi if n not in usual), key=lambda n: -(note(n) or 0))
+    out = []
+    for b in sorted(banc, key=lambda n: -(note(n) or 0)):
+        line = (fiche.get(b) or {}).get("poste")
+        rep = next((n for n in newcomers if (fiche.get(n) or {}).get("poste") == line), None) or \
+            (newcomers[0] if newcomers else None)
+        if rep:
+            newcomers.remove(rep)
+        weaker = note(b) is not None and (rep is None or note(rep) is None or note(b) - note(rep) >= BENCH_GAP)
+        if b in (keys or []) or weaker:
+            out.append(b)
+    return out
 
 
 def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> dict | None:
@@ -218,12 +257,13 @@ def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> di
         hors = list(b.get("absents_notables") or [])
         banc = list(b.get("remplacants_notables") or [])
         cles = [k for k in ((keys or {}).get(side) or []) if k not in xi]
-        level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT or len(banc) >= B_TEAM_BENCH
-                 else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
         r = (roles or {}).get(side) or {}
+        counted = bench_that_matters(banc, xi, (keys or {}).get(side) or [], r.get("fiche"))
+        level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT or len(counted) >= B_TEAM_BENCH
+                 else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
         postes = r.get("postes") or {}
         out[side] = {"postes": {n: postes[n] for n in dict.fromkeys(cles + hors + banc) if n in postes},
-                     "niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc,
+                     "niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc, "banc_compte": counted,
                      "attaquants_absents": [a for a in r.get("att") or [] if a not in xi],
                      # a keeper is missing only when none of the regular ones starts (two can share the post)
                      "gardien_absent": [] if any(g in xi for g in r.get("gk") or []) else list(r.get("gk") or [])}
@@ -247,9 +287,10 @@ def goals_shift(weak: dict | None) -> tuple[float, list[str]]:
 
 
 def weakened_phrase(team: str, w: dict) -> str | None:
-    if w.get("niveau") == "tres_diminuee" and len(w.get("banc") or []) >= B_TEAM_BENCH:
-        return (f"{team} aligne une équipe 2 : {len(w['banc'])} titulaires laissés au banc "
-                f"({', '.join(w['banc'][:4])}…) : pas de victoire sèche, au mieux victoire ou nul.")
+    counted = w.get("banc_compte", w.get("banc")) or []
+    if w.get("niveau") == "tres_diminuee" and len(counted) >= B_TEAM_BENCH:
+        return (f"{team} aligne une équipe 2 : {len(counted)} titulaires laissés au banc "
+                f"({', '.join(counted[:4])}…) : pas de victoire sèche, au mieux victoire ou nul.")
     if w.get("niveau") == "tres_diminuee":
         who = w["cles_absents"] if len(w["cles_absents"]) >= WEAK_KEY_MISSING else w["hors_groupe"]
         return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : pas de victoire sèche, au mieux victoire "
@@ -260,7 +301,7 @@ def weakened_phrase(team: str, w: dict) -> str | None:
             bits.append(f"sans {', '.join(w['hors_groupe'][:4])}")
         if w["banc"]:
             bits.append(f"avec {', '.join(w['banc'][:4])} sur le banc (choix du coach)")
-        if len(w["banc"]) >= ROTATION_PENALTY_BENCH:
+        if len(counted) >= ROTATION_PENALTY_BENCH:
             return f"{team} joue {' et '.join(bits)} : je la vois un peu à la baisse."
         return (f"{team} joue {' et '.join(bits)} : quelques joueurs au repos, la cote le compte déjà, "
                 f"je ne la baisse pas.")
@@ -310,7 +351,7 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, c
             if fam == "victoire":
                 continue  # its straight win is never backed, not even as a fallback (the Top 5 reads every choice)
             chance -= ROTATION_PENALTY  # its double chance / draw no bet: -2 / -3 pts in the backtest
-        elif len(w.get("banc") or []) >= ROTATION_PENALTY_BENCH and fam == "victoire":
+        elif len(w.get("banc_compte", w.get("banc")) or []) >= ROTATION_PENALTY_BENCH and fam == "victoire":
             chance -= ROTATION_PENALTY  # 4-5 usual starters on the bench: lightly lower (1-3: resting, nothing)
         if side and before_ucl == {"home": "domicile", "away": "exterieur"}[side] and fam in (
                 "victoire", "double_chance", "rembourse_si_nul"):
