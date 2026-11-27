@@ -91,3 +91,44 @@ def test_choices_not_kept_stay_out_of_the_ratio():
     rows = [{"pari": "a", "resultat": "gagne", "cote_prise": 1.8},
             {"pari": "b", "resultat": "perdu", "cote_prise": 1.8, "retenu": False}]
     assert S.ratio(rows)["positions"] == 1 and S.ratio_tous(rows)["positions"] == 2
+
+
+def _xi(prefix):
+    return [f"{prefix}{i}" for i in range(11)]
+
+
+def _with_lineups(m, home_out=(), home_bench=(), home_xi=None):
+    m["compositions"] = {"domicile": {"titulaires": home_xi or _xi("L"), "absents_notables": list(home_out),
+                                      "remplacants_notables": list(home_bench)},
+                         "exterieur": {"titulaires": _xi("R"), "absents_notables": [], "remplacants_notables": []}}
+    return m
+
+
+def test_key_players_are_regular_starters_ranked_by_goals_and_assists():
+    def p(pid, name, lineups, apps, goals, rating):
+        return {"player": {"id": pid, "name": name}, "statistics": [{"team": {"id": 1}, "games": {
+            "lineups": lineups, "appearences": apps, "rating": str(rating)}, "goals": {"total": goals, "assists": 0}}]}
+    players = [p(1, "Buteur", 10, 10, 8, 7.2), p(2, "Gardien", 10, 10, 0, 6.9), p(3, "Remplaçant", 2, 9, 5, 6.8),
+               p(4, "Meneur", 9, 10, 3, 7.5), p(5, "Ailier", 8, 10, 2, 7.0), p(6, "Défenseur", 10, 10, 0, 6.6)]
+    assert S.key_players(players, 1) == ["Buteur", "Meneur", "Ailier", "Gardien"]
+
+
+def test_foot_never_backs_a_very_weakened_side():
+    rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60},
+            {"pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.57, "proba_marche": 0.56}]
+    m = _with_lineups(_foot(rows), home_xi=_xi("L"))
+    w = S.weakened(m, {"domicile": ["A", "B", "C", "L0"], "exterieur": []})  # 3 of the 4 key players not in the XI
+    assert w["domicile"]["niveau"] == "tres_diminuee"
+    c = S.foot_choice(m, None, w)
+    assert c["pari"] == "Plus de 2,5 buts" and "très diminuée" in c["raison"]
+    m = _with_lineups(_foot(rows), home_out=["A", "B", "C", "D"])  # 4 usual starters out of the squad
+    assert S.weakened(m)["domicile"]["niveau"] == "tres_diminuee"
+
+
+def test_foot_rotation_lowers_the_side_a_little():
+    rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60}]
+    m = _with_lineups(_foot(rows), home_bench=["A", "B", "C"])
+    w = S.weakened(m)
+    assert w["domicile"]["niveau"] == "a_la_baisse"
+    assert S.foot_choice(m, None, w)["chance"] == round(S.foot_choice(m)["chance"] - S.ROTATION_PENALTY, 4)
+    assert S.weakened(_foot(rows)) is None  # line-ups not out yet: nothing changes
