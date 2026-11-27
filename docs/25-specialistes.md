@@ -76,7 +76,7 @@ chanceuse), pas comme raison de prendre position.
 Avec les compositions officielles sur la page (toutes compétitions, coupes d'Europe comprises) :
 - **Très diminuée** (3 des 4 joueurs clés hors du onze, ou 4 titulaires habituels absents du groupe) : V1 ne joue
   jamais sa victoire sèche, même en repli ; il s'adapte en « victoire ou nul » (double chance, remboursé) à −3 pts.
-- **À la baisse** (3 titulaires habituels sur le banc, ou 4 hors du onze) : −3 points sur sa victoire sèche.
+- **À la baisse** (3 titulaires habituels sur le banc, ou 4 hors du onze) : simple mention, plus aucune baisse (la cote le compte déjà).
 - Joueurs clés : titulaires habituels (la moitié des matchs, toutes compétitions) classés par part des buts + passes
   puis note moyenne, depuis `/players` (cache 6 h). Sans réponse : seulement les absents du groupe.
 - Test 12 661 matchs de championnat 2020-2026, victoire à 1,50-2,30 : équipe affaiblie 44,7 % (2020-23) et 46,5 %
@@ -85,10 +85,12 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
 - Tous les marchés (Vincent 27/11, « tout brancher ») : adversaire d'une équipe très diminuée +3 pts (victoire,
   remboursé, double chance) ; deux attaques sans 2 attaquants habituels : plus de 2,5/3,5 −3, moins +3 ; aucun
   gardien habituel titulaire : l'inverse, et « les deux marquent : oui » +3.
-- Rotation par paliers (Vincent 27/11 12:48-12:49Z) : titulaires habituels laissés au banc par choix, 1 à 3 =
-  repos, rien ; 4 ou 5 = −3 pts sur la victoire sèche ; 6 ou plus = « équipe 2 », traitée comme très diminuée
-  (pas de victoire sèche, double chance / remboursé à −3 pts). Pour mémoire, en championnat le favori qui fait
-  tourner gagnait plus souvent que prévu (3-4 : +3,6/+4,4 ; 6+ : +8,7/+6,9) : paliers = choix de Vincent. Le favori en équipe type (≤2 habituels au banc), en championnat,
+- Deux paquets seulement (Vincent 27/11 12:50Z) : on compte les titulaires habituels hors du onze (banc ou absents)
+  **qui comptent** : un joueur clé, ou un joueur dont le remplaçant de la même ligne a une note plus basse d'au
+  moins 0,4 (ou pas de note). Un remplaçant de même niveau ne compte pas. 1 à 3 = rien ; 4 ou plus = « équipe 2 »,
+  traitée comme très diminuée (pas de victoire sèche, double chance / remboursé à −3 pts). Pour mémoire, en
+  championnat le favori qui fait tourner gagnait plus souvent que prévu (3-4 : +3,6/+4,4 ; 6+ : +8,7/+6,9) :
+  seuil = choix de Vincent. Le favori en équipe type (≤2 habituels au banc), en championnat,
   2 à 4 jours avant un match de Ligue des champions : −3 pts sur victoire, double chance et remboursé
   (DC −4,3/−3,9 sur les deux périodes). Phrase « avant la Ligue des champions ».
 - Affichage : `affaiblissement[côté].postes` = {joueur: « gardien » | « défense » | « milieu » | « attaque »} pour
