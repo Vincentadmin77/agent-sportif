@@ -126,6 +126,10 @@ class ApiFootballProvider:
         """A team's next matches (raw fixtures), all competitions, domestic cups included."""
         return self._get("/fixtures", {"team": team_id, "next": next_}, ttl=6 * 3600).get("response", [])
 
+    def fixtures_by_ids(self, ids: list[int], ttl: float = 7 * 86400) -> list[dict]:
+        """Full fixtures (line-ups included) of up to 20 ids in one request: a finished match never changes."""
+        return self._get("/fixtures", {"ids": "-".join(str(i) for i in ids[:20])}, ttl=ttl).get("response", []) if ids else []
+
     def lineups(self, fixture_id: int | str, ttl: float = 300) -> list[dict]:
         """Official line-ups (empty until they are published, about an hour before kick-off)."""
         return self._get("/fixtures/lineups", {"fixture": fixture_id}, ttl=ttl).get("response", [])
