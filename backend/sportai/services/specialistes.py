@@ -80,12 +80,11 @@ REGULAR_SHARE = 0.5
 #   UCL_PENALTY. Not in European games (not tested there).
 UCL_PENALTY = 0.03
 UCL_BENCH_MAX = 2
-# Owner 2026-11-27 12:48-12:50Z, usual starters left on the bench by choice, counting only those who matter
-# (bench_that_matters: key players, or replaced by a clearly weaker player): 1 to 3 = resting players, no penalty;
-# 4 or 5 = its straight win loses ROTATION_PENALTY; 6 or more = « équipe 2 », treated like a very weakened side
-# (no straight win, double chance / draw no bet at -3 pts).
-ROTATION_PENALTY_BENCH = 4
-B_TEAM_BENCH = 6
+# Owner 2026-11-27 12:48-12:51Z, two groups only. Usual starters missing from the XI (on the bench or out of the
+# squad), counting only those who matter (bench_that_matters: key players, or replaced by a clearly weaker player):
+# 1 to 3 = nothing; 4 or more = « équipe 2 », treated like a very weakened side (no straight win, double chance /
+# draw no bet at -3 pts). No more "à la baisse" penalty.
+B_TEAM_BENCH = 4
 
 # --- basketball
 BASKET_TOTAL_GAP = 4.0
@@ -258,7 +257,7 @@ def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> di
         banc = list(b.get("remplacants_notables") or [])
         cles = [k for k in ((keys or {}).get(side) or []) if k not in xi]
         r = (roles or {}).get(side) or {}
-        counted = bench_that_matters(banc, xi, (keys or {}).get(side) or [], r.get("fiche"))
+        counted = bench_that_matters(banc + hors, xi, (keys or {}).get(side) or [], r.get("fiche"))
         level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT or len(counted) >= B_TEAM_BENCH
                  else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
         postes = r.get("postes") or {}
@@ -289,8 +288,8 @@ def goals_shift(weak: dict | None) -> tuple[float, list[str]]:
 def weakened_phrase(team: str, w: dict) -> str | None:
     counted = w.get("banc_compte", w.get("banc")) or []
     if w.get("niveau") == "tres_diminuee" and len(counted) >= B_TEAM_BENCH:
-        return (f"{team} aligne une équipe 2 : {len(counted)} titulaires laissés au banc "
-                f"({', '.join(counted[:4])}…) : pas de victoire sèche, au mieux victoire ou nul.")
+        return (f"{team} aligne une équipe 2 : {len(counted)} titulaires absents ou laissés au banc "
+                f"({', '.join(counted[:4])}{'…' if len(counted) > 4 else ''}) : pas de victoire sèche, au mieux victoire ou nul.")
     if w.get("niveau") == "tres_diminuee":
         who = w["cles_absents"] if len(w["cles_absents"]) >= WEAK_KEY_MISSING else w["hors_groupe"]
         return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : pas de victoire sèche, au mieux victoire "
@@ -301,8 +300,6 @@ def weakened_phrase(team: str, w: dict) -> str | None:
             bits.append(f"sans {', '.join(w['hors_groupe'][:4])}")
         if w["banc"]:
             bits.append(f"avec {', '.join(w['banc'][:4])} sur le banc (choix du coach)")
-        if len(counted) >= ROTATION_PENALTY_BENCH:
-            return f"{team} joue {' et '.join(bits)} : je la vois un peu à la baisse."
         return (f"{team} joue {' et '.join(bits)} : quelques joueurs au repos, la cote le compte déjà, "
                 f"je ne la baisse pas.")
     return None
@@ -351,8 +348,6 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, c
             if fam == "victoire":
                 continue  # its straight win is never backed, not even as a fallback (the Top 5 reads every choice)
             chance -= ROTATION_PENALTY  # its double chance / draw no bet: -2 / -3 pts in the backtest
-        elif len(w.get("banc_compte", w.get("banc")) or []) >= ROTATION_PENALTY_BENCH and fam == "victoire":
-            chance -= ROTATION_PENALTY  # 4-5 usual starters on the bench: lightly lower (1-3: resting, nothing)
         if side and before_ucl == {"home": "domicile", "away": "exterieur"}[side] and fam in (
                 "victoire", "double_chance", "rembourse_si_nul"):
             chance -= UCL_PENALTY
