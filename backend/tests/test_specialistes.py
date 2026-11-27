@@ -168,3 +168,18 @@ def test_balance_and_keeper_on_every_market():
     assert moved["Victoire Lens"] == round(base["Victoire Lens"] + S.GOALS_SHIFT, 4)  # the balance
     assert moved["Les deux équipes marquent : oui"] == round(base["Les deux équipes marquent : oui"] + S.GOALS_SHIFT, 4)
     assert moved["Plus de 1,5 buts"] == base["Plus de 1,5 buts"]  # only the 2.5 and 3.5 lines move
+
+
+def test_weakened_names_the_post_of_each_missing_player_for_display():
+    def p(pid, name, pos, lineups):
+        return {"player": {"id": pid, "name": name}, "statistics": [{"team": {"id": 1}, "games": {
+            "lineups": lineups, "appearences": 10, "position": pos}, "goals": {}}]}
+    roles = {"domicile": S.regular_roles([p(1, "A", "Attacker", 10), p(2, "B", "Defender", 10),
+                                          p(3, "C", "Midfielder", 9), p(4, "G", "Goalkeeper", 10)], 1)}
+    m = _with_lineups(_foot([{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60}]),
+                      home_out=["B"], home_bench=["C"])
+    w = S.weakened(m, {"domicile": ["A"], "exterieur": []}, roles)
+    assert w["domicile"]["postes"] == {"A": "attaque", "B": "défense", "C": "milieu"}
+    assert w["exterieur"]["postes"] == {}
+    base = S.foot_options(m)
+    assert [o["chance"] for o in S.foot_options(m, None, S.weakened(m, None, None))] == [o["chance"] for o in base]
