@@ -492,7 +492,7 @@ def _probable(comps: list[str], docs: dict[str, dict], current: dict[str, dict],
     other passes (the injuries list moves). Display only. Kept from an earlier pass otherwise."""
     from sportai.config import get_settings
     from sportai.connectors.api_football import ApiFootballProvider
-    from sportai.services.compo_probable import recent_lineups, side_probable, squad_positions
+    from sportai.services.compo_probable import recent_lineups, season_ratings, side_probable, squad_positions
     from sportai.services.lineups import absentees, lineup_published, regular_starters
     from sportai.services.live_page import find_doc
     from sportai.services.prematch import journee
@@ -527,7 +527,8 @@ def _probable(comps: list[str], docs: dict[str, dict], current: dict[str, dict],
                     ids_of[(item.get("player") or {}).get("name")] = (item.get("player") or {}).get("id")
                 miss = [{**a, "id": a.get("id") or ids_of.get(a["joueur"])} for a in missing.get(side) or []]
                 c = side_probable(past, miss, lambda pid, name, r=regs[t["id"]]: pid in r,
-                                  squad_positions(squads[t["id"]]))
+                                  squad_positions(squads[t["id"]]), season_ratings(squads[t["id"]], t["id"]),
+                                  regs[t["id"]])
                 if c:
                     compo[side] = c
             if len(compo) == 2:
@@ -744,8 +745,34 @@ def _fill_lineups(api, fx: dict, doc: dict, fixtures: list[dict], ttl: float = 3
     from sportai.services.live_page import pre_match_rates
 
     pre = pre_match_rates(fixtures, doc["domicile"], doc["exterieur"])
-    return fill_compositions(doc, fx, api.lineups(fx["fixture"]["id"], ttl=ttl), api.team_players,
-                             pre[0] if pre else None)
+    lineups = api.lineups(fx["fixture"]["id"], ttl=ttl)
+    done = fill_compositions(doc, fx, lineups, api.team_players, pre[0] if pre else None)
+    if done:
+        try:  # display only: who is missing from the usual XI, why, and who takes his place
+            _official_absents(api, fx, doc, lineups)
+        except Exception as e:  # noqa: BLE001
+            print(f"official absentees unavailable for {doc.get('domicile')} ({str(e)[:120]})", file=sys.stderr)
+    return done
+
+
+def _official_absents(api, fx: dict, doc: dict, lineups: list[dict]) -> None:
+    """compositions[côté].absents (services/compo_probable.official_absents): the usual starters who do not start,
+    "banc" or the injuries list's reason, each with the starter taking his place and both season ratings."""
+    from sportai.services.compo_probable import official_absents, recent_lineups, season_ratings, squad_positions
+    from sportai.services.lineups import absentees, regular_starters
+
+    season = fx["league"]["season"]
+    teams = {t["team"]["id"]: t for t in lineups}
+    missing = absentees(api.injuries(fx["fixture"]["id"]), fx, {})
+    for side, t in (("domicile", fx["teams"]["home"]), ("exterieur", fx["teams"]["away"])):
+        block = (doc.get("compositions") or {}).get(side)
+        if not block or t["id"] not in teams:
+            continue
+        past = recent_lineups(api.fixtures_by_ids([f["fixture"]["id"] for f in api.team_last(t["id"])]), t["id"])
+        squad = api.team_players(t["id"], season)
+        block["absents"] = official_absents(teams[t["id"]], past, missing.get(side) or [],
+                                            season_ratings(squad, t["id"]), squad_positions(squad),
+                                            regular_starters(squad, t["id"], None))
 
 
 def _squad_news(api, fx: dict, doc: dict, fixtures: list[dict], now: datetime) -> bool:
