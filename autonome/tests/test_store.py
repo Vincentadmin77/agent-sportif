@@ -38,3 +38,18 @@ def test_store_versions_journal_et_sortie(tmp_path):
     (out / "etat.json").write_text(json.dumps({"message": "ok"}))
     assert st.ecrire_sortie(out, "test") == ["matchs/m", "etat/agent"]
     assert "top5/2026-11-15 v2" in (tmp_path / "base" / "_journal.log").read_text()
+
+
+def test_index_matchs_par_jour(tmp_path):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from autonome.store import Store
+    s = Store(tmp_path / "base")
+    auj = datetime.now(ZoneInfo("Europe/Paris")).date()
+    vieux = (auj - timedelta(days=20)).isoformat()
+    out = tmp_path / "out" / "matchs"
+    out.mkdir(parents=True)
+    (out / f"{auj.isoformat()}-a-b.json").write_text(json.dumps({"jour": auj.isoformat()}))
+    (out / f"{vieux}-c-d.json").write_text(json.dumps({"jour": vieux}))
+    s.ecrire_sortie(tmp_path / "out", "test")
+    assert s.get("index_matchs", "jours") == {auj.isoformat(): [f"{auj.isoformat()}-a-b"]}

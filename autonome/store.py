@@ -214,6 +214,8 @@ class Store:
                 continue
             if self.set(coll, doc, data, etape).get("ecrit"):
                 ecrits.append(f"{coll}/{doc}")
+        if any(e.startswith("matchs/") for e in ecrits):
+            self.index_matchs(etape)  # effet de bord : la liste renvoyée reste celle des documents de OUT
         etat = out / "etat.json"
         if etat.exists() and (not garder or garder("etat", "agent", {})):
             try:
@@ -222,3 +224,25 @@ class Store:
             except ValueError:
                 pass
         return ecrits
+
+    def index_matchs(self, etape: str = "", jours: int = 10) -> bool:
+        """index_matchs/jours = {"AAAA-MM-JJ": [ids des matchs du jour]} (lu par le site depuis la v353, car la requête
+        where("jour", ">=", ...) sur matchs revient vide quand la collection est trop lourde). Garde les `jours`
+        derniers jours (heure de Paris) et tous les jours à venir. Renvoie True si le document a changé."""
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        lim = (datetime.now(ZoneInfo("Europe/Paris")).date() - timedelta(days=jours)).isoformat()
+        idx: dict[str, list[str]] = {}
+        d = self.base / "matchs"
+        for p in sorted(d.glob("*.json")) if d.is_dir() else []:
+            j = p.stem[:10]
+            if not j[:4].isdigit() or j < lim:
+                continue
+            try:
+                j = json.loads(p.read_text()).get("jour") or j
+            except ValueError:
+                pass
+            if j >= lim:
+                idx.setdefault(j, []).append(p.stem)
+        idx = {k: sorted(set(v)) for k, v in sorted(idx.items())}
+        return bool(self.set("index_matchs", "jours", idx, etape, proteger=False).get("ecrit"))
