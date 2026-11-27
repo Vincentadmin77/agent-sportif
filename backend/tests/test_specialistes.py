@@ -132,3 +132,21 @@ def test_foot_rotation_lowers_the_side_a_little():
     assert w["domicile"]["niveau"] == "a_la_baisse"
     assert S.foot_choice(m, None, w)["chance"] == round(S.foot_choice(m)["chance"] - S.ROTATION_PENALTY, 4)
     assert S.weakened(_foot(rows)) is None  # line-ups not out yet: nothing changes
+
+
+def test_goals_lean_under_when_both_attacks_are_missing_and_over_without_the_keeper():
+    rows = [{"pari": "Plus de 2,5 buts", "cote": 1.80, "proba": 0.58, "proba_marche": 0.56},
+            {"pari": "Moins de 2,5 buts", "cote": 1.90, "proba": 0.44, "proba_marche": 0.44}]
+    m = _with_lineups(_foot(rows))
+    m["compositions"]["exterieur"]["titulaires"] = _xi("R")
+    roles = {"domicile": {"att": ["A1", "A2"], "gk": ["L0"]}, "exterieur": {"att": ["B1", "B2"], "gk": ["R0"]}}
+    w = S.weakened(m, None, roles)  # A1, A2, B1, B2 not in the XIs; both keepers play
+    base = {o["pari"]: o["chance"] for o in S.foot_options(m)}
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
+    assert moved["Plus de 2,5 buts"] == round(base["Plus de 2,5 buts"] - S.GOALS_SHIFT, 4)
+    assert moved["Moins de 2,5 buts"] == round(base["Moins de 2,5 buts"] + S.GOALS_SHIFT, 4)
+    roles["domicile"] = {"att": [], "gk": ["G"]}  # home keeper missing, home attack complete
+    w = S.weakened(m, None, roles)
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
+    assert moved["Plus de 2,5 buts"] == round(base["Plus de 2,5 buts"] + S.GOALS_SHIFT, 4)
+    assert "gardien habituel absent" in S.foot_choice(m, None, w)["raison"].lower()
