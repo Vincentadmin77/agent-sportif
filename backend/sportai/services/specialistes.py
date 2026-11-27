@@ -327,6 +327,7 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, c
     shift = goals_shift(weak)[0]
     keeper_out = any((weak or {}).get(s_, {}).get("gardien_absent") for s_ in ("domicile", "exterieur"))
     before_ucl = ucl_side(m, weak, cal)
+    b_team = any(((weak or {}).get(s_) or {}).get("niveau") == "tres_diminuee" for s_ in ("domicile", "exterieur"))
     rows = ((m.get("tous_marches") or {}).get("analyses") or []) + ((m.get("buts") or {}).get("marches") or [])
     out, seen = [], set()
     for r in rows:
@@ -342,6 +343,10 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, c
         side, lucky = _backs(key), False
         w = ((weak or {}).get({"home": "domicile", "away": "exterieur"}[side]) or {}) if side else {}
         fam = famille(key.market, key.selection, key.line)
+        # Owner 27/11 12:53Z (Arsenal-Dortmund 1-1): an équipe 2 on either side means fewer goals, never more:
+        # no over-goals and no « les deux marquent : oui » on that match (pass rather than lose).
+        if b_team and (fam in ("plus_" + x for x in GOALS_LINES) or fam == "btts_oui"):
+            continue
         # Owner 27/11: full side = straight win; weakened side = adapt to win-or-draw (double chance, draw no bet)
         # rather than drop it, and pass when even that is not good enough.
         if w.get("niveau") == "tres_diminuee":
