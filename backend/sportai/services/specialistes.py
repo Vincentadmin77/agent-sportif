@@ -46,11 +46,12 @@ FOOT_MIN_VALUE = 1.0
 FOOT_LUCK_MATCHES = 8
 FOOT_LUCK_GAP = 2.0  # never back the side whose goals beat its xG (net of conceded) by 2+ more than the other's
 # Weakened sides (owner 2026-11-27, bilans/2026-11-27-absences-forme): with the official line-ups, a side missing
-# 3 of its 4 key players from the XI, or 4+ of its usual starters from the squad, is never backed (result bets:
-# win, draw no bet, double chance). 12 661 league matches 2020-2026, win at odds 1.50-2.30: 44.7 % (2020-23) and
+# 3 of its 4 key players from the XI, or 4+ of its usual starters from the squad: its straight win is never
+# backed; its double chance / draw no bet lose ROTATION_PENALTY (owner: adapt to win-or-draw rather than drop it).
+# 12 661 league matches 2020-2026, win at odds 1.50-2.30: 44.7 % (2020-23) and
 # 46.5 % (2024-26) against ~54 % for full sides. A side with 4+ usual starters out of its XI (on the bench or out of
 # the squad) did a little worse (about -2 pts on both periods); rotation alone (3+ on the bench) was not shown to
-# hurt but counts at the owner's request. Both only lightly: the backed side's chance loses ROTATION_PENALTY.
+# hurt but counts at the owner's request. Both only lightly: that side's straight win loses ROTATION_PENALTY.
 WEAK_KEY_MISSING = 3
 WEAK_KEY_COUNT = 4
 WEAK_OUT = 4
@@ -227,8 +228,8 @@ def goals_shift(weak: dict | None) -> tuple[float, list[str]]:
 def weakened_phrase(team: str, w: dict) -> str | None:
     if w.get("niveau") == "tres_diminuee":
         who = w["cles_absents"] if len(w["cles_absents"]) >= WEAK_KEY_MISSING else w["hors_groupe"]
-        return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : je ne joue pas sa victoire "
-                f"et je vois son adversaire un peu à la hausse.")
+        return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : pas de victoire sèche, au mieux victoire "
+                f"ou nul, et je vois son adversaire un peu à la hausse.")
     if w.get("niveau") == "a_la_baisse":
         bits = []
         if w["hors_groupe"]:
@@ -260,11 +261,15 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
         chance = MARKET_WEIGHT * pm + (1 - MARKET_WEIGHT) * p
         side, lucky = _backs(key), False
         w = ((weak or {}).get({"home": "domicile", "away": "exterieur"}[side]) or {}) if side else {}
-        if w.get("niveau") == "tres_diminuee":
-            continue  # never backed, not even as a fallback (the Top 5 reads every choice)
-        if w.get("niveau") == "a_la_baisse":
-            chance -= ROTATION_PENALTY
         fam = famille(key.market, key.selection, key.line)
+        # Owner 27/11: full side = straight win; weakened side = adapt to win-or-draw (double chance, draw no bet)
+        # rather than drop it, and pass when even that is not good enough.
+        if w.get("niveau") == "tres_diminuee":
+            if fam == "victoire":
+                continue  # its straight win is never backed, not even as a fallback (the Top 5 reads every choice)
+            chance -= ROTATION_PENALTY  # its double chance / draw no bet: -2 / -3 pts in the backtest
+        elif w.get("niveau") == "a_la_baisse" and fam == "victoire":
+            chance -= ROTATION_PENALTY
         if shift and fam.startswith(("plus_", "moins_")) and fam.endswith(GOALS_LINES):
             chance += shift if fam.startswith("plus_") else -shift
         if side:  # the balance: backing the opponent of a very weakened side

@@ -121,6 +121,11 @@ def test_foot_never_backs_a_very_weakened_side():
     assert w["domicile"]["niveau"] == "tres_diminuee"
     c = S.foot_choice(m, None, w)
     assert c["pari"] == "Plus de 2,5 buts" and "très diminuée" in c["raison"]
+    # adapt rather than drop: its double chance stays possible, 3 pts lower
+    dc = [{"pari": "Lille (remboursé si nul)", "cote": 1.55, "proba": 0.80, "proba_marche": 0.78}]
+    m2 = _with_lineups(_foot(dc), home_xi=_xi("L"))
+    opts = S.foot_options(m2, None, S.weakened(m2, {"domicile": ["A", "B", "C", "L0"], "exterieur": []}))
+    assert opts[0]["chance"] == round(S.foot_options(m2)[0]["chance"] - S.ROTATION_PENALTY, 4)
     m = _with_lineups(_foot(rows), home_out=["A", "B", "C", "D"])  # 4 usual starters out of the squad
     assert S.weakened(m)["domicile"]["niveau"] == "tres_diminuee"
 
