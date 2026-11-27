@@ -69,11 +69,6 @@ DOWN_MISSING = 4  # usual starters not in the XI (bench + out of the squad)
 GOALS_ATT_MISSING = 2
 GOALS_SHIFT = 0.03
 GOALS_LINES = ("2_5", "3_5")
-# Owner 27/11 (« jouer sur les probabilités de l'équipe adverse ») : the opponent of a weakened side (very weakened,
-# rotation / 4+ out of the XI, or no regular keeper) scores 2+ more often than the odds say, relative to normal
-# matches: +1.1 / +2.2, +0.4 / +2.9 and +1.9 / +1.3 pts on 2020-23 / 2024-26. That one extra market, "<opponent> :
-# plus de 1,5 buts", is open only on such matches, with +GOALS_SHIFT.
-TEAM_TOTAL_FAMILY = "equipe_plus_1_5"
 ROTATION_PENALTY = 0.03
 REGULAR_SHARE = 0.5
 
@@ -245,13 +240,6 @@ def weakened_phrase(team: str, w: dict) -> str | None:
     return None
 
 
-def _opponent_weakened(key, weak: dict | None) -> bool:
-    """A team-total key whose team faces a weakened side (very weakened, a la baisse, or no regular keeper)."""
-    other = {"team_total_home": "exterieur", "team_total_away": "domicile"}.get(key.market)
-    w = (weak or {}).get(other) or {}
-    return bool(other) and (w.get("niveau") in ("tres_diminuee", "a_la_baisse") or bool(w.get("gardien_absent")))
-
-
 def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -> list[dict]:
     from sportai.engine.football.markets import is_quarter
     from sportai.services.revue import _keys, famille
@@ -267,14 +255,13 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
             continue
         if not all(isinstance(x, (int, float)) for x in (cote, pm, p)) or not ODDS[0] <= cote <= ODDS[1]:
             continue
-        fam = famille(key.market, key.selection, key.line)
-        team_total = fam == TEAM_TOTAL_FAMILY and _opponent_weakened(key, weak)
-        if fam not in FOOT_FAMILIES and not team_total:
+        if famille(key.market, key.selection, key.line) not in FOOT_FAMILIES:
             continue
         seen.add(r["pari"])
         chance = MARKET_WEIGHT * pm + (1 - MARKET_WEIGHT) * p
         side, lucky = _backs(key), False
         w = ((weak or {}).get({"home": "domicile", "away": "exterieur"}[side]) or {}) if side else {}
+        fam = famille(key.market, key.selection, key.line)
         # Owner 27/11: full side = straight win; weakened side = adapt to win-or-draw (double chance, draw no bet)
         # rather than drop it, and pass when even that is not good enough.
         if w.get("niveau") == "tres_diminuee":
@@ -290,8 +277,6 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
             if other.get("niveau") == "tres_diminuee":
                 chance += GOALS_SHIFT
         if fam == "btts_oui" and keeper_out:
-            chance += GOALS_SHIFT
-        if team_total:
             chance += GOALS_SHIFT
         if side and luck and None not in luck:
             mine, theirs = (luck[0], luck[1]) if side == "home" else (luck[1], luck[0])

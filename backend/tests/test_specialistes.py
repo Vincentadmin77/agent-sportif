@@ -168,11 +168,3 @@ def test_balance_and_keeper_on_every_market():
     assert moved["Victoire Lens"] == round(base["Victoire Lens"] + S.GOALS_SHIFT, 4)  # the balance
     assert moved["Les deux équipes marquent : oui"] == round(base["Les deux équipes marquent : oui"] + S.GOALS_SHIFT, 4)
     assert moved["Plus de 1,5 buts"] == base["Plus de 1,5 buts"]  # only the 2.5 and 3.5 lines move
-
-
-def test_opponent_team_total_opens_only_against_a_weakened_side():
-    rows = [{"pari": "Lens : plus de 1,5 buts", "cote": 1.90, "proba": 0.52, "proba_marche": 0.51}]
-    m = _with_lineups(_foot(rows), home_bench=["A", "B", "C"])  # Lille rotates
-    assert S.foot_options(m) == []  # not a specialist market on a normal match
-    opts = S.foot_options(m, None, S.weakened(m))
-    assert opts and opts[0]["chance"] == round(0.65 * 0.51 + 0.35 * 0.52 + S.GOALS_SHIFT, 4)
