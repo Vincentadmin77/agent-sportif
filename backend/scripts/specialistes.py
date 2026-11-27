@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +27,22 @@ from sportai.services import specialistes as S  # noqa: E402
 
 PARIS = ZoneInfo("Europe/Paris")
 FREEZE = timedelta(minutes=45)
+# API-Football quota (coordinator 27/11 19:06Z, 7 382 of 7 500 used): the hourly run is a new process each time, so
+# without a disk cache every run downloaded both squads (/players, all pages) and next fixtures of every match again.
+# One provider per run and a disk cache kept between runs: a squad is then fetched about every 6 h, not every hour.
+HTTP_CACHE = "/mnt/project-files/agent-sportif/state/httpcache-specialiste"
+_API = None
+
+
+def _api():
+    global _API
+    if _API is None:
+        from sportai.config import get_settings
+        from sportai.connectors.api_football import ApiFootballProvider
+        if not os.getenv("SPORTAI_HTTP_CACHE") and Path(HTTP_CACHE).parent.is_dir():
+            os.environ["SPORTAI_HTTP_CACHE"] = HTTP_CACHE
+        _API = ApiFootballProvider(get_settings().api_football_key)
+    return _API
 
 
 def _load(folder: str, name: str) -> dict[str, dict]:
@@ -52,9 +69,7 @@ def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
     """Key players and regular attackers / goalkeepers of both sides (API-Football /players, cached 6 h);
     (None, None) when unavailable: the weakened-side rule then uses the squad absences only."""
     try:
-        from sportai.config import get_settings
-        from sportai.connectors.api_football import ApiFootballProvider
-        api = ApiFootballProvider(get_settings().api_football_key)
+        api = _api()
         out, roles = {}, {}
         for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
             if not tid:
@@ -81,9 +96,7 @@ def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
     if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
         return None
     try:
-        from sportai.config import get_settings
-        from sportai.connectors.api_football import ApiFootballProvider
-        api = ApiFootballProvider(get_settings().api_football_key)
+        api = _api()
         out = {}
         for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
             for f in api.team_next(int(tid), 3) if tid else []:
