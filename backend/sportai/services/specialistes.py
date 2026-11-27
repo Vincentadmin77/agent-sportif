@@ -71,6 +71,15 @@ GOALS_SHIFT = 0.03
 GOALS_LINES = ("2_5", "3_5")
 ROTATION_PENALTY = 0.03
 REGULAR_SHARE = 0.5
+# Rotation and calendar (owner 2026-11-27 « tu dois t'adapter au marché », bilans/2026-11-27-absences-forme/
+# test-rotation-nombre.md, league matches, favourite at 2.30 or less, against the closing odds):
+# - usual starters on the bench by choice: the favourite wins MORE than priced, more so the more are benched
+#   (3-4: +3.6 / +4.4 pts; 6+: +8.7 / +6.9): the market over-reacts, so rotation no longer lowers a side;
+# - the favourite with its usual XI (0-2 benched) in a league match 2 to 4 days before a Champions League match:
+#   its double chance -4.3 / -3.9 pts, its win -1.9 / -2.4 -> its win, double chance and draw no bet lose
+#   UCL_PENALTY. Not in European games (not tested there).
+UCL_PENALTY = 0.03
+UCL_BENCH_MAX = 2
 
 # --- basketball
 BASKET_TOTAL_GAP = 4.0
@@ -242,18 +251,34 @@ def weakened_phrase(team: str, w: dict) -> str | None:
         if w["hors_groupe"]:
             bits.append(f"sans {', '.join(w['hors_groupe'][:4])}")
         if w["banc"]:
-            bits.append(f"avec {', '.join(w['banc'][:4])} sur le banc")
-        return f"{team} joue {' et '.join(bits)} : je la vois un peu à la baisse."
+            bits.append(f"avec {', '.join(w['banc'][:4])} sur le banc (choix du coach)")
+        return (f"{team} joue {' et '.join(bits)} : la cote le compte déjà, et souvent trop, "
+                f"je ne la baisse pas davantage.")
     return None
 
 
-def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -> list[dict]:
+def ucl_side(m: dict, weak: dict | None, cal: dict | None) -> str | None:
+    """The favourite ("domicile" / "exterieur") that plays its usual XI 2 to 4 days before a Champions League match
+    (cal[side] = days until it), or None. Needs the official line-ups; league games only."""
+    if not weak or not cal:
+        return None
+    p = m.get("proba_1x2") or {}
+    if not isinstance(p.get("domicile"), (int, float)) or not isinstance(p.get("exterieur"), (int, float)):
+        return None
+    fav = "domicile" if p["domicile"] >= p["exterieur"] else "exterieur"
+    if cal.get(fav) and len((weak.get(fav) or {}).get("banc") or []) <= UCL_BENCH_MAX:
+        return fav
+    return None
+
+
+def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, cal: dict | None = None) -> list[dict]:
     from sportai.engine.football.markets import is_quarter
     from sportai.services.revue import _keys, famille
 
     keys = _keys(m.get("domicile") or "", m.get("exterieur") or "")
     shift = goals_shift(weak)[0]
     keeper_out = any((weak or {}).get(s_, {}).get("gardien_absent") for s_ in ("domicile", "exterieur"))
+    before_ucl = ucl_side(m, weak, cal)
     rows = ((m.get("tous_marches") or {}).get("analyses") or []) + ((m.get("buts") or {}).get("marches") or [])
     out, seen = [], set()
     for r in rows:
@@ -275,8 +300,10 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
             if fam == "victoire":
                 continue  # its straight win is never backed, not even as a fallback (the Top 5 reads every choice)
             chance -= ROTATION_PENALTY  # its double chance / draw no bet: -2 / -3 pts in the backtest
-        elif w.get("niveau") == "a_la_baisse" and fam == "victoire":
-            chance -= ROTATION_PENALTY
+        # rotation alone (« à la baisse »): no penalty any more, the odds already over-react (owner 2026-11-27)
+        if side and before_ucl == {"home": "domicile", "away": "exterieur"}[side] and fam in (
+                "victoire", "double_chance", "rembourse_si_nul"):
+            chance -= UCL_PENALTY
         if shift and fam.startswith(("plus_", "moins_")) and fam.endswith(GOALS_LINES):
             chance += shift if fam.startswith("plus_") else -shift
         if side:  # the balance: backing the opponent of a very weakened side
@@ -295,21 +322,27 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
     return sorted(out, key=lambda o: -o["chance"])
 
 
-def foot_choice(m: dict, luck: tuple | None = None, weak: dict | None = None) -> dict:
+def foot_choice(m: dict, luck: tuple | None = None, weak: dict | None = None, cal: dict | None = None) -> dict:
     """luck = (home, away) from xg_luck, or None when unknown (the xG filter is then skipped).
-    weak = weakened(m, ...) once the line-ups are out, else None."""
-    c = _foot_choice(m, luck, weak)
+    weak = weakened(m, ...) once the line-ups are out, else None. cal = {side: days until its next Champions League
+    match, when 2 to 4 days away} for a league game, else None."""
+    c = _foot_choice(m, luck, weak, cal)
     if weak:
         c["affaiblissement"] = weak
         notes = [x for x in (weakened_phrase(m.get(s_) or s_, weak[s_]) for s_ in ("domicile", "exterieur")) if x]
         notes += [w_[0].upper() + w_[1:] for w_ in goals_shift(weak)[1]]
+        ucl = ucl_side(m, weak, cal)
+        if ucl:
+            c["calendrier"] = {"cote": ucl, "ldc_dans_jours": cal[ucl]}
+            notes.append(f"{m.get(ucl) or ucl} joue la Ligue des champions dans {cal[ucl]} jours avec son équipe type : "
+                         f"avant la Ligue des champions, je la vois un peu à la baisse.")
         if notes and c.get("raison"):
             c["raison"] += " " + " ".join(notes)
     return c
 
 
-def _foot_choice(m: dict, luck: tuple | None, weak: dict | None) -> dict:
-    opts = foot_options(m, luck, weak)
+def _foot_choice(m: dict, luck: tuple | None, weak: dict | None, cal: dict | None = None) -> dict:
+    opts = foot_options(m, luck, weak, cal)
     ok = [o for o in opts if o["ok"]]
     if ok:
         c = {k: v for k, v in ok[0].items() if k not in ("ok", "chanceux")}

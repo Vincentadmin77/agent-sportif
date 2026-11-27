@@ -130,12 +130,31 @@ def test_foot_never_backs_a_very_weakened_side():
     assert S.weakened(m)["domicile"]["niveau"] == "tres_diminuee"
 
 
-def test_foot_rotation_lowers_the_side_a_little():
+def test_foot_rotation_alone_no_longer_lowers_the_side():
     rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60}]
     m = _with_lineups(_foot(rows), home_bench=["A", "B", "C"])
     w = S.weakened(m)
     assert w["domicile"]["niveau"] == "a_la_baisse"
-    assert S.foot_choice(m, None, w)["chance"] == round(S.foot_choice(m)["chance"] - S.ROTATION_PENALTY, 4)
+    c = S.foot_choice(m, None, w)
+    assert c["chance"] == S.foot_choice(m)["chance"] and "choix du coach" in c["raison"]
+
+
+def test_favourite_with_its_usual_eleven_before_the_champions_league_is_lowered():
+    rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60},
+            {"pari": "Lille (remboursé si nul)", "cote": 1.55, "proba": 0.80, "proba_marche": 0.78}]
+    m = _with_lineups(_foot(rows))
+    m["proba_1x2"] = {"domicile": 0.6, "nul": 0.22, "exterieur": 0.18}
+    w = S.weakened(m)
+    base = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w, {"domicile": 3})}
+    assert all(moved[k] == round(base[k] - S.UCL_PENALTY, 4) for k in base)
+    assert "avant la Ligue des champions" in S.foot_choice(m, None, w, {"domicile": 3})["raison"]
+    assert S.foot_options(m, None, w, {"exterieur": 3}) == S.foot_options(m, None, w)  # not the favourite
+    rot = _with_lineups(_foot(rows), home_bench=["A", "B", "C"])  # rotating before the UCL: no penalty
+    rot["proba_1x2"] = m["proba_1x2"]
+    wr = S.weakened(rot)
+    assert S.foot_options(rot, None, wr, {"domicile": 3}) == S.foot_options(rot, None, wr)
+    assert S.foot_options(m, None, None, {"domicile": 3}) == S.foot_options(m)  # line-ups not out: nothing
     assert S.weakened(_foot(rows)) is None  # line-ups not out yet: nothing changes
 
 

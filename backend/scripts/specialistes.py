@@ -72,6 +72,32 @@ def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
         return None, None
 
 
+EUROPEAN = ("UCL", "UEL", "UECL", "ENC", "Ligue des champions", "Ligue Europa", "Coupe")  # tested on league games only
+
+
+def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
+    """{side: days until its next Champions League match} for the sides playing one 2 to 4 days after this league
+    game (API-Football /fixtures?team=&next=, cached 6 h), None in a European game or when unknown."""
+    if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
+        return None
+    try:
+        from sportai.config import get_settings
+        from sportai.connectors.api_football import ApiFootballProvider
+        api = ApiFootballProvider(get_settings().api_football_key)
+        out = {}
+        for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
+            for f in api.team_next(int(tid), 3) if tid else []:
+                if (f.get("league") or {}).get("id") != 2 or not f["fixture"].get("timestamp"):
+                    continue
+                days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
+                if 2 <= days <= 4.5:
+                    out[side] = round(days)
+        return out or None
+    except Exception as e:  # noqa: BLE001 - the calendar rule is then skipped
+        print(f"calendar unavailable ({str(e)[:120]})", file=sys.stderr)
+        return None
+
+
 def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
     try:  # xG of every league game, from the API-Football cache the morning goals refresh keeps up to date
         from sportai.services.goals_refresh import refresh_data
@@ -89,7 +115,8 @@ def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
         weak = None
         if not (p and (p.get("fige") or (ko and now >= ko))):  # a stored choice that no longer moves needs nothing
             weak = S.weakened(m, *_keys_of(m, ko or now)) if S.weakened(m) else None
-        c = S.record(p, S.foot_choice(m, luck, weak), ko, now, frozen)
+        cal = _ucl_calendar(m, ko) if weak else None
+        c = S.record(p, S.foot_choice(m, luck, weak, cal), ko, now, frozen)
         S.foot_settle(c, m)
         out[mid] = _keep({**c, "match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
                           "coup_envoi": m.get("coup_envoi"), "score": m.get("score") if m.get("statut") == "termine" else None})
