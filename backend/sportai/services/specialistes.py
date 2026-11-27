@@ -56,6 +56,18 @@ WEAK_KEY_COUNT = 4
 WEAK_OUT = 4
 ROTATION_BENCH = 3
 DOWN_MISSING = 4  # usual starters not in the XI (bench + out of the squad)
+# Goals markets (owner 2026-11-27, same 12 661 matches): both sides without 2+ of their regular attackers ->
+# fewer goals than the odds expect (over 2.5: -1.9 / -2.4 pts on both periods); a regular goalkeeper missing ->
+# more goals (+1.2 / +1.9 pts). One side alone without its attackers: no effect (it also concedes more).
+# Applied lightly: GOALS_SHIFT on the chance of "plus de" / "moins de" options (2.5 and 3.5 lines).
+# Every market (owner 2026-11-27 « les acteurs doivent s'ajuster sur tous les marchés »), outcomes against the odds,
+# relative to normal matches, same direction on 2020-23 and 2024-26:
+# - opponent of a very weakened side: its win +1.6 / +2.5 pts, its double chance +2.0 / +3.0 -> +GOALS_SHIFT;
+# - regular keeper missing: both teams score +1.0 / +3.5 pts -> +GOALS_SHIFT on "les deux marquent : oui".
+# Rotation alone showed nothing stable on any market: only its own result bets lose ROTATION_PENALTY.
+GOALS_ATT_MISSING = 2
+GOALS_SHIFT = 0.03
+GOALS_LINES = ("2_5", "3_5")
 ROTATION_PENALTY = 0.03
 REGULAR_SHARE = 0.5
 
@@ -149,7 +161,29 @@ def key_players(players: list[dict], team_id: int | None) -> list[str]:
     return [names[pid] for pid in sorted(regs, key=lambda pid: -score(pid))[:WEAK_KEY_COUNT]]
 
 
-def weakened(m: dict, keys: dict | None = None) -> dict | None:
+def regular_roles(players: list[dict], team_id: int | None) -> dict:
+    """{"att": regular starting attackers, "gk": regular starting goalkeepers} (API-Football short names)."""
+    starts, apps, pos, names = {}, {}, {}, {}
+    for item in players or []:
+        pid = (item.get("player") or {}).get("id")
+        if pid is None:
+            continue
+        names[pid] = (item.get("player") or {}).get("name") or "?"
+        for st in item.get("statistics") or []:
+            if team_id is not None and (st.get("team") or {}).get("id") not in (None, team_id):
+                continue
+            g = st.get("games") or {}
+            starts[pid] = starts.get(pid, 0) + (g.get("lineups") or 0)
+            apps[pid] = apps.get(pid, 0) + (g.get("appearences") or 0)
+            if g.get("position") and pid not in pos:
+                pos[pid] = g["position"]
+    played = max(apps.values(), default=0)
+    regs = [pid for pid, n in starts.items() if played and n / played >= REGULAR_SHARE]
+    return {"att": [names[p] for p in regs if pos.get(p) == "Attacker"],
+            "gk": [names[p] for p in regs if pos.get(p) == "Goalkeeper"]}
+
+
+def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> dict | None:
     """Both sides' state once the official line-ups are on the page (compositions), else None.
     keys: {"domicile": [key player names], "exterieur": [...]} (key_players), when known."""
     comp = m.get("compositions") or {}
@@ -166,14 +200,35 @@ def weakened(m: dict, keys: dict | None = None) -> dict | None:
         cles = [k for k in ((keys or {}).get(side) or []) if k not in xi]
         level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT
                  else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
-        out[side] = {"niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc}
+        r = (roles or {}).get(side) or {}
+        out[side] = {"niveau": level, "cles_absents": cles, "hors_groupe": hors, "banc": banc,
+                     "attaquants_absents": [a for a in r.get("att") or [] if a not in xi],
+                     # a keeper is missing only when none of the regular ones starts (two can share the post)
+                     "gardien_absent": [] if any(g in xi for g in r.get("gk") or []) else list(r.get("gk") or [])}
     return out
+
+
+def goals_shift(weak: dict | None) -> tuple[float, list[str]]:
+    """Chance added to "plus de" options (taken off "moins de") from the line-ups, with its plain reasons."""
+    if not weak:
+        return 0.0, []
+    shift, why = 0.0, []
+    if all(len((weak.get(s_) or {}).get("attaquants_absents") or []) >= GOALS_ATT_MISSING
+           for s_ in ("domicile", "exterieur")):
+        shift -= GOALS_SHIFT
+        why.append("les deux équipes jouent sans plusieurs attaquants habituels : je m'attends à moins de buts.")
+    gk = [g for s_ in ("domicile", "exterieur") for g in (weak.get(s_) or {}).get("gardien_absent") or []]
+    if gk:
+        shift += GOALS_SHIFT
+        why.append(f"gardien habituel absent ({', '.join(gk)}) : je m'attends à un peu plus de buts, des deux côtés.")
+    return shift, why
 
 
 def weakened_phrase(team: str, w: dict) -> str | None:
     if w.get("niveau") == "tres_diminuee":
         who = w["cles_absents"] if len(w["cles_absents"]) >= WEAK_KEY_MISSING else w["hors_groupe"]
-        return f"{team} est très diminuée (sans {', '.join(who[:4])}) : je ne joue pas sa victoire."
+        return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : je ne joue pas sa victoire "
+                f"et je vois son adversaire un peu à la hausse.")
     if w.get("niveau") == "a_la_baisse":
         bits = []
         if w["hors_groupe"]:
@@ -189,6 +244,8 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
     from sportai.services.revue import _keys, famille
 
     keys = _keys(m.get("domicile") or "", m.get("exterieur") or "")
+    shift = goals_shift(weak)[0]
+    keeper_out = any((weak or {}).get(s_, {}).get("gardien_absent") for s_ in ("domicile", "exterieur"))
     rows = ((m.get("tous_marches") or {}).get("analyses") or []) + ((m.get("buts") or {}).get("marches") or [])
     out, seen = [], set()
     for r in rows:
@@ -207,6 +264,15 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None) -
             continue  # never backed, not even as a fallback (the Top 5 reads every choice)
         if w.get("niveau") == "a_la_baisse":
             chance -= ROTATION_PENALTY
+        fam = famille(key.market, key.selection, key.line)
+        if shift and fam.startswith(("plus_", "moins_")) and fam.endswith(GOALS_LINES):
+            chance += shift if fam.startswith("plus_") else -shift
+        if side:  # the balance: backing the opponent of a very weakened side
+            other = (weak or {}).get({"home": "exterieur", "away": "domicile"}[side]) or {}
+            if other.get("niveau") == "tres_diminuee":
+                chance += GOALS_SHIFT
+        if fam == "btts_oui" and keeper_out:
+            chance += GOALS_SHIFT
         if side and luck and None not in luck:
             mine, theirs = (luck[0], luck[1]) if side == "home" else (luck[1], luck[0])
             lucky = mine - theirs >= FOOT_LUCK_GAP
@@ -224,6 +290,7 @@ def foot_choice(m: dict, luck: tuple | None = None, weak: dict | None = None) ->
     if weak:
         c["affaiblissement"] = weak
         notes = [x for x in (weakened_phrase(m.get(s_) or s_, weak[s_]) for s_ in ("domicile", "exterieur")) if x]
+        notes += [w_[0].upper() + w_[1:] for w_ in goals_shift(weak)[1]]
         if notes and c.get("raison"):
             c["raison"] += " " + " ".join(notes)
     return c
