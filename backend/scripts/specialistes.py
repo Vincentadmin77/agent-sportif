@@ -31,7 +31,24 @@ FREEZE = timedelta(minutes=45)
 # without a disk cache every run downloaded both squads (/players, all pages) and next fixtures of every match again.
 # One provider per run and a disk cache kept between runs: a squad is then fetched about every 6 h, not every hour.
 HTTP_CACHE = "/mnt/project-files/agent-sportif/state/httpcache-specialiste"
+QUOTA_FLOOR = 1500  # coordinator 27/11 19:46Z: under this many calls left today, the specialist calls nothing (the Direct first)
 _API = None
+_QUOTA: list = []
+
+
+def _quota_ok() -> bool:
+    """True while API-Football has more than QUOTA_FLOOR calls left today (/status does not count, read once a run).
+    Otherwise the specialist runs on the page documents alone: squad absences only, no calendar rule."""
+    if not _QUOTA:
+        try:
+            r = _api()._get("/status", {}, ttl=0)["response"]["requests"]
+            _QUOTA.append(int(r["limit_day"]) - int(r["current"]) > QUOTA_FLOOR)
+        except Exception as e:  # noqa: BLE001 - unknown quota: stay on the safe side
+            print(f"API-Football quota unknown ({str(e)[:120]}): no call this run", file=sys.stderr)
+            _QUOTA.append(False)
+        if not _QUOTA[0]:
+            print(f"API-Football: {QUOTA_FLOOR} calls left or fewer, the specialist calls nothing this run", file=sys.stderr)
+    return _QUOTA[0]
 
 
 def _api():
@@ -68,6 +85,8 @@ def _keep(d: dict) -> dict:
 def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
     """Key players and regular attackers / goalkeepers of both sides (API-Football /players, cached 6 h);
     (None, None) when unavailable: the weakened-side rule then uses the squad absences only."""
+    if not _quota_ok():
+        return None, None
     try:
         api = _api()
         out, roles = {}, {}
@@ -94,6 +113,8 @@ def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
     """{side: days until its next Champions League match} for the sides playing one 2 to 4 days after this league
     game (API-Football /fixtures?team=&next=, cached 6 h), None in a European game or when unknown."""
     if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
+        return None
+    if not _quota_ok():
         return None
     try:
         api = _api()
