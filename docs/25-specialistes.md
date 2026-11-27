@@ -96,3 +96,6 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
   (DC −4,3/−3,9 sur les deux périodes). Phrase « avant la Ligue des champions ».
 - Affichage : `affaiblissement[côté].postes` = {joueur: « gardien » | « défense » | « milieu » | « attaque »} pour
   les clés hors du onze, les absents du groupe et les habituels sur le banc (postes de `/players`). Ne change aucun choix.
+- Quota API-Football (27/11) : cache disque partagé entre les passages horaires (state/httpcache-specialiste) ; sous
+  1 500 requêtes restantes dans la journée, le spécialiste n'appelle plus l'API (absences de la page seulement, pas de
+  règle du calendrier), pour laisser la marge au Direct.
