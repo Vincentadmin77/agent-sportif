@@ -490,6 +490,11 @@ def prematch(api, comps: list[str], current: dict[str, dict], now: datetime
             if roster is not None and odds and not french_only():  # no French site in the player odds feed
                 offers[key] += player_bets(roster, g, odds)
         notes.append(f"{comp} completed ({len(games)} match(s))")
+    try:  # display only: the probable / official NBA fives (services/basket_compo.py)
+        from sportai.services.basket_compo import fill
+        fill(docs, now)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"compo basket unavailable ({str(e)[:120]})")
     return docs, offers, notes
 
 
@@ -615,6 +620,13 @@ def update_scores(api, comps: list[str], current: dict[str, dict], now: datetime
                 fetch_boxes(api, season_for("NBA", day), done)
             except Exception as e:  # noqa: BLE001 - the player bets are settled at a later pass
                 print(f"basket box scores {day}: {str(e)[:120]}", file=sys.stderr)
+    try:  # display only: the official NBA fives, polled around tip-off (services/basket_compo.py)
+        from sportai.services.basket_compo import fill
+        near = {k: dict(docs.get(k) or d) for k, d in current.items() if d.get("statut") != "termine"}
+        for k in fill(near, now, official_only=True):
+            docs[k] = near[k]
+    except Exception as e:  # noqa: BLE001
+        print(f"basket compositions unavailable ({str(e)[:120]})", file=sys.stderr)
     return docs
 
 
