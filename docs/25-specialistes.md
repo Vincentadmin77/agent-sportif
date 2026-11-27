@@ -82,3 +82,6 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
 - Test 12 661 matchs de championnat 2020-2026, victoire à 1,50-2,30 : équipe affaiblie 44,7 % (2020-23) et 46,5 %
   (2024-26) contre ~54 % au complet. Rotation seule : pas de baisse mesurée, comptée quand même à la demande de
   Vincent, légèrement. Rapport : bilans/2026-11-27-absences-forme/rapport.md (dossier du projet).
+- Tous les marchés (Vincent 27/11, « tout brancher ») : adversaire d'une équipe très diminuée +3 pts (victoire,
+  remboursé, double chance) ; deux attaques sans 2 attaquants habituels : plus de 2,5/3,5 −3, moins +3 ; aucun
+  gardien habituel titulaire : l'inverse, et « les deux marquent : oui » +3.
