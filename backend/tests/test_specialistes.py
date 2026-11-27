@@ -120,7 +120,7 @@ def test_foot_never_backs_a_very_weakened_side():
     w = S.weakened(m, {"domicile": ["A", "B", "C", "L0"], "exterieur": []})  # 3 of the 4 key players not in the XI
     assert w["domicile"]["niveau"] == "tres_diminuee"
     c = S.foot_choice(m, None, w)
-    assert c["pari"] == "Plus de 2,5 buts" and "très diminuée" in c["raison"]
+    assert c["pari"] is None and "très diminuée" in c["raison"]  # no straight win, no over 2.5 either: pass
     # adapt rather than drop: its double chance stays possible, 3 pts lower
     dc = [{"pari": "Lille (remboursé si nul)", "cote": 1.55, "proba": 0.80, "proba_marche": 0.78}]
     m2 = _with_lineups(_foot(dc), home_xi=_xi("L"))
@@ -185,7 +185,7 @@ def test_balance_and_keeper_on_every_market():
     w = S.weakened(m, None, {"domicile": {"att": [], "gk": ["G"]}, "exterieur": {"att": [], "gk": ["R0"]}})
     moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
     assert moved["Victoire Lens"] == round(base["Victoire Lens"] + S.GOALS_SHIFT, 4)  # the balance
-    assert moved["Les deux équipes marquent : oui"] == round(base["Les deux équipes marquent : oui"] + S.GOALS_SHIFT, 4)
+    assert "Les deux équipes marquent : oui" not in moved  # équipe 2 on the pitch: no « les deux marquent »
     assert moved["Plus de 1,5 buts"] == base["Plus de 1,5 buts"]  # only the 2.5 and 3.5 lines move
 
 
@@ -216,6 +216,18 @@ def test_four_starters_missing_is_a_b_team():
     assert [o["pari"] for o in opts] == ["Lille (remboursé si nul)"]
     assert opts[0]["chance"] == round(S.foot_options(four)[0]["chance"] - S.ROTATION_PENALTY, 4)
     assert "équipe 2 : 4 titulaires absents ou laissés au banc" in S.foot_choice(four, None, w)["raison"]
+
+
+def test_b_team_on_either_side_drops_over_goals_and_btts():
+    rows = [{"pari": "Plus de 2,5 buts", "cote": 1.70, "proba": 0.64, "proba_marche": 0.62},
+            {"pari": "Les deux équipes marquent : oui", "cote": 1.75, "proba": 0.60, "proba_marche": 0.58},
+            {"pari": "Moins de 3,5 buts", "cote": 1.60, "proba": 0.66, "proba_marche": 0.64}]
+    full = _with_lineups(_foot(rows))
+    assert {o["pari"] for o in S.foot_options(full, None, S.weakened(full))} >= {"Plus de 2,5 buts"}
+    b = _with_lineups(_foot(rows), home_out=["A"], home_bench=["B", "C", "D"])
+    w = S.weakened(b)
+    assert w["domicile"]["niveau"] == "tres_diminuee"
+    assert [o["pari"] for o in S.foot_options(b, None, w)] == ["Moins de 3,5 buts"]
 
 
 def test_only_benched_starters_who_matter_count():
