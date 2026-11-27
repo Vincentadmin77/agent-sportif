@@ -75,8 +75,8 @@ chanceuse), pas comme raison de prendre position.
 ## Équipe diminuée et rotation (Vincent 27/11/2026)
 Avec les compositions officielles sur la page (toutes compétitions, coupes d'Europe comprises) :
 - **Très diminuée** (3 des 4 joueurs clés hors du onze, ou 4 titulaires habituels absents du groupe) : V1 ne joue
-  jamais sa victoire, son remboursé si nul ni sa double chance, même en choix de repli.
-- **À la baisse** (3 titulaires habituels sur le banc, ou 4 hors du onze) : −3 points de chance pour cette équipe.
+  jamais sa victoire sèche, même en repli ; il s'adapte en « victoire ou nul » (double chance, remboursé) à −3 pts.
+- **À la baisse** (3 titulaires habituels sur le banc, ou 4 hors du onze) : −3 points sur sa victoire sèche.
 - Joueurs clés : titulaires habituels (la moitié des matchs, toutes compétitions) classés par part des buts + passes
   puis note moyenne, depuis `/players` (cache 6 h). Sans réponse : seulement les absents du groupe.
 - Test 12 661 matchs de championnat 2020-2026, victoire à 1,50-2,30 : équipe affaiblie 44,7 % (2020-23) et 46,5 %
