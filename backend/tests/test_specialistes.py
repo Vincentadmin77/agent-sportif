@@ -202,3 +202,20 @@ def test_weakened_names_the_post_of_each_missing_player_for_display():
     assert w["exterieur"]["postes"] == {}
     base = S.foot_options(m)
     assert [o["chance"] for o in S.foot_options(m, None, S.weakened(m, None, None))] == [o["chance"] for o in base]
+
+
+def test_six_usual_starters_on_the_bench_is_a_b_team():
+    rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60},
+            {"pari": "Lille (remboursé si nul)", "cote": 1.55, "proba": 0.80, "proba_marche": 0.78}]
+    four = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D"])
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(four, None, S.weakened(four))}
+    base = {o["pari"]: o["chance"] for o in S.foot_options(four)}
+    assert moved["Victoire Lille"] == round(base["Victoire Lille"] - S.ROTATION_PENALTY, 4)  # 4-5: straight win -3
+    assert moved["Lille (remboursé si nul)"] == base["Lille (remboursé si nul)"]
+    six = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D", "E", "F"])
+    w = S.weakened(six)
+    assert w["domicile"]["niveau"] == "tres_diminuee"
+    opts = S.foot_options(six, None, w)
+    assert [o["pari"] for o in opts] == ["Lille (remboursé si nul)"]
+    assert opts[0]["chance"] == round(S.foot_options(six)[0]["chance"] - S.ROTATION_PENALTY, 4)
+    assert "équipe 2 : 6 titulaires laissés au banc" in S.foot_choice(six, None, w)["raison"]
