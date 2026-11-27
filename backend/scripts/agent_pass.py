@@ -349,6 +349,10 @@ def prematch(comps: list[str], page: str | None, out: str, now: datetime, goals:
         _form(comps, docs, current, now)
     except Exception as e:  # form is a bonus: never lose the pass for it
         notes.append(f"forme unavailable ({str(e)[:120]})")
+    try:
+        _probable(comps, docs, current, now, morning, api=api, raw_today=raw_today)
+    except Exception as e:  # display only: never lose the pass for it
+        notes.append(f"compo probable unavailable ({str(e)[:120]})")
     _merge_back(work)
     n_sel = sum(len(d.get("selections") or []) for d in docs.values())
     _write(out, docs, f"{len(docs)} match(s) mis à jour, {n_sel} sélection(s)", now)
@@ -479,6 +483,57 @@ def _form(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now
             docs[key]["face_a_face"] = head_to_head_rows(api.head_to_head(h, a))
             docs[key]["forme"] = {"domicile": recent_form(api.team_last(h), h),
                                   "exterieur": recent_form(api.team_last(a), a)}
+
+
+def _probable(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime, morning: bool,
+              api=None, raw_today: list[dict] | None = None) -> None:
+    """matchs/<id>.compo_probable {"domicile", "exterieur"} (services/compo_probable.py) for the matches still
+    waiting for their official line-ups: every match of the day at the morning pass, those of the next hours at the
+    other passes (the injuries list moves). Display only. Kept from an earlier pass otherwise."""
+    from sportai.config import get_settings
+    from sportai.connectors.api_football import ApiFootballProvider
+    from sportai.services.compo_probable import recent_lineups, side_probable, squad_positions
+    from sportai.services.lineups import absentees, lineup_published, regular_starters
+    from sportai.services.live_page import find_doc
+    from sportai.services.prematch import journee
+
+    for key, d in docs.items():
+        if "compo_probable" not in d and "compo_probable" in (current.get(key) or {}):
+            d["compo_probable"] = current[key]["compo_probable"]
+    horizon = now + (timedelta(hours=24) if morning else ABSENCE_HORIZON)
+    api = api or ApiFootballProvider(get_settings().api_football_key)
+    day = journee(now)
+    for fx in (raw_today if raw_today is not None else api.fixtures_on(comps, day)):
+        ts = fx["fixture"].get("timestamp")
+        if fx["fixture"]["status"]["short"] not in ("NS", "TBD") or not ts:
+            continue
+        if not now < datetime.fromtimestamp(ts, timezone.utc) <= horizon:
+            continue
+        key = find_doc(docs, f"{day:%Y-%m-%d}", fx["teams"]["home"]["name"], fx["teams"]["away"]["name"])
+        if not key or lineup_published(docs[key]):
+            continue
+        try:
+            season, league = fx["league"]["season"], fx["league"].get("id")
+            teams = (fx["teams"]["home"], fx["teams"]["away"])
+            squads = {t["id"]: api.team_players(t["id"], season) for t in teams}
+            regs = {t["id"]: regular_starters(squads[t["id"]], t["id"], None) for t in teams}
+            missing = absentees(api.injuries(fx["fixture"]["id"]), fx, regs)
+            compo = {}
+            for side, t in zip(("domicile", "exterieur"), teams):
+                ids = [f["fixture"]["id"] for f in api.team_last(t["id"])]
+                past = recent_lineups(api.fixtures_by_ids(ids), t["id"])
+                ids_of = {}
+                for item in squads[t["id"]]:  # absentees() keeps names only: find their ids back
+                    ids_of[(item.get("player") or {}).get("name")] = (item.get("player") or {}).get("id")
+                miss = [{**a, "id": a.get("id") or ids_of.get(a["joueur"])} for a in missing.get(side) or []]
+                c = side_probable(past, miss, lambda pid, name, r=regs[t["id"]]: pid in r,
+                                  squad_positions(squads[t["id"]]))
+                if c:
+                    compo[side] = c
+            if len(compo) == 2:
+                docs[key]["compo_probable"] = compo
+        except Exception as e:  # noqa: BLE001 - this match keeps an earlier pass's line-up, if any
+            print(f"compo probable unavailable for {fx['teams']['home']['name']} ({str(e)[:120]})", file=sys.stderr)
 
 
 def _context(comps: list[str], docs: dict[str, dict], current: dict[str, dict], now: datetime, api=None,
