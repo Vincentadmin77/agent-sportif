@@ -150,3 +150,16 @@ def test_goals_lean_under_when_both_attacks_are_missing_and_over_without_the_kee
     moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
     assert moved["Plus de 2,5 buts"] == round(base["Plus de 2,5 buts"] + S.GOALS_SHIFT, 4)
     assert "gardien habituel absent" in S.foot_choice(m, None, w)["raison"].lower()
+
+
+def test_balance_and_keeper_on_every_market():
+    rows = [{"pari": "Victoire Lens", "cote": 2.10, "proba": 0.45, "proba_marche": 0.44},
+            {"pari": "Les deux équipes marquent : oui", "cote": 1.80, "proba": 0.55, "proba_marche": 0.54},
+            {"pari": "Plus de 1,5 buts", "cote": 1.50, "proba": 0.70, "proba_marche": 0.69}]
+    m = _with_lineups(_foot(rows), home_out=["A", "B", "C", "D"])  # Lille very weakened
+    base = {o["pari"]: o["chance"] for o in S.foot_options(m)}
+    w = S.weakened(m, None, {"domicile": {"att": [], "gk": ["G"]}, "exterieur": {"att": [], "gk": ["R0"]}})
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(m, None, w)}
+    assert moved["Victoire Lens"] == round(base["Victoire Lens"] + S.GOALS_SHIFT, 4)  # the balance
+    assert moved["Les deux équipes marquent : oui"] == round(base["Les deux équipes marquent : oui"] + S.GOALS_SHIFT, 4)
+    assert moved["Plus de 1,5 buts"] == base["Plus de 1,5 buts"]  # only the 2.5 and 3.5 lines move
