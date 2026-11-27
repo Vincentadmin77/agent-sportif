@@ -48,6 +48,29 @@ def _keep(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None or k == "pari"}
 
 
+def _keys_of(m: dict, when: datetime) -> dict | None:
+    """Key players of both sides (API-Football /players, cached 6 h), None when unavailable: the weakened-side
+    rule then uses the squad absences only."""
+    try:
+        from sportai.config import get_settings
+        from sportai.connectors.api_football import ApiFootballProvider
+        api = ApiFootballProvider(get_settings().api_football_key)
+        out = {}
+        for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
+            if not tid:
+                return None
+            keys = []
+            for season in (when.year if when.month >= 7 else when.year - 1, when.year):
+                keys = S.key_players(api.team_players(int(tid), season), int(tid))
+                if keys:
+                    break
+            out[side] = keys
+        return out
+    except Exception as e:  # noqa: BLE001
+        print(f"key players unavailable ({str(e)[:120]})", file=sys.stderr)
+        return None
+
+
 def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
     try:  # xG of every league game, from the API-Football cache the morning goals refresh keeps up to date
         from sportai.services.goals_refresh import refresh_data
@@ -61,7 +84,11 @@ def foot(day: str, matchs: dict[str, dict], prev: dict, now: datetime) -> dict:
         ko = _aware(m.get("coup_envoi"))
         frozen = bool((m.get("passages") or {}).get("m45")) or bool(ko and now >= ko - FREEZE)
         luck = (S.xg_luck(history, m.get("domicile"), ko or now), S.xg_luck(history, m.get("exterieur"), ko or now))
-        c = S.record(prev.get(mid), S.foot_choice(m, luck), ko, now, frozen)
+        p = prev.get(mid)
+        weak = None
+        if not (p and (p.get("fige") or (ko and now >= ko))):  # a stored choice that no longer moves needs nothing
+            weak = S.weakened(m, _keys_of(m, ko or now)) if S.weakened(m) else None
+        c = S.record(p, S.foot_choice(m, luck, weak), ko, now, frozen)
         S.foot_settle(c, m)
         out[mid] = _keep({**c, "match": f"{m.get('domicile')} - {m.get('exterieur')}", "competition": m.get("competition"),
                           "coup_envoi": m.get("coup_envoi"), "score": m.get("score") if m.get("statut") == "termine" else None})
