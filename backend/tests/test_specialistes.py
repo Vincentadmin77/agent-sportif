@@ -246,3 +246,29 @@ def test_only_benched_starters_who_matter_count():
         fiche[n]["note"] = 6.3  # clearly weaker replacements count too
     w = S.weakened(m, None, {"domicile": {"fiche": fiche}})
     assert len(w["domicile"]["banc_compte"]) == 4
+
+
+def test_specialist_calls_nothing_under_the_quota_floor(monkeypatch):
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location("spec_script", pathlib.Path(__file__).parents[1] / "scripts" / "specialistes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    class Api:
+        calls = []
+        def _get(self, path, params, ttl):
+            return {"response": {"requests": {"current": 6100, "limit_day": 7500}}}
+        def team_players(self, *a):
+            self.calls.append("players"); return []
+        def team_next(self, *a):
+            self.calls.append("next"); return []
+    monkeypatch.setattr(mod, "_API", Api())
+    m = {"id_domicile": 1, "id_exterieur": 2, "competition": "Ligue 1"}
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 27, 18, tzinfo=timezone.utc)
+    assert mod._keys_of(m, now) == (None, None) and mod._ucl_calendar(m, now) is None
+    assert Api.calls == []
+    mod._QUOTA.clear()
+    monkeypatch.setattr(Api, "_get", lambda self, *a, **k: {"response": {"requests": {"current": 2000, "limit_day": 7500}}})
+    mod._keys_of(m, now)
+    assert "players" in Api.calls
