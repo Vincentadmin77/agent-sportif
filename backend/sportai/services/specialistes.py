@@ -80,6 +80,9 @@ REGULAR_SHARE = 0.5
 #   UCL_PENALTY. Not in European games (not tested there).
 UCL_PENALTY = 0.03
 UCL_BENCH_MAX = 2
+# Owner 2026-11-27 12:48Z: 1 to 5 usual starters on the bench = resting players, no penalty; 6 or more = « équipe 2 »,
+# treated like a very weakened side (no straight win, double chance / draw no bet at -3 pts).
+B_TEAM_BENCH = 6
 
 # --- basketball
 BASKET_TOTAL_GAP = 4.0
@@ -213,7 +216,7 @@ def weakened(m: dict, keys: dict | None = None, roles: dict | None = None) -> di
         hors = list(b.get("absents_notables") or [])
         banc = list(b.get("remplacants_notables") or [])
         cles = [k for k in ((keys or {}).get(side) or []) if k not in xi]
-        level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT
+        level = ("tres_diminuee" if len(cles) >= WEAK_KEY_MISSING or len(hors) >= WEAK_OUT or len(banc) >= B_TEAM_BENCH
                  else "a_la_baisse" if len(banc) >= ROTATION_BENCH or len(hors) + len(banc) >= DOWN_MISSING else None)
         r = (roles or {}).get(side) or {}
         postes = r.get("postes") or {}
@@ -242,6 +245,9 @@ def goals_shift(weak: dict | None) -> tuple[float, list[str]]:
 
 
 def weakened_phrase(team: str, w: dict) -> str | None:
+    if w.get("niveau") == "tres_diminuee" and len(w.get("banc") or []) >= B_TEAM_BENCH:
+        return (f"{team} aligne une équipe 2 : {len(w['banc'])} titulaires laissés au banc "
+                f"({', '.join(w['banc'][:4])}…) : pas de victoire sèche, au mieux victoire ou nul.")
     if w.get("niveau") == "tres_diminuee":
         who = w["cles_absents"] if len(w["cles_absents"]) >= WEAK_KEY_MISSING else w["hors_groupe"]
         return (f"{team} est très diminuée (sans {', '.join(who[:4])}) : pas de victoire sèche, au mieux victoire "
