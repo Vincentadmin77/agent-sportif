@@ -17,7 +17,7 @@ def _inj(pid, status, pos="G", detail="Ankle"):
 def test_usual_five_minus_the_injured_in_the_point_guard_to_centre_order():
     c = side_probable([FIVE, FIVE, FIVE], [_inj("1", "Out"), _inj("4", "Day-To-Day", "F"), _inj("7", "Out", "F")])
     assert c["titulaires"] == ["N2", "N6", "N3", "N4", "N5"]  # the injured point guard replaced, the doubtful kept
-    assert c["absents"] == [{"joueur": "N1", "raison": "blessure", "poste": "meneur"},
+    assert c["absents"] == [{"joueur": "N1", "raison": "blessure", "poste": "meneur", "remplace_par": "N6"},
                             {"joueur": "N4", "raison": "incertain", "poste": "ailier fort"}]  # N7 does not count
     assert side_probable([FIVE], [_inj("2", "Out", detail="Suspension")])["absents"][0]["raison"] == "suspendu"
     assert side_probable([], []) is None

@@ -125,6 +125,16 @@ def side_probable(games: list[list[dict]], injuries: list[dict]) -> dict | None:
     free = sorted((pid for pid in info if pid not in out_ids), key=rank)[:5]
     if len(free) < 5:
         return None
+    newcomers = [pid for pid in free if pid not in usual]
+    group = lambda pid: POS_ORDER.get(info[pid]["pos"], 3)
+    for a, it in zip(absents, [it for it in injuries if reason(it) is not None
+                               and (starts[str((it.get("athlete") or {}).get("id"))] >= 2
+                                    or mins[str((it.get("athlete") or {}).get("id"))] >= COUNTS_MIN)]):
+        pid = str((it.get("athlete") or {}).get("id"))
+        if pid in usual and pid in out_ids and newcomers:  # the player who takes his place in the five
+            rep = min(newcomers, key=lambda q: abs(group(q) - group(pid)))
+            newcomers.remove(rep)
+            a["remplace_par"] = info[rep]["nom"]
     return {"titulaires": [p["nom"] for p in order_five([info[pid] for pid in free])], "absents": absents,
             "source": "habituelle"}
 
