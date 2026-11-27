@@ -85,3 +85,5 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
 - Tous les marchés (Vincent 27/11, « tout brancher ») : adversaire d'une équipe très diminuée +3 pts (victoire,
   remboursé, double chance) ; deux attaques sans 2 attaquants habituels : plus de 2,5/3,5 −3, moins +3 ; aucun
   gardien habituel titulaire : l'inverse, et « les deux marquent : oui » +3.
+- Affichage : `affaiblissement[côté].postes` = {joueur: « gardien » | « défense » | « milieu » | « attaque »} pour
+  les clés hors du onze, les absents du groupe et les habituels sur le banc (postes de `/players`). Ne change aucun choix.
