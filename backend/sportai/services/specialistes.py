@@ -80,8 +80,10 @@ REGULAR_SHARE = 0.5
 #   UCL_PENALTY. Not in European games (not tested there).
 UCL_PENALTY = 0.03
 UCL_BENCH_MAX = 2
-# Owner 2026-11-27 12:48Z: 1 to 5 usual starters on the bench = resting players, no penalty; 6 or more = « équipe 2 »,
-# treated like a very weakened side (no straight win, double chance / draw no bet at -3 pts).
+# Owner 2026-11-27 12:48-12:49Z, usual starters left on the bench by choice: 1 to 3 = resting players, no penalty;
+# 4 or 5 = its straight win loses ROTATION_PENALTY; 6 or more = « équipe 2 », treated like a very weakened side
+# (no straight win, double chance / draw no bet at -3 pts).
+ROTATION_PENALTY_BENCH = 4
 B_TEAM_BENCH = 6
 
 # --- basketball
@@ -258,8 +260,10 @@ def weakened_phrase(team: str, w: dict) -> str | None:
             bits.append(f"sans {', '.join(w['hors_groupe'][:4])}")
         if w["banc"]:
             bits.append(f"avec {', '.join(w['banc'][:4])} sur le banc (choix du coach)")
-        return (f"{team} joue {' et '.join(bits)} : la cote le compte déjà, et souvent trop, "
-                f"je ne la baisse pas davantage.")
+        if len(w["banc"]) >= ROTATION_PENALTY_BENCH:
+            return f"{team} joue {' et '.join(bits)} : je la vois un peu à la baisse."
+        return (f"{team} joue {' et '.join(bits)} : quelques joueurs au repos, la cote le compte déjà, "
+                f"je ne la baisse pas.")
     return None
 
 
@@ -306,7 +310,8 @@ def foot_options(m: dict, luck: tuple | None = None, weak: dict | None = None, c
             if fam == "victoire":
                 continue  # its straight win is never backed, not even as a fallback (the Top 5 reads every choice)
             chance -= ROTATION_PENALTY  # its double chance / draw no bet: -2 / -3 pts in the backtest
-        # rotation alone (« à la baisse »): no penalty any more, the odds already over-react (owner 2026-11-27)
+        elif len(w.get("banc") or []) >= ROTATION_PENALTY_BENCH and fam == "victoire":
+            chance -= ROTATION_PENALTY  # 4-5 usual starters on the bench: lightly lower (1-3: resting, nothing)
         if side and before_ucl == {"home": "domicile", "away": "exterieur"}[side] and fam in (
                 "victoire", "double_chance", "rembourse_si_nul"):
             chance -= UCL_PENALTY

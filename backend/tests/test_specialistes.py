@@ -207,8 +207,11 @@ def test_weakened_names_the_post_of_each_missing_player_for_display():
 def test_six_usual_starters_on_the_bench_is_a_b_team():
     rows = [{"pari": "Victoire Lille", "cote": 1.70, "proba": 0.62, "proba_marche": 0.60},
             {"pari": "Lille (remboursé si nul)", "cote": 1.55, "proba": 0.80, "proba_marche": 0.78}]
-    five = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D", "E"])
-    assert S.foot_options(five, None, S.weakened(five)) == S.foot_options(five)  # 1-5 benched: resting, no penalty
+    four = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D"])
+    moved = {o["pari"]: o["chance"] for o in S.foot_options(four, None, S.weakened(four))}
+    base = {o["pari"]: o["chance"] for o in S.foot_options(four)}
+    assert moved["Victoire Lille"] == round(base["Victoire Lille"] - S.ROTATION_PENALTY, 4)  # 4-5: straight win -3
+    assert moved["Lille (remboursé si nul)"] == base["Lille (remboursé si nul)"]
     six = _with_lineups(_foot(rows), home_bench=["A", "B", "C", "D", "E", "F"])
     w = S.weakened(six)
     assert w["domicile"]["niveau"] == "tres_diminuee"
