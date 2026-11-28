@@ -48,10 +48,33 @@ def _key(match: str) -> str:
 
 
 # ---------------------------------------------------------------- feeds
+NUIT_H = 6  # a match starting 00:00-05:59 Paris belongs to the day before (same cut as the hourly routine)
+
+
+def _lendemain(jour: str) -> str:
+    return (date.fromisoformat(jour) + timedelta(days=1)).isoformat()
+
+
+def _de_la_nuit(heure: str) -> bool:
+    """'HH:MM...' (Paris) before NUIT_H: played in the night after D, listed by the feeds on D+1."""
+    try:
+        return int(str(heure)[:2]) < NUIT_H
+    except ValueError:
+        return False
+
+
 def foot_fixtures(jour: str) -> dict[str, dict]:
+    """Fixtures of D plus those kicking off after midnight Paris (00:00-05:59), which the feed lists on D+1
+    (owner 2026-11-28: Fluminense - Cruzeiro at 00:00 Paris never settled)."""
     h = {"x-apisports-key": os.environ["API_FOOTBALL_KEY"]}
-    d = _get(f"https://v3.football.api-sports.io/fixtures?date={jour}&timezone=Europe/Paris", h).get("response") or []
-    return {_key(f"{f['teams']['home']['name']} - {f['teams']['away']['name']}"): f for f in d}
+    url = "https://v3.football.api-sports.io/fixtures?date={}&timezone=Europe/Paris"
+    d = _get(url.format(jour), h).get("response") or []
+    nuit = [f for f in _get(url.format(_lendemain(jour)), h).get("response") or []
+            if _de_la_nuit(f["fixture"]["date"][11:16])]
+    out: dict[str, dict] = {}
+    for f in d + nuit:  # a fixture of D itself wins over a same-name one of the next night
+        out.setdefault(_key(f"{f['teams']['home']['name']} - {f['teams']['away']['name']}"), f)
+    return out
 
 
 def foot_stats(fid: int) -> list[dict]:
@@ -66,10 +89,16 @@ def foot_stats(fid: int) -> list[dict]:
 
 
 def tennis_fixtures(jour: str) -> dict[str, dict]:
+    """Matches of D plus those starting after midnight Paris (00:00-05:59, listed on D+1)."""
     q = urllib.parse.urlencode({"method": "get_fixtures", "APIkey": os.environ["API_TENNIS_KEY"], "date_start": jour,
-                                "date_stop": jour, "timezone": "Europe/Paris"})
+                                "date_stop": _lendemain(jour), "timezone": "Europe/Paris"})
     r = _get(f"https://api.api-tennis.com/tennis/?{q}").get("result") or []
-    return {_key(f"{e.get('event_first_player')} - {e.get('event_second_player')}"): e for e in r}
+    r = [e for e in r if str(e.get("event_date")) == jour] + [
+        e for e in r if str(e.get("event_date")) != jour and _de_la_nuit(e.get("event_time") or "")]
+    out: dict[str, dict] = {}
+    for e in r:
+        out.setdefault(_key(f"{e.get('event_first_player')} - {e.get('event_second_player')}"), e)
+    return out
 
 
 def basket_games(jour: str) -> dict[str, dict]:
