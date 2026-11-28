@@ -8,6 +8,7 @@ probability and no choice uses it."""
 
 from __future__ import annotations
 
+import unicodedata
 from collections import Counter
 
 POSTE = {"G": "gardien", "D": "défense", "M": "milieu", "F": "attaque"}
@@ -113,10 +114,20 @@ def _profile(lineups: list[dict], regulars: set | None = None) -> dict:
     return pr
 
 
+_FOLD = str.maketrans({"ø": "o", "Ø": "O", "ß": "ss", "ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "æ": "ae", "Æ": "AE", "ı": "i"})
+
+
+def _norm(name) -> str:
+    """Name key without accents or case: /injuries writes « D. Doue » where /players and the line-ups write « D. Doué »."""
+    name = str(name or "").translate(_FOLD)
+    return unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower().strip()
+
+
 def _pick_xi(pr: dict, out_ids: set, out_names: set) -> list:
     pos = pr["pos"]
     rank = lambda pid: (-(pr["starts"][pid] + REGULAR_BONUS * (pid in pr["regulars"])), pr["last"][pid])
-    free = [pid for pid in pos if pid not in out_ids and pr["names"].get(pid) not in out_names]
+    out_names = {_norm(n) for n in out_names}
+    free = [pid for pid in pos if pid not in out_ids and _norm(pr["names"].get(pid)) not in out_names]
     xi: list = []
     for line in LINES:
         xi += sorted((p for p in free if pos[p] == line), key=rank)[:pr["need"].get(line, 0)]
@@ -170,13 +181,13 @@ def side_probable(lineups: list[dict], absents: list[dict], is_regular=lambda pi
     if len(xi) < 11:
         return None
     usual = _pick_xi(pr, set(), set())
-    by_name = {n: pid for pid, n in pr["names"].items()}
-    gone = [a.get("id") if a.get("id") in pr["pos"] else by_name.get(a.get("joueur")) for a in absents
+    by_name = {_norm(n): pid for pid, n in pr["names"].items()}
+    gone = [a.get("id") if a.get("id") in pr["pos"] else by_name.get(_norm(a.get("joueur"))) for a in absents
             if a.get("raison") in OUT_REASONS]
     reps = replacements([g for g in gone if g is not None], usual, xi, pr["pos"], pr["grid"])
     listed = []
     for a in absents:
-        pid = a.get("id") if a.get("id") in pr["pos"] else by_name.get(a.get("joueur"), a.get("id"))
+        pid = a.get("id") if a.get("id") in pr["pos"] else by_name.get(_norm(a.get("joueur")), a.get("id"))
         if not (is_regular(a.get("id"), a.get("joueur")) or pr["starts"].get(pid, 0) >= 2):
             continue
         raison = a.get("raison") if a.get("raison") in ("blessure", "suspendu", "incertain") else "absent"
@@ -204,13 +215,13 @@ def official_absents(team_lineup: dict, lineups: list[dict], absents: list[dict]
     for p in team_lineup.get("substitutes") or []:
         bench.add(p["player"].get("id") or p["player"].get("name"))
     why = {a.get("id") or a.get("joueur"): a.get("raison") for a in absents}
-    why.update({a.get("joueur"): a.get("raison") for a in absents})
+    why.update({_norm(a.get("joueur")): a.get("raison") for a in absents})
     missing = [p for p in usual if p not in xi]
     reps = replacements(missing, usual, xi, pr["pos"], pr["grid"])
     out = []
     for m in missing:
         name = pr["names"].get(m)
-        r = "banc" if m in bench else why.get(m) or why.get(name) or "absent"
+        r = "banc" if m in bench else why.get(m) or why.get(_norm(name)) or "absent"
         r = r if r in ("banc", "blessure", "suspendu", "incertain") else "absent"
         out.append(_entry(name, r, m, reps.get(m), pr, ratings, positions))
     return out
