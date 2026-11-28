@@ -45,3 +45,16 @@ def test_official_absents_name_the_benched_and_the_injured_with_their_replacemen
                     "note_remplacant": 6.8, "gravite": "moyenne"},
                    {"joueur": "P10", "raison": "banc", "poste": "attaque", "remplace_par": "P21", "note": 7.0,
                     "note_remplacant": None, "gravite": "forte"}]
+
+
+def test_an_injured_player_is_kept_out_even_when_the_injuries_list_drops_his_accent():
+    named = [(pid, pos, grid) for pid, pos, grid in BASE]
+    fx = [_lu("4-3-3", named, 3), _lu("4-3-3", named, 2),
+          _lu("4-3-3", [p if p[0] != 9 else (12, "F", "4:3") for p in named], 1)]
+    for f in fx:  # « D. Doué » in the line-ups and /players, « D. Doue » in /injuries, no id
+        for p in f["lineups"][0]["startXI"]:
+            if p["player"]["id"] == 9:
+                p["player"]["name"] = "D. Doué"
+    c = side_probable(recent_lineups(fx, 1), [{"joueur": "D. Doue", "raison": "blessure"}])
+    assert "D. Doué" not in c["titulaires"] and "P12" in c["titulaires"]
+    assert c["absents"][0]["joueur"] == "D. Doue" and c["absents"][0]["remplace_par"] == "P12"
