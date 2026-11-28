@@ -272,3 +272,32 @@ def test_specialist_calls_nothing_under_the_quota_floor(monkeypatch):
     monkeypatch.setattr(Api, "_get", lambda self, *a, **k: {"response": {"requests": {"current": 2000, "limit_day": 7500}}})
     mod._keys_of(m, now)
     assert "players" in Api.calls
+
+
+def test_calendar_rule_is_the_one_match_just_before_a_big_one(monkeypatch):
+    import importlib.util, pathlib
+    from datetime import datetime, timezone
+    spec = importlib.util.spec_from_file_location("spec_script2", pathlib.Path(__file__).parents[1] / "scripts" / "specialistes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    ko = datetime(2026, 11, 28, 20, tzinfo=timezone.utc)
+    day = 86400
+
+    def fx(ts, league, home, away):
+        return {"fixture": {"timestamp": int(ko.timestamp() + ts)}, "league": {"id": league, "season": 2026},
+                "teams": {"home": {"id": home, "name": f"T{home}"}, "away": {"id": away, "name": f"T{away}"}}}
+    nexts = {1: [fx(0, 61, 1, 2), fx(6 * day, 3, 1, 9)],               # home: next is Europa League in 6 days
+             2: [fx(0, 61, 1, 2), fx(3 * day, 61, 2, 5), fx(6 * day, 2, 2, 8)]}  # away: a league game, then the UCL
+
+    class Api:
+        def _get(self, *a, **k):
+            return {"response": {"requests": {"current": 0, "limit_day": 7500}}}
+        def team_next(self, tid, n):
+            return nexts[tid]
+        def standings(self, league, season):
+            return [{"league": {"standings": [[{"rank": 9, "team": {"id": 5}}, {"rank": 2, "team": {"id": 7}}]]}}]
+    monkeypatch.setattr(mod, "_API", Api())
+    m = {"id_domicile": 1, "id_exterieur": 2, "competition": "Ligue 1"}
+    assert mod._ucl_calendar(m, ko) == {"domicile": 6, "libelle": {"domicile": "la Ligue Europa"}}
+    nexts[2][1] = fx(3 * day, 61, 2, 7)  # next league opponent 2nd of the table: a big match
+    assert mod._ucl_calendar(m, ko)["libelle"] == {"domicile": "la Ligue Europa", "exterieur": "un gros match contre T7"}
