@@ -109,24 +109,43 @@ def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
 EUROPEAN = ("UCL", "UEL", "UECL", "ENC", "Ligue des champions", "Ligue Europa", "Coupe")  # tested on league games only
 
 
+TREVE = "la trêve internationale"
+# National-team competitions (World Cup, its qualifiers in every zone, Nations League, friendlies): one of them
+# played inside a long gap between two club matches means the players leave for their national team.
+NATIONAL_LEAGUES = {1, 5, 10, 29, 30, 31, 32, 33, 34, 37}
+BREAK_GAP_DAYS = 10
+
+
 def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
-    """{side: days until its next Champions League match} for the sides playing one 2 to 4 days after this league
-    game (API-Football /fixtures?team=&next=, cached 6 h), None in a European game or when unknown."""
+    """Owner 28/11 08:26-08:27Z: « 1 match avant seulement la LDC » / « LDC ou sélection nationale pour la coupe du
+    monde ». For each side whose very next match after this league game is a Champions League match, or that leaves
+    for an international break after it, {side: days until that, "libelle": {side: what it is}}; None in a European
+    game, when no side has one, or when unknown. API-Football /fixtures?team=&next= (6 h) and, for a gap of
+    BREAK_GAP_DAYS or more, /fixtures?date= in the middle of it (24 h, shared by every match)."""
     if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
         return None
     if not _quota_ok():
         return None
     try:
         api = _api()
-        out = {}
+        out, label = {}, {}
         for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
-            for f in api.team_next(int(tid), 3) if tid else []:
-                if (f.get("league") or {}).get("id") != 2 or not f["fixture"].get("timestamp"):
-                    continue
-                days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
-                if 2 <= days <= 4.5:
-                    out[side] = round(days)
-        return out or None
+            nxt = sorted((f for f in (api.team_next(int(tid), 3) if tid else []) if f["fixture"].get("timestamp")),
+                         key=lambda f: f["fixture"]["timestamp"])
+            after = [f for f in nxt if f["fixture"]["timestamp"] > ko.timestamp() + 3 * 3600]
+            if not after:
+                continue
+            f = after[0]
+            days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
+            what = "la Ligue des champions" if (f.get("league") or {}).get("id") == 2 else None
+            if what is None and days >= BREAK_GAP_DAYS:
+                probe = (ko + timedelta(days=5)).date().isoformat()
+                if any((g.get("league") or {}).get("id") in NATIONAL_LEAGUES
+                       for g in api._get("/fixtures", {"date": probe}, ttl=86400).get("response", [])):
+                    what = TREVE
+            if what:
+                out[side], label[side] = max(1, round(days)), what
+        return {**out, "libelle": label} if out else None
     except Exception as e:  # noqa: BLE001 - the calendar rule is then skipped
         print(f"calendar unavailable ({str(e)[:120]})", file=sys.stderr)
         return None
