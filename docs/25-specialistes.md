@@ -92,7 +92,9 @@ Avec les compositions officielles sur la page (toutes compétitions, coupes d'Eu
   championnat le favori qui fait tourner gagnait plus souvent que prévu (3-4 : +3,6/+4,4 ; 6+ : +8,7/+6,9) :
   seuil = choix de Vincent. Équipe 2 d'un côté ou de l'autre (Vincent 12:53Z, Arsenal-Dortmund 1-1) : jamais
   plus de 2,5 / 3,5 buts ni « les deux marquent : oui » sur ce match ; mieux vaut passer que perdre. Le favori en équipe type (≤2 habituels au banc), en championnat,
-  2 à 4 jours avant un match de Ligue des champions : −3 pts sur victoire, double chance et remboursé
+  dans son DERNIER match avant un match de Ligue des champions ou avant la trêve internationale (Vincent 28/11
+  08:26-08:28Z ; pour le reste, Ligue Europa, Conférence, coupes, le championnat prime : rien), quel que soit le
+  nombre de jours : −3 pts sur victoire, double chance et remboursé
   (DC −4,3/−3,9 sur les deux périodes). Phrase « avant la Ligue des champions ».
 - Affichage : `affaiblissement[côté].postes` = {joueur: « gardien » | « défense » | « milieu » | « attaque »} pour
   les clés hors du onze, les absents du groupe et les habituels sur le banc (postes de `/players`). Ne change aucun choix.
