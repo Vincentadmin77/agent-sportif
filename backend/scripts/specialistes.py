@@ -109,24 +109,44 @@ def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
 EUROPEAN = ("UCL", "UEL", "UECL", "ENC", "Ligue des champions", "Ligue Europa", "Coupe")  # tested on league games only
 
 
+BIG_CUPS = {2: "la Ligue des champions", 3: "la Ligue Europa", 848: "la Ligue Conférence"}
+BIG_RANK = 4  # a league match against a side in the top 4 of the table is a big match
+
+
 def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
-    """{side: days until its next Champions League match} for the sides playing one 2 to 4 days after this league
-    game (API-Football /fixtures?team=&next=, cached 6 h), None in a European game or when unknown."""
+    """Owner 28/11 08:26Z: « 1 match avant seulement la LDC ou autre gros championnat ». For each side whose very
+    next match after this league game is a big one (Champions League, Europa League, Conference League, or a league
+    match against a top-4 side), {side: days until it, "libelle": {side: what it is}}; None in a European game,
+    when no side has one, or when unknown. API-Football /fixtures?team=&next= and /standings, cached 6 h."""
     if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
         return None
     if not _quota_ok():
         return None
     try:
         api = _api()
-        out = {}
+        out, label, tables = {}, {}, {}
         for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
-            for f in api.team_next(int(tid), 3) if tid else []:
-                if (f.get("league") or {}).get("id") != 2 or not f["fixture"].get("timestamp"):
-                    continue
+            nxt = sorted((f for f in (api.team_next(int(tid), 3) if tid else []) if f["fixture"].get("timestamp")),
+                         key=lambda f: f["fixture"]["timestamp"])
+            this = next((f for f in nxt if abs(f["fixture"]["timestamp"] - ko.timestamp()) < 3 * 3600), None)
+            after = [f for f in nxt if f["fixture"]["timestamp"] > ko.timestamp() + 3 * 3600]
+            if not after:
+                continue
+            f, lg = after[0], after[0].get("league") or {}
+            what = BIG_CUPS.get(lg.get("id"))
+            if what is None and this and lg.get("id") == (this.get("league") or {}).get("id"):
+                key = (lg["id"], lg.get("season"))
+                if key not in tables:
+                    rows = [r for t in api.standings(*key) for g in ((t.get("league") or {}).get("standings") or [])
+                            for r in g]
+                    tables[key] = {(r.get("team") or {}).get("id"): r.get("rank") for r in rows}
+                opp = next((t for t in (f["teams"]["home"], f["teams"]["away"]) if t.get("id") != int(tid)), {})
+                if (tables[key].get(opp.get("id")) or 99) <= BIG_RANK:
+                    what = f"un gros match contre {opp.get('name')}"
+            if what:
                 days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
-                if 2 <= days <= 4.5:
-                    out[side] = round(days)
-        return out or None
+                out[side], label[side] = max(1, round(days)), what
+        return {**out, "libelle": label} if out else None
     except Exception as e:  # noqa: BLE001 - the calendar rule is then skipped
         print(f"calendar unavailable ({str(e)[:120]})", file=sys.stderr)
         return None

@@ -78,8 +78,11 @@ REGULAR_SHARE = 0.5
 # - the favourite with its usual XI (0-2 benched) in a league match 2 to 4 days before a Champions League match:
 #   its double chance -4.3 / -3.9 pts, its win -1.9 / -2.4 -> its win, double chance and draw no bet lose
 #   UCL_PENALTY. Not in European games (not tested there).
+# - owner 2026-11-28 08:26Z: only in the ONE match just before the big one, whatever the number of days, and
+#   before a Europa League, Conference League or top-4 league match too (scripts/specialistes._ucl_calendar).
 UCL_PENALTY = 0.03
 UCL_BENCH_MAX = 2
+BIG_CUP_NAMES = ("la Ligue des champions", "la Ligue Europa", "la Ligue Conférence")
 # Owner 2026-11-27 12:48-12:51Z, two groups only. Usual starters missing from the XI (on the bench or out of the
 # squad), counting only those who matter (bench_that_matters: key players, or replaced by a clearly weaker player):
 # 1 to 3 = nothing; 4 or more = « équipe 2 », treated like a very weakened side (no straight win, double chance /
@@ -306,8 +309,9 @@ def weakened_phrase(team: str, w: dict) -> str | None:
 
 
 def ucl_side(m: dict, weak: dict | None, cal: dict | None) -> str | None:
-    """The favourite ("domicile" / "exterieur") that plays its usual XI 2 to 4 days before a Champions League match
-    (cal[side] = days until it), or None. Needs the official line-ups; league games only."""
+    """The favourite ("domicile" / "exterieur") that plays its usual XI in its last match before a big one (Champions
+    League, Europa League, Conference League or a top-4 league side: cal[side] = days until it), or None. Needs the
+    official line-ups; league games only."""
     if not weak or not cal:
         return None
     p = m.get("proba_1x2") or {}
@@ -385,9 +389,11 @@ def foot_choice(m: dict, luck: tuple | None = None, weak: dict | None = None, ca
         notes += [w_[0].upper() + w_[1:] for w_ in goals_shift(weak)[1]]
         ucl = ucl_side(m, weak, cal)
         if ucl:
-            c["calendrier"] = {"cote": ucl, "ldc_dans_jours": cal[ucl]}
-            notes.append(f"{m.get(ucl) or ucl} joue la Ligue des champions dans {cal[ucl]} jours avec son équipe type : "
-                         f"avant la Ligue des champions, je la vois un peu à la baisse.")
+            what = (cal.get("libelle") or {}).get(ucl) or "la Ligue des champions"
+            c["calendrier"] = {"cote": ucl, "ldc_dans_jours": cal[ucl], "prochain_gros_match": what}
+            avant = what if what in BIG_CUP_NAMES else "ce gros match"
+            notes.append(f"{m.get(ucl) or ucl} joue {what} dans {cal[ucl]} jours avec son équipe type : "
+                         f"avant {avant}, je la vois un peu à la baisse.")
         if notes and c.get("raison"):
             c["raison"] += " " + " ".join(notes)
     return c
