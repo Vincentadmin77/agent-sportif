@@ -109,42 +109,41 @@ def _keys_of(m: dict, when: datetime) -> tuple[dict | None, dict | None]:
 EUROPEAN = ("UCL", "UEL", "UECL", "ENC", "Ligue des champions", "Ligue Europa", "Coupe")  # tested on league games only
 
 
-BIG_CUPS = {2: "la Ligue des champions", 3: "la Ligue Europa", 848: "la Ligue Conférence"}
-BIG_RANK = 4  # a league match against a side in the top 4 of the table is a big match
+TREVE = "la trêve internationale"
+# National-team competitions (World Cup, its qualifiers in every zone, Nations League, friendlies): one of them
+# played inside a long gap between two club matches means the players leave for their national team.
+NATIONAL_LEAGUES = {1, 5, 10, 29, 30, 31, 32, 33, 34, 37}
+BREAK_GAP_DAYS = 10
 
 
 def _ucl_calendar(m: dict, ko: datetime | None) -> dict | None:
-    """Owner 28/11 08:26Z: « 1 match avant seulement la LDC ou autre gros championnat ». For each side whose very
-    next match after this league game is a big one (Champions League, Europa League, Conference League, or a league
-    match against a top-4 side), {side: days until it, "libelle": {side: what it is}}; None in a European game,
-    when no side has one, or when unknown. API-Football /fixtures?team=&next= and /standings, cached 6 h."""
+    """Owner 28/11 08:26-08:27Z: « 1 match avant seulement la LDC » / « LDC ou sélection nationale pour la coupe du
+    monde ». For each side whose very next match after this league game is a Champions League match, or that leaves
+    for an international break after it, {side: days until that, "libelle": {side: what it is}}; None in a European
+    game, when no side has one, or when unknown. API-Football /fixtures?team=&next= (6 h) and, for a gap of
+    BREAK_GAP_DAYS or more, /fixtures?date= in the middle of it (24 h, shared by every match)."""
     if not ko or any(x in str(m.get("competition") or "") or x == m.get("code_ligue") for x in EUROPEAN):
         return None
     if not _quota_ok():
         return None
     try:
         api = _api()
-        out, label, tables = {}, {}, {}
+        out, label = {}, {}
         for side, tid in (("domicile", m.get("id_domicile")), ("exterieur", m.get("id_exterieur"))):
             nxt = sorted((f for f in (api.team_next(int(tid), 3) if tid else []) if f["fixture"].get("timestamp")),
                          key=lambda f: f["fixture"]["timestamp"])
-            this = next((f for f in nxt if abs(f["fixture"]["timestamp"] - ko.timestamp()) < 3 * 3600), None)
             after = [f for f in nxt if f["fixture"]["timestamp"] > ko.timestamp() + 3 * 3600]
             if not after:
                 continue
-            f, lg = after[0], after[0].get("league") or {}
-            what = BIG_CUPS.get(lg.get("id"))
-            if what is None and this and lg.get("id") == (this.get("league") or {}).get("id"):
-                key = (lg["id"], lg.get("season"))
-                if key not in tables:
-                    rows = [r for t in api.standings(*key) for g in ((t.get("league") or {}).get("standings") or [])
-                            for r in g]
-                    tables[key] = {(r.get("team") or {}).get("id"): r.get("rank") for r in rows}
-                opp = next((t for t in (f["teams"]["home"], f["teams"]["away"]) if t.get("id") != int(tid)), {})
-                if (tables[key].get(opp.get("id")) or 99) <= BIG_RANK:
-                    what = f"un gros match contre {opp.get('name')}"
+            f = after[0]
+            days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
+            what = "la Ligue des champions" if (f.get("league") or {}).get("id") == 2 else None
+            if what is None and days >= BREAK_GAP_DAYS:
+                probe = (ko + timedelta(days=5)).date().isoformat()
+                if any((g.get("league") or {}).get("id") in NATIONAL_LEAGUES
+                       for g in api._get("/fixtures", {"date": probe}, ttl=86400).get("response", [])):
+                    what = TREVE
             if what:
-                days = (datetime.fromtimestamp(f["fixture"]["timestamp"], timezone.utc) - ko).total_seconds() / 86400
                 out[side], label[side] = max(1, round(days)), what
         return {**out, "libelle": label} if out else None
     except Exception as e:  # noqa: BLE001 - the calendar rule is then skipped
