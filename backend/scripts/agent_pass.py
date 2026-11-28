@@ -522,10 +522,15 @@ def _probable(comps: list[str], docs: dict[str, dict], current: dict[str, dict],
             for side, t in zip(("domicile", "exterieur"), teams):
                 ids = [f["fixture"]["id"] for f in api.team_last(t["id"])]
                 past = recent_lineups(api.fixtures_by_ids(ids), t["id"])
+                from sportai.services.compo_probable import _norm
                 ids_of = {}
                 for item in squads[t["id"]]:  # absentees() keeps names only: find their ids back
-                    ids_of[(item.get("player") or {}).get("name")] = (item.get("player") or {}).get("id")
-                miss = [{**a, "id": a.get("id") or ids_of.get(a["joueur"])} for a in missing.get(side) or []]
+                    ids_of[_norm((item.get("player") or {}).get("name"))] = (item.get("player") or {}).get("id")
+                own = (docs[key].get("absents") or (current.get(key) or {}).get("absents") or {}).get(side) or []
+                for a in own:  # the pass's own list (absentees with the squads) carries the ids
+                    if a.get("id"):
+                        ids_of.setdefault(_norm(a.get("joueur")), a["id"])
+                miss = [{**a, "id": a.get("id") or ids_of.get(_norm(a["joueur"]))} for a in missing.get(side) or []]
                 c = side_probable(past, miss, lambda pid, name, r=regs[t["id"]]: pid in r,
                                   squad_positions(squads[t["id"]]), season_ratings(squads[t["id"]], t["id"]),
                                   regs[t["id"]])
